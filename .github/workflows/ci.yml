@@ -1,0 +1,74 @@
+name: phase-0
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.25.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          version: 0.12.20
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv sync --project apps/api --locked
+
+      - name: Regenerate API contracts
+        run: pnpm run api:types
+
+      - name: Verify generated API contracts are committed
+        run: git diff --exit-code -- apps/web/openapi.json apps/web/src/generated/api.d.ts
+
+      - name: Check Python formatting and lint
+        run: |
+          uv run --project apps/api ruff format --check --config apps/api/pyproject.toml apps/api
+          uv run --project apps/api ruff check --config apps/api/pyproject.toml apps/api
+
+      - name: Run API tests
+        run: uv run --project apps/api pytest apps/api/tests
+
+      - name: Lint frontend
+        run: pnpm --filter @finorch/web lint
+
+      - name: Check frontend types
+        run: pnpm --filter @finorch/web typecheck
+
+      - name: Build frontend
+        run: pnpm --filter @finorch/web build
+
+      - name: Check documentation and configuration formatting
+        run: pnpm run format:check

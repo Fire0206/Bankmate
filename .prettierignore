@@ -1,0 +1,7 @@
+.git/
+node_modules/
+dist/
+apps/web/openapi.json
+apps/web/src/generated/
+pnpm-lock.yaml
+uv.lock
