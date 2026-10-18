@@ -17,6 +17,8 @@
 
 官方公开赛题要求至少覆盖六类核心场景中的 3 类，并鼓励完整覆盖。该赛题要求与 FinOrch 的产品扩展规划分别维护，详见[需求说明](docs/requirements.md)和[赛事要求核对记录](docs/competition-requirements.md)。
 
+比赛演示与答辩设计资料（Planned，不代表已实现）：[docs/competition/README.md](docs/competition/README.md)。
+
 ## 技术架构
 
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
