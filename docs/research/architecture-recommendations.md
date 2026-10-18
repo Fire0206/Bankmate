@@ -2,9 +2,9 @@
 
 **核对日期：2026-10-18**
 
-**状态：建议，待 Phase 1 采用；不是已实现架构或新 ADR。**
+**状态：Phase 1A 已采用其中部分建议；其余内容仍为建议，不构成已实现功能或新 ADR。**
 
-本文件依据 [Phase 0 架构](../architecture.md)、[Agent/Tool/Workflow 契约](../agent-contract.md)、[数据契约](../data-contract.md)、[安全设计](../security.md)和本轮[源码审查](open-source-review.md)给出实施建议。Phase 0.5 不修改这些既有契约，也不增加运行时代码或依赖。发生架构冲突时，现有仓库文档仍是当前约定；采纳本建议时应通过对应 ADR 更新。
+本文件依据 [架构](../architecture.md)、[Agent/Tool/Workflow 契约](../agent-contract.md)、[数据契约](../data-contract.md)、[安全设计](../security.md)和[源码审查](open-source-review.md)给出建议。Phase 0.5 当时未修改运行代码；Phase 1A 后续通过实际代码和 ADR 采纳 SQLite/SQLAlchemy/Alembic 与 Session/事务边界。发生架构冲突时，以当前契约及已接受 ADR 为准。
 
 ## 建议摘要
 
@@ -19,14 +19,14 @@
 | 前端           | **Adopt：** React/TypeScript/Vite/Tailwind；需要服务端缓存时再按需加入 TanStack Query，需要图表时再评估 Recharts | 延续现有基础设施；不先搭复杂 Dashboard 或组件体系                                                            |
 | 框架和外部系统 | **Defer：** LangGraph、Google ADK、MCP、多 Agent、Redis、Kafka、Kubernetes、真实银行/支付 API                    | 当前没有足以支持这些依赖的产品或运维需求；若出现持久化图恢复、外部工具互操作等具体需求，先做 ADR             |
 
-“Adopt/Adapt/Defer”表示建议的决策状态，不表示已开发或已引入。源码项目的具体证据及许可证风险见[开源项目审查](open-source-review.md)。
+“Adopt/Adapt/Defer”表示原建议的决策状态；已经采纳并实现的内容以当前架构文档、代码和 ADR 为准，尚未实现的部分仍是建议。源码项目的具体证据及许可证风险见[开源项目审查](open-source-review.md)。
 
 ## Banking Core 与数据边界
 
 ### 金额、余额和账本
 
 - 金额以整数最小单位传输和持久化，例如 USD 12.34 表示为 `amount_minor: 1234`；货币代码使用 ISO 4217 大写代码，并依据货币的小数位解释最小单位。币种精度应由服务端受控表决定，不能由模型或浏览器临时推断。
-- 禁止使用 `float`/JavaScript `number` 对金融金额做精确运算。显示层可格式化为十进制字符串；输入必须先按币种精度解析，再由后端验证范围。
+- Python 金额不得使用 `float`；JavaScript 的 `Number` 可精确表示安全整数范围内的整数（`-(2^53-1)` 至 `2^53-1`），但进入该范围之外的 `Number` 值或不安全的中间运算不能保证精确。金额以整数最小单位表示，运算前后检查 `Number.isSafeInteger`，不安全时使用十进制字符串/BigInt 方案并在 API 边界按契约转换；禁止用 `Number` 执行可能越过安全整数范围的金额计算。显示层可格式化为十进制字符串；输入必须先按币种精度解析，再由后端验证范围。
 - 余额的唯一事实来源要在 Banking Core ADR 中定清。建议以不可变的模拟账本分录为事实来源；余额由分录聚合。若之后为了查询加入缓存余额，必须与账本在同一事务更新，并有重算校验。
 - 转账执行应在同一数据库事务中验证账户状态、归属、币种、正金额和可用余额，并写入转账、借贷分录、幂等记录与审计事件。任一约束失败则整体回滚。账户初始余额应由可重放 seed 写为明确的期初分录。
 - 不支持真实银行接口、真实资金移动或真实账户数据。Phase 1 用固定虚构主体、账户、卡片、交易、账单和产品。
@@ -37,7 +37,7 @@
 - 使用 SQLAlchemy 管理会话/事务，以 Alembic 管理已提交迁移。迁移由 Banking Core/数据负责人集中维护；业务模块通过 Application 用例和仓储边界读写，不各自创建连接或重复业务规则。
 - 需在集成测试中覆盖并发写、锁等待、超时和重试结果。SQLite 的 busy timeout 只能改善短时锁等待，不等于多写者扩展能力。若之后真实需求超出 SQLite，另立 ADR 并规划迁移。
 - 为演示数据提供明确的 `seed` 与 `reset` 命令，要求重复执行后得到同一状态；重置只能作用于指定的本地/测试数据库，不可默认删除任意路径的数据。
-- 持久化实体建议使用稳定主键、UTC 时间、明确状态、创建/更新时间和必要的版本字段。表/模型用单数 `snake_case`，主键 `id`，外键 `<entity>_id`；金额用 `<name>_minor` 与 `currency`，状态用受限枚举。
+- 持久化实体建议使用稳定主键、UTC 时间、明确状态、创建/更新时间和必要的版本字段。ORM 类名使用 PascalCase；表、列和索引名使用 `snake_case`，表名统一采用复数（如 `cards`、`audit_events`）；主键 `id`，外键 `<singular_entity>_id`；金额用 `<name>_minor` 与 `currency`，状态用受限枚举。
 
 ### 区分数据类别
 
@@ -84,23 +84,23 @@ Phase 1 首选 REST 读取任务和进度的轮询方式，降低实时推送与
 
 ## 框架与依赖决策
 
-| 技术                          | 建议                                        | 触发重新评估的证据                                                                                                                                                                                                                                                            |
-| ----------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| SQLAlchemy + Alembic          | Phase 1 需要实际持久化时引入                | 当前已规划为后续数据层；由 ADR 确认同步/异步接口、迁移流程和 SQLite 约束                                                                                                                                                                                                      |
-| React Router / TanStack Query | 需要多页面路由/复杂服务端缓存时再引入       | 先看任务进度、失效和错误状态是否已超出当前轻量状态管理                                                                                                                                                                                                                        |
-| shadcn/ui                     | 有稳定设计 token 和重复组件需求后再按需加入 | 保持组件源码归属、可访问性与许可检查；不提前批量生成组件                                                                                                                                                                                                                      |
-| LangGraph                     | 暂缓                                        | 需要跨进程持久化图执行、长时 interrupt/resume、复杂分支后，证明自有 Workflow 表不足；再比较依赖和运维成本。官方能力参考：[Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)、[Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) |
-| Google ADK                    | 暂缓                                        | 仅在确实决定使用 Google 模型/Vertex 生态且接受平台耦合时比较；当前抽象要求模型供应商可换。官方说明见[ADK 文档](https://docs.cloud.google.com/gemini-enterprise-agent-platform/build/adk)                                                                                      |
-| MCP                           | 暂缓                                        | 至少两个独立进程/团队需要标准化工具互操作，且身份、权限、审计和传输策略已定义后，再评估。内部 Python 工具先走 typed registry                                                                                                                                                  |
-| Multi-Agent                   | 暂缓                                        | 单 Agent 有明确可测的上下文/职责瓶颈，且拆分可以改善指标并保留一个权限边界时，才提出 ADR                                                                                                                                                                                      |
-| Redis、Kafka、Kubernetes      | Phase 1 不引入                              | 有真实跨进程锁、异步吞吐、部署拓扑或可用性指标证明必要性后分别评审                                                                                                                                                                                                            |
+| 技术                          | 建议                                                                                                                           | 触发重新评估的证据                                                                                                                                                                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SQLAlchemy + Alembic          | **已在 Phase 1A 采用**；同步 SQLAlchemy/SQLite/Alembic 由 [ADR-0004](../decisions/0004-sqlite-sqlalchemy-banking-core.md) 记录 | 若未来换后端、改异步会话或出现 SQLite 锁竞争/多进程需求，再依据实测证据评估并记录新 ADR                                                                                                                                                                                       |
+| React Router / TanStack Query | 需要多页面路由/复杂服务端缓存时再引入                                                                                          | 先看任务进度、失效和错误状态是否已超出当前轻量状态管理                                                                                                                                                                                                                        |
+| shadcn/ui                     | 有稳定设计 token 和重复组件需求后再按需加入                                                                                    | 保持组件源码归属、可访问性与许可检查；不提前批量生成组件                                                                                                                                                                                                                      |
+| LangGraph                     | 暂缓                                                                                                                           | 需要跨进程持久化图执行、长时 interrupt/resume、复杂分支后，证明自有 Workflow 表不足；再比较依赖和运维成本。官方能力参考：[Persistence](https://docs.langchain.com/oss/python/langgraph/persistence)、[Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) |
+| Google ADK                    | 暂缓                                                                                                                           | 仅在确实决定使用 Google 模型/Vertex 生态且接受平台耦合时比较；当前抽象要求模型供应商可换。官方说明见[ADK 文档](https://docs.cloud.google.com/gemini-enterprise-agent-platform/build/adk)                                                                                      |
+| MCP                           | 暂缓                                                                                                                           | 至少两个独立进程/团队需要标准化工具互操作，且身份、权限、审计和传输策略已定义后，再评估。内部 Python 工具先走 typed registry                                                                                                                                                  |
+| Multi-Agent                   | 暂缓                                                                                                                           | 单 Agent 有明确可测的上下文/职责瓶颈，且拆分可以改善指标并保留一个权限边界时，才提出 ADR                                                                                                                                                                                      |
+| Redis、Kafka、Kubernetes      | Phase 1 不引入                                                                                                                 | 有真实跨进程锁、异步吞吐、部署拓扑或可用性指标证明必要性后分别评审                                                                                                                                                                                                            |
 
 ## 应形成 ADR 的事项
 
-本轮不创建或更改 ADR。Phase 1 进入实现前建议优先由团队决定并记录：
+已在 `docs/decisions/0004-sqlite-sqlalchemy-banking-core.md` 记录 SQLite、同步 SQLAlchemy、Alembic、Session/事务归属和 Demo Identity。仍建议后续由团队决定并记录：
 
 1. 模拟账本事实来源、货币精度元数据与余额读取方案。
-2. SQLAlchemy 同步/异步使用方式、SQLite 文件位置、migration、seed/reset 的危险路径保护。
+2. 将来若变更持久化后端或引入异步数据库访问，需先评估 SQLite 锁限制和迁移路径。
 3. 确认挑战的数据模型、有效期和单次消费事务边界。
 4. Agent 最大步数/超时、Fake Provider 端口和可选兼容模型配置。
 5. 任务进度接口是轮询还是事件推送（仅当轮询不满足需求时）。

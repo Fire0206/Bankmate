@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> 下述为设计约定，Phase 0 不包含 Agent Runtime、工具执行器或任务调度器。
+> 下述为设计约定。Phase 1A 仍不包含 Agent Runtime、工具执行器或任务调度器；未来调用 Banking Core 的边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -8,7 +8,7 @@
 - Agent 和模型输出是不可信输入，不能直接访问数据库、调整余额、修改权限或宣称工具成功。
 - 所有写操作进入服务端验证、授权、风险策略、确认和审计流程。
 - Tool Provider 与模型 Provider 应可替换；模型响应仅作为建议，服务端 Tool Schema 和业务规则为准。
-- Provider 接口应允许 OpenAI-compatible API，配置不得要求特定供应商。Phase 0 不持有模型密钥，也不发起 LLM 请求。
+- Provider 接口应允许 OpenAI-compatible API，配置不得要求特定供应商。当前不持有模型密钥，也不发起 LLM 请求。
 
 ## Tool 元数据
 

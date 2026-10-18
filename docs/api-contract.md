@@ -60,3 +60,14 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 ```
 
 它只报告 API 进程状态，不检查数据库、模型或外部依赖。
+
+Phase 1A 还实现了以下卡片读取端点：
+
+| 方法与路径                              | 说明                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `GET /api/v1/cards?limit=20&cursor=...` | 读取当前服务端 Demo actor 自己的卡片；`limit` 为 1–100，使用不透明游标并返回 `next_cursor`。 |
+| `GET /api/v1/cards/{card_id}`           | 读取当前 actor 所属卡片；资源不存在或不属于 actor 时统一返回 404。                           |
+
+Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`test` 可用；客户端提供的 `user_id` 或角色字段不参与身份判定。两端点的响应 DTO 与 SQLAlchemy 模型分离，Schema 仍以 OpenAPI 和自动生成的 TypeScript 类型为准。
+
+卡片冻结/解冻目前仅作为 `application.cards.freeze_card` / `unfreeze_card` 确定性用例存在，不提供写 HTTP 端点。API Router、Agent 和前端不得直接操作 ORM 表或 Session 事务。

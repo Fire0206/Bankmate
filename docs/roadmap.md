@@ -15,13 +15,30 @@
 - [x] 创建并核验 Private GitHub 仓库；检查 `main` 保护状态。
 - [ ] 管理员确认账户计划；若支持，则在保持 Private 的前提下启用 Ruleset，否则继续采用协作流程中说明的人工门禁。
 
+## Phase 1A — Shared Banking Foundation
+
+状态：**实现完成，等待 PR Review**
+
+- [x] SQLite、SQLAlchemy Session、Alembic 迁移和四个首批数据实体。
+- [x] 两个合成 Demo User、账户和卡片 Seed，以及受限的本地/测试 Reset。
+- [x] 卡片读取 API、资源归属校验、卡片状态 Domain 规则、冻结/解冻 Application 用例和事务内审计。
+- [x] 临时 SQLite 集成测试、迁移/Seed/Reset 测试及 OpenAPI 到 TypeScript 类型同步。
+
+## Phase 1B — 卡片冻结 Agent 垂直切片（Planned）
+
+- Agent Provider 抽象、受控 Tool 注册/Schema、Tool 执行记录与状态回报。
+- 服务端确认策略/挑战和确认 API；冻结/解冻是否必须确认由团队安全决策确定。
+- 可恢复的任务/步骤 Workflow 状态、幂等/失败处理及审计扩展。
+- 前端卡片列表、卡片详情、任务进度、确认交互及端到端演示。
+- 安全和集成验证：会话边界、并发/重试、失败恢复、审计对照及恶意输入。
+
 ## Phase 1 — 模拟场景与基础体验（Planned）
 
 - 在确认赛题范围后选定优先场景；目标是实现六大场景可演示的基础模拟闭环。
-- 建立合成数据集、Domain 规则、持久化和可重置的 Demo seed。
+- 在 Phase 1A 的共享合成数据、Domain 规则、迁移和 Demo seed 上扩展其他场景。
 - 实现基本前端体验、服务端权限与确认边界，以及 API/集成测试。
 - 按已定义 Tool/Workflow 契约先实现有限、可审计的流程，不接真实银行或支付系统。
-- 多工作流并行：A 前端 UX；B Banking Backend & Data；C Agent & Tool Orchestration；D Security, Testing & Integration。
+- 五条工作流建议：A Banking Core & Database；B Banking Business APIs；C Agent & Tool Orchestration；D Frontend & UX；E Security, Testing & Integration。Phase 1A 完成共享 Banking Core 最小底座，详细职责见[Phase 1 实施计划](research/phase1-implementation-plan.md)。
 - 开工前选定负责人并将跨模块契约拆成可 Review 的任务；共享 API/Data/Tool 文件先协调所有权。
 
 ## Phase 2 — Agent 可靠性与安全增强（Planned）

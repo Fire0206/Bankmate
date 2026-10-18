@@ -16,6 +16,8 @@ Windows、macOS 和 Linux 使用相同的 pnpm、uv 项目配置；以下命令�
 Copy-Item .env.example .env
 pnpm install
 uv sync --project apps/api
+uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+uv run --project apps/api python -m finorch_api.seed
 ```
 
 macOS/Linux 复制环境文件用 `cp .env.example .env`。
@@ -31,6 +33,8 @@ API：
 ```powershell
 uv run --project apps/api python -m finorch_api
 ```
+
+首次启动前需先运行迁移并 Seed（见上方命令）。API 不会在启动时自动创建业务表。默认 SQLite 文件为仓库 `.data/finorch.db`，由 `.gitignore` 排除。
 
 Web（另开终端）：
 
@@ -68,3 +72,4 @@ pnpm run format:check
 - 若 Python 版本不符，安装 Python 3.13 后运行 `uv sync --project apps/api`。
 - 前端显示 API 未连接时，先确认 API 在 `127.0.0.1:8000` 正在运行，再刷新页面。
 - OpenAPI 类型有变化时运行 `pnpm run api:types` 并提交两项生成物。
+- Banking Core 的 Card/Application、Session 和事务调用边界见[接口说明](development/banking-core.md)。
