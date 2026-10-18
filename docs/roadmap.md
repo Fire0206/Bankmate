@@ -4,7 +4,7 @@
 
 ## Phase 0 — Repository Foundation
 
-状态：**本轮目标**
+状态：**基础工程已交付；团队与管理员事项仍待完成**
 
 - [x] 初始化私有优先的 Monorepo 和最小前后端工程。
 - [x] API v1 健康检查及 OpenAPI 到前端类型生成流程。
@@ -12,7 +12,8 @@
 - [x] 建立治理文件、PR/Issue 模板及 GitHub Actions CI。
 - [x] 官方赛事公开信息核对，并记录未确认项。
 - [ ] 团队确认版权/授权责任人、比赛官方规则、评分权重和提交资料清单。
-- [ ] GitHub 管理员创建/确认 Private 仓库并设置 main 分支保护。
+- [x] 创建并核验 Private GitHub 仓库；检查 `main` 保护状态。
+- [ ] 管理员确认账户计划；若支持，则在保持 Private 的前提下启用 Ruleset，否则继续采用协作流程中说明的人工门禁。
 
 ## Phase 1 — 模拟场景与基础体验（Planned）
 

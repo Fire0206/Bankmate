@@ -39,6 +39,7 @@
 ## 验证、Git 与文档
 
 - 对变更运行相关 lint、类型检查、测试和构建；只报告实际运行的命令及结果，不伪造测试、接口或业务执行结果。
-- 使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`chore/*` 分支和 Conventional Commits；通过 PR 合并到 `main`。普通 PR 至少一名其他成员 Review；资金、权限或安全契约变更还需安全 Review。
+- 使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`chore/*` 分支和 Conventional Commits；通过 PR 合并到 `main`。多人协作时普通 PR 至少一名其他成员 Review；单人维护期间遵循 `docs/collaboration.md` 的人工流程例外，不得将自审称为独立 Review。资金、权限或安全契约变更仍需独立安全 Review。
+- 当前 GitHub `main` 尚未启用 Branch Protection 或 Ruleset，CI 不能在服务端阻止绕过；遵循 `docs/collaboration.md` 的人工门禁并准确说明其限制。
 - 功能状态、命令、架构和 API 有变化时同步更新 README 或对应文档；重要设计决策写 ADR。
 - 保持 PR 聚焦，避免多人无协调地同时编辑相同契约或入口文件。

@@ -12,6 +12,9 @@
 ## Git 历史与内容
 
 - [ ] 检查全部 Git 历史、分支、标签和 LFS 对象，不只扫描当前工作树。
+- [ ] 审查所有提交的作者/提交者名称和邮箱。Phase 0 当前历史包含非 GitHub `noreply` 的提交身份邮箱；公开前由团队决定是否接受该身份信息披露。历史未被重写。
+- [ ] 后续提交可从 GitHub **Settings → Emails** 复制账户实际显示的 `noreply` 地址，并为本仓库设置：`git config user.email "<GitHub 提供的 noreply 地址>"`。只有希望影响本机所有仓库时才使用 `--global`。GitHub 官方说明见[设置提交邮箱](https://docs.github.com/en/account-and-profile/how-tos/email-preferences/setting-your-commit-email-address)。提交后用 `git log -1 --format='%ae'` 检查作者邮箱；不要假设不同账户的 `noreply` 地址格式相同。
+- [ ] 不自动重写已有提交历史。若团队决定清理已发布历史，先取得明确授权、协调所有协作者并制定备份和验证方案。
 - [ ] 使用 Secret Scanner 检查 API Key、Token、密码、私钥、`.env` 和 CI 日志；若发现，先撤销凭证，再清理历史并验证。
 - [ ] 检查个人信息、真实账户/交易数据、联系方式、团队内部信息、未公开研究/赛事资料和内部文档。
 - [ ] 删除临时文件、调试输出、构建缓存和不可公开附件；确认 Artifact 没有敏感信息。

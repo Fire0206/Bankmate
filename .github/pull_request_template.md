@@ -15,6 +15,8 @@
 - [ ] Frontend lint and typecheck
 - [ ] Frontend build
 - [ ] Documentation/config formatting
+- [ ] GitHub Actions `phase-0 / checks` passed
+- [ ] Independent review completed, or single-maintainer exception recorded per `docs/collaboration.md`
 - [ ] Not run (explain why below)
 
 Commands and results:
