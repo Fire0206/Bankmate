@@ -9,7 +9,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
+from finorch_api.api.v1.agent import router as agent_router
 from finorch_api.api.v1.cards import router as cards_router
+from finorch_api.api.v1.demo_session import router as demo_session_router
 from finorch_api.api.v1.health import router as health_router
 from finorch_api.config import get_settings
 from finorch_api.schemas import ApiError, ApiErrorResponse, ErrorDetail
@@ -22,8 +24,8 @@ app = FastAPI(
     title="FinOrch API",
     version=settings.service_version,
     description=(
-        "Phase 1A banking foundation. Card reads and deterministic application use cases "
-        "use synthetic data only; Agent and money movement are not implemented."
+        "Synthetic card-agent vertical slice with server-side confirmation. "
+        "No real banking or money movement."
     ),
     responses={
         401: {"model": ApiErrorResponse, "description": "Authentication required."},
@@ -37,6 +39,8 @@ app = FastAPI(
 )
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(cards_router, prefix="/api/v1")
+app.include_router(agent_router, prefix="/api/v1")
+app.include_router(demo_session_router, prefix="/api/v1")
 
 
 def request_id_for(request: Request) -> str:
@@ -123,8 +127,14 @@ async def handle_http_error(request: Request, exception: StarletteHTTPException)
     return error_response(
         request,
         status_code=exception.status_code,
-        code=code_by_status.get(exception.status_code, "http_error"),
-        message=message_by_status.get(exception.status_code, "Request failed."),
+        code=getattr(
+            exception, "error_code", code_by_status.get(exception.status_code, "http_error")
+        ),
+        message=getattr(
+            exception,
+            "public_message",
+            message_by_status.get(exception.status_code, "Request failed."),
+        ),
     )
 
 

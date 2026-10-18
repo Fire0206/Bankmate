@@ -42,7 +42,7 @@ Web（另开终端）：
 pnpm --filter @finorch/web dev
 ```
 
-Vite 将 `/api` 代理到本地 API。打开终端输出的地址查看占位首页；Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
+Vite 将 `/api` 代理到本地 API。打开终端输出的地址进入 Card Agent 工作界面；默认 Fake Provider 可无密钥查询合成银行卡、提出冻结/解冻方案并在明确确认后执行。卡片状态从 API 重新读取。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
 
 ## 验证命令
 
@@ -60,7 +60,7 @@ pnpm run format:check
 
 ## 配置说明
 
-环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。不要将本地服务绑定公网地址；当前 API 未实现认证。
+环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；可选择在本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible` 及 `FINORCH_LLM_BASE_URL`、`FINORCH_LLM_API_KEY`、`FINORCH_LLM_MODEL`。Provider Adapter 仅通过 Mock HTTP 验证，真实模型服务未测试。不要将本地服务绑定公网地址；Demo Identity 只在 development/test 启用，不是用户认证系统。
 
 ## 分支与私有仓库
 
@@ -70,6 +70,6 @@ pnpm run format:check
 
 - 若 `pnpm` 未找到，安装/启用 pnpm 11 并重新打开终端。
 - 若 Python 版本不符，安装 Python 3.13 后运行 `uv sync --project apps/api`。
-- 前端显示 API 未连接时，先确认 API 在 `127.0.0.1:8000` 正在运行，再刷新页面。
+- 前端显示 API 未连接时，先确认 API 在 `127.0.0.1:8000` 正在运行，并已运行 Alembic migration 和 seed，再刷新页面。
 - OpenAPI 类型有变化时运行 `pnpm run api:types` 并提交两项生成物。
 - Banking Core 的 Card/Application、Session 和事务调用边界见[接口说明](development/banking-core.md)。

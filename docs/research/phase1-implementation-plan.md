@@ -2,9 +2,9 @@
 
 **编制日期：2026-10-18**
 
-**状态：Phase 1A 核心实现已完成，PR Review 与 CI 验证待完成；Phase 1B 垂直切片仍为 Planned。本文其余组件和里程碑属于规划建议。**
+**状态：Phase 1A 与 Phase 1B 实现已完成；Phase 1B PR 的独立安全 Review 和 CI/合并待完成。六大场景扩展与本文件其余未落地内容仍为规划建议。**
 
-本计划面向五条团队工作流 A–E，不代表人员分配。Phase 1A 已建立共享数据、持久化、迁移、卡片只读 API 和确定性 Application 用例；冻结卡片的 Agent/API/Workflow/Web 完整闭环尚未实现。本文记录后续垂直切片和并行场景建议，也不授权仓库公开。
+本计划面向五条团队工作流 A–E，不代表人员分配。Phase 1A 建立共享模拟数据底座；Phase 1B 已实现卡片查询、受控 Agent 工具、服务端确认、冻结/解冻、持久化任务、审计和 Web 操作闭环。本文保留已交付切片的接口/协作参考及后续并行场景建议，也不授权仓库公开。
 
 ## Phase 1 目标与边界
 
@@ -12,24 +12,24 @@
 
 阶段边界：只用合成账户和模拟操作；不调用真实银行、支付、券商或订阅商户 API；不使用真实用户金融数据；任何 LLM Provider 都可保持 Fake 默认；不把比赛尚未核实的规则写为验收要求。赛事规则/作品权属/公开时间在官方确认前属于项目管理待办。
 
-## 启动前共享门槛
+## 共享契约与已接受决策
 
-在并行写业务代码前，团队共同确认并在对应 PR/ADR 固化：
+跨模块接口和技术决策以现有契约、Phase 1B 实现及 ADR 为准；新增场景并行开发前，团队仍需共同确认并在对应 PR/ADR 固化：
 
-1. Phase 1 场景优先级与第一条切片；本建议选择“冻结/解冻模拟卡片”。
-2. OpenAPI 请求/响应、业务错误码、任务状态查询、工具 Schema 和生成类型更新方式。
-3. Task/Step/ToolExecution/ConfirmationChallenge 最小字段与合法状态转换。
-4. actor/资源归属的本地演示身份模型，安全等级与确认规则；不得让 Agent 或前端自行声明授权。
-5. SQLite、SQLAlchemy、Alembic、合成 seed/reset 的落点和迁移负责人。
-6. 每个模块的唯一责任文件路径与跨模块改动流程。Banking Core 负责人维护迁移，其他模块通过 Application/API 边界提出变更。
+1. 卡片冻结/解冻作为首条切片已交付；其余场景顺序需结合团队和赛事核实结果决定。
+2. OpenAPI 请求/响应、业务错误码、任务状态、工具 Schema 和生成类型流程分别记录在 API/Agent 契约。
+3. Task/Step/ToolExecution/ConfirmationChallenge 字段与状态转换已落入 ORM、迁移和 Agent 契约。
+4. development/test Demo actor、卡片归属和必需确认规则已实现；真实身份和其他场景策略仍需设计。
+5. SQLite、SQLAlchemy、Alembic、合成 seed/reset、Session/事务见 ADR-0004/0005。
+6. 各模块责任路径见下方 A–E 工作流和当前仓库；Banking Core 协调 migration，跨模块改动通过 PR 与相关 owner Review。
 
-只冻结当前切片必需的接口，避免一次设计完六场景的所有表和接口。合同更新与第一个可运行 slice 应在同一短周期完成。
+新增场景只冻结各自必需的接口，避免一次设计完六场景的所有表和接口。契约更新应与对应可运行切片一起评审。
 
 ## 第一条垂直切片：模拟卡片冻结
 
-推荐它作为首个端到端场景：它覆盖自然语言请求、工具 Schema、资源归属、确认、持久化状态、审计和前端状态刷新，且没有资金计算或外部集成。若团队因官方赛题核实结果调整首个场景，应先由产品/安全共同更新范围和验收，不需改动 Phase 0 基础架构。
+该切片已经作为首个端到端场景交付：覆盖自然语言请求、工具 Schema、资源归属、确认、持久化状态、审计和前端状态刷新，不包含资金计算或外部集成。若团队因官方赛题核实结果调整后续场景顺序，应先由产品/安全共同更新范围和验收，不需改动 Phase 0 基础架构。
 
-### 建议执行序列
+### 已实现执行序列
 
 ```text
 用户请求
@@ -45,7 +45,7 @@
   -> API 返回真实结果与 Task 状态，Web 重新读取
 ```
 
-### 切片内需要真实工作的组件
+### 切片实现组件
 
 - API：版本化请求/响应、OpenAPI Schema、错误码、request/task/tool IDs、确认接口。
 - Application/Domain：卡片状态规则、归属检查入口、操作用例和允许的状态迁移；Agent 不直接访问数据库。
@@ -70,15 +70,15 @@ Fake Provider 可以产生可预测计划；MSW 可以为前端开发模拟接�
 
 职责是模块所有权建议，不绑定成员；每位贡献者在自己的模块内增加单测，并遵循根目录 [AGENTS.md](../../AGENTS.md) 和[协作规范](../collaboration.md)。路径是 Phase 1 计划落点；如果实际树有变化，先更新归属文档/PR，不要平行创建另一套同职责实现。
 
-| 工作流                                 | 负责范围                                                                | 建议路径                                                                                                      | 交付与依赖                                                                                                     |
-| -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **A. Banking Core & Database**         | 核心实体、规则、SQLite、SQLAlchemy、Alembic、migration、seed/reset      | `apps/api/src/finorch_api/domain/`；`application/`；`infrastructure/`；`apps/api/alembic/`；`apps/api/tests/` | 维护卡片实体/状态用例、事务边界和数据库 fixture；负责迁移冲突的串行合并。不得把 API/Agent schema 塞进 ORM 模型 |
-| **B. Banking Business APIs**           | 场景 API DTO、路由、Application 用例适配、OpenAPI 变更                  | `apps/api/src/finorch_api/api/v1/scenarios/`；`application/scenarios/`；`apps/api/tests/api/`                 | 依赖 A 的用例契约和共享 API 决策；负责生成/校验 OpenAPI 与前端类型流程，不在路由重复业务规则                   |
-| **C. Agent & Tool Orchestration**      | Provider 端口/Fake、单 Agent 有界循环、Tool Registry、Workflow 任务编排 | `apps/api/src/finorch_api/agent/`；`workflow/`；`apps/api/tests/agent/`；`apps/api/tests/workflow/`           | 依赖 Tool Schema、Task/状态契约与 Security 提供的授权/确认用例；不直接写 DB、不直接调用场景 ORM                |
-| **D. Frontend & UX**                   | 首页到任务/确认 UI、任务状态与错误呈现、API 客户端及 mocks              | `apps/web/src/app/`、`components/`、`features/`、`lib/api/`、`mocks/`、`tests/`                               | 契约冻结后可用 MSW 并行；使用生成类型；不自己推断余额、权限或执行状态，不维护接口类型副本                      |
-| **E. Security, Testing & Integration** | 安全策略/审计接口评审、跨模块集成、威胁场景与 CI 质量门                 | `apps/api/src/finorch_api/security/`、`audit/`、`apps/api/tests/integration/`、相关 workflow                  | 不是全组负责人或唯一测试人员；模块所有者写单测，E 负责组合路径与安全负例。资金/权限 PR 需安全额外审查          |
+| 工作流                                 | 负责范围                                                      | 当前起点/建议路径                                                                                                                           | 交付与依赖                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **A. Banking Core & Database**         | 核心实体、规则、SQLite、SQLAlchemy、Alembic、seed/reset       | `apps/api/src/finorch_api/domain/`；`application/cards.py`、`application/transactions.py`；`infrastructure/`；`apps/api/alembic/`；相关测试 | 维护实体/状态用例、事务边界和数据库 fixture；负责迁移冲突的串行合并。不得把 API/Agent schema 塞进 ORM 模型 |
+| **B. Banking Business APIs**           | 场景 API DTO、路由、Application 用例适配、OpenAPI 变更        | `apps/api/src/finorch_api/api/v1/`、`api/v1/agent_schemas.py`；`apps/api/tests/`；`apps/web/openapi.json` 生成流程                          | 依赖 A 的用例契约和共享 API 决策；负责生成/校验 OpenAPI 与前端类型流程，不在路由重复业务规则               |
+| **C. Agent & Tool Orchestration**      | Provider、单 Agent 有界循环、Tool Registry、Workflow 任务编排 | `apps/api/src/finorch_api/agent/`、`application/agent.py`；`apps/api/tests/test_agent_api.py`、`test_agent_provider.py`                     | 依赖 Tool Schema、Task/状态契约与 Security 确认用例；不直接写 DB、不直接调用场景 ORM                       |
+| **D. Frontend & UX**                   | 任务/确认 UI、任务状态与错误呈现、API 客户端及交互            | `apps/web/src/App.tsx`、`index.css`；生成的 `src/generated/api.d.ts`；`apps/web/index.html`                                                 | 使用生成类型；不自行推断余额、权限或执行状态，不手工维护接口类型副本                                       |
+| **E. Security, Testing & Integration** | 安全策略/审计接口评审、跨模块集成、威胁场景与 CI 质量门       | `apps/api/src/finorch_api/security/`、`application/agent.py` 安全边界、相关 API/集成测试和 workflow                                         | 模块所有者写单测；E 负责组合路径与安全负例。资金/权限/确认/审计 PR 需独立安全审查                          |
 
-以上目录目前可能不存在，属于目标责任范围；按实现需要创建，不要提前建空目录。Application 的跨域流程须只有一个权威实现：API 与 Agent 都调用相同用例，避免双写规则。
+未来如场景扩展确实需要独立 `scenarios/`、`workflow/` 或测试子目录，再按职责新增；目前的 Task/Workflow 协调集中在 `application/agent.py`，不为规划中的模块创建空目录。Application 的跨域流程须只有一个权威实现：API 与 Agent 都调用相同用例，避免双写规则。
 
 ## 依赖顺序与并行策略
 

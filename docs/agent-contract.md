@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> 下述为设计约定。Phase 1A 仍不包含 Agent Runtime、工具执行器或任务调度器；未来调用 Banking Core 的边界见[接口说明](development/banking-core.md)。
+> Phase 1B 已交付本地卡片切片：有界单 Agent、Typed Tool Registry、持久化 Task/Step/ToolExecution/ConfirmationChallenge、确认后卡片冻结/解冻及 REST 任务读取。其余银行工具与场景仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -8,7 +8,27 @@
 - Agent 和模型输出是不可信输入，不能直接访问数据库、调整余额、修改权限或宣称工具成功。
 - 所有写操作进入服务端验证、授权、风险策略、确认和审计流程。
 - Tool Provider 与模型 Provider 应可替换；模型响应仅作为建议，服务端 Tool Schema 和业务规则为准。
-- Provider 接口应允许 OpenAI-compatible API，配置不得要求特定供应商。当前不持有模型密钥，也不发起 LLM 请求。
+- Provider 接口支持 OpenAI-compatible API，配置不绑定特定供应商。
+
+## 当前 Provider 和运行时
+
+- `FakeProvider` 是明确标注的确定性本地演示实现：它按小范围请求文本和可信会话上下文产生预设工具调用，不做模型推理、不访问网络。它不是“假装的 LLM”。
+- `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、Base URL、API Key 和模型名后才启用。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
+- Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
+- Agent Loop 最多处理 4 轮。每个工具名必须在注册表中，输入和输出均通过 Pydantic Schema 验证；未知工具、非法参数、Provider 错误和步数上限都持久化为失败状态。工具执行结果来自服务端 handler。
+- 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。完成只读工具后也由服务端生成“已查询、未改变卡片状态”的消息。
+- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 请求/响应结构测试。当前未对任何实际模型供应商进行网络连通性、模型行为或付费调用测试。
+
+当前允许工具：
+
+| Tool            | 输入/输出                      | 权限 / 风险 / 确认                       | 实际行为                                               |
+| --------------- | ------------------------------ | ---------------------------------------- | ------------------------------------------------------ |
+| `card.list`     | 空输入 / 当前用户卡片列表      | `read_only` / `low` / `never`            | Application 查询 actor 自己的合成卡片                  |
+| `card.get`      | `card_suffix` / 一张卡的 DTO   | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found |
+| `card.freeze`   | `card_suffix` / 操作提案与挑战 | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态     |
+| `card.unfreeze` | `card_suffix` / 操作提案与挑战 | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态     |
+
+实际 Pydantic Schema 和版本定义在 `apps/api/src/finorch_api/agent/tools.py`、`application/agent.py`；新增工具必须有明确 handler、权限/风险/确认元数据、测试和审计，不允许模型自行注册工具。
 
 ## Tool 元数据
 
@@ -52,7 +72,7 @@
 }
 ```
 
-真实工具的权限、Schema、返回结果和确认阈值必须由服务端定义。示例不代表支持真实转账或当前可运行。
+真实工具的权限、Schema、返回结果和确认阈值必须由服务端定义。上方 JSON 仅为通用契约示例，不代表支持转账。
 
 ## 标准执行生命周期
 
@@ -63,14 +83,14 @@ Validation -> Authorization -> Confirmation -> Execution -> Audit
 1. **Validation**：验证 schema、当前资源状态、范围、幂等键和业务约束。
 2. **Authorization**：服务端验证身份、资源归属、权限级别和策略；模型提供的角色声明不可信。
 3. **Confirmation**：服务端按风险策略决定是否需要确认；高风险写操作由用户明确确认，并绑定将执行的输入摘要、操作、有效期和挑战 ID。确认后若输入改变，重新确认。
-4. **Execution**：在幂等边界内调用领域用例。重试必须能区分“未执行”和“结果未知”，不得造成重复副作用。
+4. **Execution**：在幂等边界内调用领域用例。卡片确认路径在一个 SQLite 写事务中复核 challenge、消费确认、变更卡片并更新 Task/Step/ToolExecution。
 5. **Audit**：记录请求、策略决定、确认、执行结果、actor 和时间。审计记录不应包含不必要的敏感字段。
 
 Agent 不可跳过其中任一步骤。工具失败、超时和部分完成都必须返回实际服务端状态。
 
 ## Workflow 状态协议
 
-顶层任务状态：`pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`。
+顶层任务状态已在数据库约束和 Application 转换表实现：`pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`。
 
 | 当前状态                             | 允许的下一状态                                                                |
 | ------------------------------------ | ----------------------------------------------------------------------------- |
@@ -93,10 +113,10 @@ Agent 不可跳过其中任一步骤。工具失败、超时和部分完成都�
 ## 确认、恢复与取消
 
 - 任何资金移动、不可逆操作、权限提升或高风险隐私变更必须服务端确认。确认展示实际收款对象、金额/币种、影响和有效期。
-- 取消阻止尚未启动的步骤，并向运行中的工具发送可取消请求；取消不是自动回滚。回滚或补偿只能由显式的领域流程实现并审计。
+- 当前实现的取消仅允许尚未完成的本地任务；它取消待确认 challenge 和未完成 TaskStep，不会撤销已提交业务状态。取消请求使用 `Idempotency-Key`，相同键重试返回已保存任务结果。未来如增加可长时间运行工具，需另行设计运行中取消与补偿，不可假设当前支持。
 - 失败恢复仅重试幂等、可证明尚未生效或可查询的步骤；未知结果先查询执行状态，不直接重放。
 - 多步任务部分成功时保留已完成事实，标记后续失败/取消步骤，向用户披露已发生和未发生的变化；不宣称原子事务。
 
-## 前端进度订阅（Planned）
+## 前端进度订阅
 
-未来优先考虑认证保护的 Server-Sent Events（SSE）订阅任务事件；断线后用事件 ID 或当前任务快照恢复，必要时提供轮询快照端点。事件应有 schema、单调序号和 request/task IDs，不发送敏感载荷。具体传输方式需在实现前 ADR 评估。当前只显示 API 健康状态。
+当前前端使用 REST 查询 Task 快照与 Task Audit；没有实现 SSE 或 WebSocket。未来可以评估认证保护的 SSE；具体传输方式需在实现前 ADR 评估。Demo Identity 仅用于本机 development/test，不能用作远程部署的认证机制。

@@ -2,9 +2,9 @@
 
 ## 当前实现与计划边界
 
-已实现：私有优先的 Monorepo、React/Vite/Tailwind 占位首页、FastAPI `/api/v1/health` 与只读卡片 API、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、DemoUser/Account/Card/AuditEvent、合成 seed/reset、卡片状态 Domain 规则及 Application 用例。
+已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面、FastAPI 健康/卡片/Agent Task API、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、DemoUser/Account/Card 与持久化 Workflow 表、合成 seed/reset、卡片状态规则、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。
 
-**Planned**：完整六大业务场景和前端、Agent/工具运行时、Workflow 调度、服务端确认挑战、真实认证、资金账本/转账、事件推送和生产部署。卡片冻结/解冻目前仅作为确定性 Application 用例存在，不提供写 API 或 Web 操作入口。数据库与调用边界见[数据契约](data-contract.md)和[Banking Core 接口说明](development/banking-core.md)。
+**Planned**：卡片之外的五大业务场景、真实用户认证、账本/转账、SSE/WebSocket 事件推送和生产部署。当前 Agent 仅覆盖本地模拟卡片查询、确认后冻结/解冻；Fake Provider 是确定性演示逻辑，不代表模型推理。OpenAI-compatible Adapter 通过 Mock HTTP 验证，未对真实模型服务做连通性测试。Demo Identity 不具备生产级安全性。数据库与调用边界见[数据契约](data-contract.md)和[Banking Core 接口说明](development/banking-core.md)。
 
 ## 逻辑层职责
 
@@ -38,7 +38,8 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 - `apps/web/`：独立 Web 应用；前端不维护手工副本 API 类型。
 - `apps/api/`：FastAPI 服务、配置、生成 OpenAPI 的脚本和后端测试。
 - `apps/api/alembic/`：唯一数据库迁移历史；业务表不得在应用启动时自动创建。
-- `apps/api/src/finorch_api/application/`：确定性用例和事务边界；Phase 1A 包含卡片状态变更用例。
+- `apps/api/src/finorch_api/application/`：确定性用例、事务边界和持久化任务编排；卡片变更仅由确认流程调用。
+- `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter；Provider 不获得数据库写权限。
 - `apps/api/src/finorch_api/domain/`：框架无关的卡片状态规则。
 - `apps/api/src/finorch_api/infrastructure/`：共享 SQLAlchemy Base、engine/session、ORM 模型和持久化查询。
 - `apps/api/src/finorch_api/security/`：development/test 专用 DemoActor 上下文。
@@ -49,14 +50,14 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 ## 依赖决策
 
 - React + TypeScript + Vite：建立轻量 SPA 开发和构建链路。
-- Tailwind CSS：项目要求的基础样式工具；当前仅用于占位 UI。
+- Tailwind CSS：用于当前 Agent 工作界面。
 - FastAPI + Pydantic：HTTP 路由和可生成 OpenAPI 的数据模型。
 - uv + pytest + Ruff：Python 依赖锁定、测试和静态检查。
 - shadcn/ui：后续可选的组件集成方法，未安装、未建立组件复制流程。
-- SQLAlchemy 2.x、SQLite、Alembic：Phase 1A 已引入；一个共享 Session provider，读请求依赖负责创建/关闭 Session，Application 写用例负责 begin/commit/rollback；迁移由 Alembic 管理，不在启动时自动建表。
+- SQLAlchemy 2.x、SQLite、Alembic：Phase 1A/1B 已引入；一个共享 Session provider，API 依赖创建并关闭 Session；Application `write_transaction` 拥有或加入明确写事务。读取自动事务不会造成不兼容嵌套，待处理写入要求先处于显式写事务；迁移由 Alembic 管理，不在启动时自动建表。
 - LangGraph、MCP：当前不预先引入；如后续需要，先比较状态持久化、恢复、可观测性、工具边界与复杂度并记录 ADR。
 - 不引入 Redis、Kafka、Kubernetes 或真实银行/支付 API。
 
 ## 运行时关系
 
-Web 开发服务器将 `/api` 请求代理到本地 FastAPI。前端首页查询 `/api/v1/health`，API 返回服务名称、状态和版本；健康检查不代表业务依赖或 Agent 可用。
+Web 开发服务器将 `/api` 请求代理到本地 FastAPI。前端查询 `/api/v1/health`、`/api/v1/demo/session` 和卡片 API，并通过 Agent Task API 完成卡片垂直切片。健康检查只返回 API 进程状态，不代表数据库或 Agent 可用。

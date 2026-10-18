@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition, transition_card_status
 from finorch_api.infrastructure.models import AuditEvent, Card
 from finorch_api.infrastructure.persistence.cards import (
@@ -88,9 +89,11 @@ def _change_card_status(
     card_id: UUID,
     target_status: CardStatus,
     request_id: str,
+    task_id: UUID | None = None,
+    tool_execution_id: UUID | None = None,
 ) -> CardView:
     try:
-        with session.begin():
+        with write_transaction(session):
             card = get_owned_card(session, actor_id=actor_id, card_id=card_id)
             if card is None:
                 raise CardNotFoundError
@@ -103,10 +106,17 @@ def _change_card_status(
                     actor_id=actor_id,
                     card_id=card.id,
                     event_type="card.status_changed",
+                    resource_type="card",
+                    resource_id=card.id,
                     previous_status=previous_status.value,
                     new_status=card.status.value,
                     resource_version=card.version,
                     request_id=request_id,
+                    task_id=task_id,
+                    tool_execution_id=tool_execution_id,
+                    outcome="succeeded",
+                    before_state={"status": previous_status.value, "version": card.version - 1},
+                    after_state={"status": card.status.value, "version": card.version},
                 )
             )
             session.flush()
@@ -116,23 +126,43 @@ def _change_card_status(
     return result
 
 
-def freeze_card(session: Session, *, actor_id: UUID, card_id: UUID, request_id: str) -> CardView:
+def freeze_card(
+    session: Session,
+    *,
+    actor_id: UUID,
+    card_id: UUID,
+    request_id: str,
+    task_id: UUID | None = None,
+    tool_execution_id: UUID | None = None,
+) -> CardView:
     return _change_card_status(
         session,
         actor_id=actor_id,
         card_id=card_id,
         target_status=CardStatus.FROZEN,
         request_id=request_id,
+        task_id=task_id,
+        tool_execution_id=tool_execution_id,
     )
 
 
-def unfreeze_card(session: Session, *, actor_id: UUID, card_id: UUID, request_id: str) -> CardView:
+def unfreeze_card(
+    session: Session,
+    *,
+    actor_id: UUID,
+    card_id: UUID,
+    request_id: str,
+    task_id: UUID | None = None,
+    tool_execution_id: UUID | None = None,
+) -> CardView:
     return _change_card_status(
         session,
         actor_id=actor_id,
         card_id=card_id,
         target_status=CardStatus.ACTIVE,
         request_id=request_id,
+        task_id=task_id,
+        tool_execution_id=tool_execution_id,
     )
 
 
