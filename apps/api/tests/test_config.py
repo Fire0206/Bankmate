@@ -32,6 +32,8 @@ def test_env_example_loads_settings(monkeypatch, tmp_path) -> None:
     assert settings.api_port == 8000
     assert settings.service_name == "finorch-api"
     assert settings.service_version == "0.1.0"
+    assert settings.database_url == "sqlite:///./.data/finorch.db"
+    assert str(settings.demo_user_id) == "00000000-0000-4000-8000-000000000001"
 
 
 def test_environment_variable_uses_pydantic_field_name(monkeypatch) -> None:

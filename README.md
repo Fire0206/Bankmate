@@ -2,44 +2,45 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 0 — Repository Foundation。** 当前只有工程基础、API 健康检查样例和占位首页。六大银行场景、Agent Runtime、工作流引擎、数据库业务模型和真实外部集成都尚未实现。
+> **项目状态：Phase 1A — Shared Banking Foundation。** 已实现 SQLite/SQLAlchemy/Alembic 底座、可重复合成数据、卡片读取 API 和冻结/解冻 Application 用例。前端仍为占位首页，写操作尚无 HTTP 入口、服务端确认流程或 Agent Runtime；不支持转账、理财或真实外部集成。
 
 ## 产品规划
 
-六大场景均为 **Planned**：
+六大场景是 FinOrch 的产品规划，不代表都已有可演示的业务闭环：
 
 1. 智能转账
 2. 账单分析
 3. 理财操作
-4. 卡片管理
+4. 卡片管理（仅有底层卡片模型、读取 API 和冻结/解冻用例；完整场景与 UI 为 Planned）
 5. 订阅与代扣管理
 6. 跨场景联动
 
-官方公开赛题要求至少覆盖六类核心场景中的 3 类，并鼓励完整覆盖。该赛题要求与 FinOrch 的产品扩展规划分别维护，详见[需求说明](docs/requirements.md)和[赛事要求核对记录](docs/competition-requirements.md)。
+官方赛题强制场景、最低覆盖范围和提交要求仍需按本届官方工作台核实；六大场景目前仅作为 FinOrch 产品规划。详见[需求说明](docs/requirements.md)和[赛事要求核对记录](docs/competition-requirements.md)。
 
 比赛演示与答辩设计资料（Planned，不代表已实现）：[docs/competition/README.md](docs/competition/README.md)。
 
 ## 技术架构
 
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
-- **API**：Python、FastAPI、Pydantic、uv、pytest。当前只实现 `/api/v1/health`。
+- **API**：Python、FastAPI、Pydantic、uv、pytest；已实现 `/api/v1/health`、`GET /api/v1/cards` 和 `GET /api/v1/cards/{card_id}`。
 - **Agent**：未来采用模型无关的 OpenAI-compatible Provider 抽象和受控 Tool Calling；尚无 LLM 接入或 Agent 框架。
-- **数据**：未来使用 SQLAlchemy、SQLite 和统一迁移管理；当前无业务数据库。
+- **数据**：SQLAlchemy 2.x、SQLite、Alembic；当前仅有 DemoUser、Account、Card、AuditEvent 和合成数据。业务余额仍是 seed 中的模拟初始值，没有账本或资金变更功能。
 - **API 类型**：FastAPI/Pydantic 生成的 OpenAPI Schema 是单一事实来源；Web 类型通过 `openapi-typescript` 生成。
 
 系统逻辑分层、数据流和边界见[架构说明](docs/architecture.md)。
 
-数据库实体关系、金额精度、模拟数据和迁移约定见[数据契约](docs/data-contract.md)（当前全部为 Planned）。
+数据库实体关系、金额精度、模拟数据和迁移约定见[数据契约](docs/data-contract.md)。
 
 ## 仓库结构
 
 ```text
 apps/
-  api/                 FastAPI 服务、配置和 API 测试
+  api/                 FastAPI 服务、配置、API 测试和 Alembic 迁移
   web/                 React/Vite 占位前端及生成的 API 类型
 docs/
   decisions/           架构决策记录（ADR）
   development/         开发和发布前检查说明
+  research/            Phase 0.5 开源源码研究
 .github/
   ISSUE_TEMPLATE/      Bug 与功能请求表单
   workflows/           GitHub Actions CI
@@ -63,6 +64,8 @@ docs/
 Copy-Item .env.example .env
 pnpm install
 uv sync --project apps/api
+uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+uv run --project apps/api python -m finorch_api.seed
 ```
 
 终端一，启动 API：
@@ -89,6 +92,14 @@ pnpm --filter @finorch/web typecheck
 pnpm --filter @finorch/web build
 pnpm run format:check
 ```
+
+本地合成数据库重置（development 仅允许仓库 `.data/finorch.db`；test 仅允许临时 `finorch-test*.sqlite3`；必须显式确认）：
+
+```powershell
+uv run --project apps/api python -m finorch_api.reset --confirm
+```
+
+本地 Demo actor 由服务端 `.env` 的 `FINORCH_DEMO_USER_ID` 选择，默认是 Demo User One；也可改为 `.env.example` 中的第二个固定合成用户 ID。重启 API 后生效。该身份机制只用于 development/test，不具备生产级认证能力，API 不接受客户端传入的 `user_id` 或角色。
 
 更新 FastAPI OpenAPI 快照及前端类型：
 

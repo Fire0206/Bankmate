@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from uuid import UUID
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     api_port: int = 8000
     service_name: str = "finorch-api"
     service_version: str = "0.1.0"
+    database_url: str = "sqlite:///./.data/finorch.db"
+    demo_user_id: UUID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 @lru_cache

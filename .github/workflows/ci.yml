@@ -1,4 +1,4 @@
-name: phase-0
+name: finorch-ci
 
 on:
   push:
@@ -58,7 +58,7 @@ jobs:
           uv run --project apps/api ruff format --check --config apps/api/pyproject.toml apps/api
           uv run --project apps/api ruff check --config apps/api/pyproject.toml apps/api
 
-      - name: Run API tests
+      - name: Run API and temporary SQLite integration tests
         run: uv run --project apps/api pytest apps/api/tests
 
       - name: Lint frontend

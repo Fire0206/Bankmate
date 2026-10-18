@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
+from finorch_api.api.v1.cards import router as cards_router
 from finorch_api.api.v1.health import router as health_router
 from finorch_api.config import get_settings
 from finorch_api.schemas import ApiError, ApiErrorResponse, ErrorDetail
@@ -20,7 +21,10 @@ settings = get_settings()
 app = FastAPI(
     title="FinOrch API",
     version=settings.service_version,
-    description="Phase 0 API foundation. Business operations are not implemented.",
+    description=(
+        "Phase 1A banking foundation. Card reads and deterministic application use cases "
+        "use synthetic data only; Agent and money movement are not implemented."
+    ),
     responses={
         401: {"model": ApiErrorResponse, "description": "Authentication required."},
         403: {"model": ApiErrorResponse, "description": "Permission denied."},
@@ -28,9 +32,11 @@ app = FastAPI(
         409: {"model": ApiErrorResponse, "description": "Request conflicts with current state."},
         422: {"model": ApiErrorResponse, "description": "Request validation failed."},
         500: {"model": ApiErrorResponse, "description": "Unexpected server error."},
+        503: {"model": ApiErrorResponse, "description": "Demo identity is unavailable."},
     },
 )
 app.include_router(health_router, prefix="/api/v1")
+app.include_router(cards_router, prefix="/api/v1")
 
 
 def request_id_for(request: Request) -> str:
@@ -106,13 +112,19 @@ async def handle_http_error(request: Request, exception: StarletteHTTPException)
         403: "forbidden",
         404: "not_found",
         409: "conflict",
+        422: "validation_error",
+        503: "service_unavailable",
     }
-    message = "Resource not found." if exception.status_code == 404 else "Request failed."
+    message_by_status = {
+        404: "Resource not found.",
+        422: "Request validation failed.",
+        503: "Service unavailable.",
+    }
     return error_response(
         request,
         status_code=exception.status_code,
         code=code_by_status.get(exception.status_code, "http_error"),
-        message=message,
+        message=message_by_status.get(exception.status_code, "Request failed."),
     )
 
 
