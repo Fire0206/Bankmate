@@ -60,7 +60,7 @@ pnpm run format:check
 
 ## 分支与私有仓库
 
-本地开发和 CI 按私有仓库流程运行。管理员邀请正式团队成员并分配最小权限；管理员需在 GitHub 配置 `main` 分支保护。不得将工作复制到未经批准的公共 fork 或公开 CI Artifact。正式提交前依照[仓库公开检查清单](development/public-release-checklist.md)执行。
+本地开发和 CI 按私有仓库流程运行。当前 GitHub 仓库为 Private，但 `main` 尚未启用分支保护或 Ruleset；计划限制、当前状态和人工协作替代流程见[协作流程](collaboration.md)。管理员邀请正式团队成员并分配最小权限。不得将工作复制到未经批准的公共 fork 或公开 CI Artifact。正式提交前依照[仓库公开检查清单](development/public-release-checklist.md)执行。
 
 ## 常见问题
 

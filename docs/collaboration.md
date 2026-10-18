@@ -38,20 +38,29 @@
 
 ## Pull Request 与 Review
 
-PR 使用 `.github/pull_request_template.md`。普通变更一名其他成员批准；涉及资金、权限和安全契约至少增加一位具备相应审查职责的成员。若团队当前无专职安全成员，由维护者指定另一名成员完成安全 Review，并记录理由。作者不能自审替代此要求。
+PR 使用 `.github/pull_request_template.md`。多人协作时，普通变更由至少一名其他成员批准；涉及资金、权限和安全契约至少增加一位具备相应审查职责的成员。若团队当前无专职安全成员，由维护者指定另一名成员完成安全 Review，并记录理由。作者自审不能替代独立 Review。单人维护期间的人工流程例外见下文；安全敏感变更应等待独立审查。
 
 CI 通过且所有阻断评论已解决后才可合并。维护者需保持代码、契约和文档一致。发布前按另行发布清单执行。
 
-## GitHub 管理员设置（需人工操作）
+## GitHub 管理员设置与当前状态
 
-管理员在仓库 **Settings → Rules → Rulesets**（或 Branches/Branch protection rules）为 `main` 配置：
+仓库管理员可在 **Settings → Rules → Rulesets** 为 `main` 设置规则：要求 PR、配置至少 1 个非作者批准、要求 `phase-0 / checks` 通过、阻止强制推送和分支删除，并限制绕过权限。启用前先让 CI 成功运行一次，以便选择准确的状态检查名称。
 
-1. 要求通过 Pull Request 合并，至少 1 个非作者批准；若平台可用，启用 Code Owner Review。
-2. 要求状态检查 `phase-0 / checks` 通过后合并（先运行一次 CI，再从列表选择准确名称）。
-3. 阻止强制推送和分支删除；禁止绕过规则，或仅对指定管理员开放紧急绕过并审计。
-4. 视团队需要要求分支与最新 `main` 同步；不要因启用配置而降低审查要求。
-5. 确认仓库可见性为 Private，并只邀请正式成员；按职责使用 Read/Triage/Write/Maintain/Admin 最小权限。
+### 当前核查结果（2026-10-17）
 
-当前本地目录没有 GitHub remote，因此无法读取 GitHub 仓库设置或替管理员启用规则。CI 工作流本身已准备好，但分支保护必须在 GitHub 管理界面配置。
+- `Fire0206/finorch-banking-agent` 当前为 **Private**，默认分支为 `main`。
+- GitHub Branch Protection API 对 `main` 返回 `Branch not protected (404)`；仓库 Rulesets API 返回空列表。因此目前既未启用传统分支保护，也没有适用的 Ruleset。CI 会运行，但当前没有服务端规则强制阻止直接推送或阻止未通过 CI 的合并。
+- GitHub REST API 未提供当前个人账户的计划字段；需由账户持有人在 **Settings → Billing and licensing → Plans** 手动确认。此次未更改仓库可见性或 GitHub 设置。
 
-**计划限制：** GitHub 官方文档说明，GitHub Free 下受保护分支适用于公开仓库；私有仓库的受保护分支需要 GitHub Pro、Team 或 Enterprise。管理员应先核对仓库所属账户的当前计划；如果该计划不支持私有仓库分支保护，应保留 Private，并在 GitHub 之外执行 PR、独立 Review 和 CI 必须通过后才合并的团队流程，不要为启用规则而公开仓库。具体计划能力以[官方受保护分支说明](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)为准，核对日期：2026-10-17。
+GitHub 官方说明：Rulesets 在 GitHub Free 下适用于公开仓库；GitHub Pro、Team、Enterprise Cloud 支持私有仓库 Rulesets。受保护分支对 Free 和付费计划的私有仓库支持范围也有相同限制。参见[Rulesets 计划支持](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)及[受保护分支计划支持](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)，核对日期：2026-10-17。
+
+### Private 仓库的协作替代方案
+
+若账户当前为 GitHub Free 且无法为 Private 仓库启用规则，保持仓库私有，并执行以下人工门禁：
+
+1. 所有变更从 `feat/*`、`fix/*` 等分支提交 PR 到 `main`；团队约定不直接推送 `main`。
+2. 合并人逐项确认 CI `checks` 通过、PR 清单完整、变更已 Review；资金、权限和安全契约变更需额外安全 Review。
+3. 多人协作时由非作者成员独立 Review；单人维护期间，将 PR 作为审计记录并自行复核 Diff 与 CI，但明确这不是独立 Review，也不是 GitHub 强制规则。
+4. 限制仓库写权限，仅邀请正式成员；管理员定期检查 `main` 和 PR 历史。
+
+该方案可形成清楚的团队流程，但无法技术性阻止有写权限的成员绕过流程直接推送。若必须由 GitHub 强制执行 PR、Review 和必需 CI，应由管理员确认计划后升级到支持 Private Rulesets 的计划（个人仓库可评估 Pro；组织仓库可评估 Team/Enterprise），无需公开仓库。
