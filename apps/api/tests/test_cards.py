@@ -10,6 +10,7 @@ from finorch_api.application.cards import (
     list_cards,
     unfreeze_card,
 )
+from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition
 from finorch_api.infrastructure.models import AuditEvent, Card
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID
@@ -55,6 +56,41 @@ def test_active_card_can_be_frozen_and_audited(seeded_database) -> None:
         assert audit.new_status == "frozen"
         assert audit.resource_version == result.version
         assert audit.request_id == "freeze-test-001"
+
+
+def test_read_then_write_starts_a_fresh_owned_transaction(seeded_database) -> None:
+    with seeded_database.session_factory() as session:
+        page = list_cards(session, actor_id=DEMO_USER_ONE_ID, limit=20)
+        assert len(page.items) == 2
+        updated = freeze_card(
+            session,
+            actor_id=DEMO_USER_ONE_ID,
+            card_id=ALICE_ACTIVE_CARD_ID,
+            request_id="read-then-write-001",
+        )
+
+    assert updated.status is CardStatus.FROZEN
+    with seeded_database.session_factory() as session:
+        assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.FROZEN
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == 1
+
+
+def test_explicit_application_uow_rolls_back_joined_card_write(seeded_database) -> None:
+    with seeded_database.session_factory() as session:
+        with pytest.raises(RuntimeError, match="force outer rollback"):
+            with write_transaction(session):
+                freeze_card(
+                    session,
+                    actor_id=DEMO_USER_ONE_ID,
+                    card_id=ALICE_ACTIVE_CARD_ID,
+                    request_id="outer-uow-rollback-001",
+                )
+                raise RuntimeError("force outer rollback")
+
+    with seeded_database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None and card.status is CardStatus.ACTIVE and card.version == 1
+        assert session.scalar(select(func.count()).select_from(AuditEvent)) == 0
 
 
 def test_frozen_card_can_be_unfrozen(seeded_database) -> None:

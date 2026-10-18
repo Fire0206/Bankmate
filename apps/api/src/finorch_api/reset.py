@@ -8,7 +8,16 @@ from sqlalchemy.orm import Session
 
 from finorch_api.config import get_settings
 from finorch_api.infrastructure.database import get_session_factory
-from finorch_api.infrastructure.models import Account, AuditEvent, Card, DemoUser
+from finorch_api.infrastructure.models import (
+    Account,
+    AgentTask,
+    AuditEvent,
+    Card,
+    ConfirmationChallenge,
+    DemoUser,
+    TaskStep,
+    ToolExecution,
+)
 from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
 
 
@@ -44,6 +53,10 @@ def validate_reset_target(*, environment: str, database_url: str, repository_roo
 def reset_demo_data(session: Session) -> None:
     """Clear the synthetic dataset and reseed it; the caller owns the transaction."""
     session.execute(delete(AuditEvent))
+    session.execute(delete(ConfirmationChallenge))
+    session.execute(delete(ToolExecution))
+    session.execute(delete(TaskStep))
+    session.execute(delete(AgentTask))
     session.execute(delete(Card))
     session.execute(delete(Account))
     session.execute(delete(DemoUser))

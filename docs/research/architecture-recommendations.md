@@ -2,9 +2,9 @@
 
 **核对日期：2026-10-18**
 
-**状态：Phase 1A 已采用其中部分建议；其余内容仍为建议，不构成已实现功能或新 ADR。**
+**状态：Phase 1A/1B 已采用其中部分建议；其余内容仍为建议，不构成已实现功能或新 ADR。**
 
-本文件依据 [架构](../architecture.md)、[Agent/Tool/Workflow 契约](../agent-contract.md)、[数据契约](../data-contract.md)、[安全设计](../security.md)和[源码审查](open-source-review.md)给出建议。Phase 0.5 当时未修改运行代码；Phase 1A 后续通过实际代码和 ADR 采纳 SQLite/SQLAlchemy/Alembic 与 Session/事务边界。发生架构冲突时，以当前契约及已接受 ADR 为准。
+本文件依据 [架构](../architecture.md)、[Agent/Tool/Workflow 契约](../agent-contract.md)、[数据契约](../data-contract.md)、[安全设计](../security.md)和[源码审查](open-source-review.md)给出建议。Phase 0.5 当时未修改运行代码；后续 Phase 1A 通过实际代码和 ADR 采纳 SQLite/SQLAlchemy/Alembic，Phase 1B 通过 ADR-0005 采纳有界单 Agent、服务端确认、持久化 Workflow 和事务边界。发生架构冲突时，以当前契约及已接受 ADR 为准。
 
 ## 建议摘要
 

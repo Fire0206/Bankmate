@@ -47,11 +47,11 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 ## 幂等与兼容
 
 - 创建或有副作用的请求应使用 `Idempotency-Key`。服务端按用户/作用域和键保存请求摘要及最终结果；相同键、相同请求返回原结果，相同键、不同请求返回 `idempotency_conflict`。
-- 幂等记录保留时间、并发行为、失败可否重试需由具体 API 明确；该能力当前未实现。
+- Phase 1B 的任务创建、补充/修订输入、确认和取消 API 已实现持久化幂等检查；键在 actor/任务/操作作用域内绑定规范化输入。并发确认由 SQLite 写事务串行化，确认键与 challenge 绑定。其他业务 API 的保留期、并发行为和失败重试仍须在实现时明确；当前没有通用幂等中间件。
 - 增加可选响应字段通常向后兼容；删除/重命名字段、收窄输入或改变既有含义属于破坏性变更。先弃用并沟通，再在新主版本移除。
 - PR 必须更新 Schema、类型生成物、兼容说明、消费者和测试。Breaking change 需 ADR 或版本变更评审。
 
-## 已实现端点
+## Phase 1B 已实现端点
 
 `GET /api/v1/health` 返回 `HealthResponse`：
 
@@ -61,7 +61,7 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 
 它只报告 API 进程状态，不检查数据库、模型或外部依赖。
 
-Phase 1A 还实现了以下卡片读取端点：
+卡片只读端点：
 
 | 方法与路径                              | 说明                                                                                         |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -70,4 +70,20 @@ Phase 1A 还实现了以下卡片读取端点：
 
 Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`test` 可用；客户端提供的 `user_id` 或角色字段不参与身份判定。两端点的响应 DTO 与 SQLAlchemy 模型分离，Schema 仍以 OpenAPI 和自动生成的 TypeScript 类型为准。
 
-卡片冻结/解冻目前仅作为 `application.cards.freeze_card` / `unfreeze_card` 确定性用例存在，不提供写 HTTP 端点。API Router、Agent 和前端不得直接操作 ORM 表或 Session 事务。
+Demo Session 与 Agent Task 端点：
+
+| 方法与路径                                   | 说明                                                                                                            |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/demo/session`                   | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                  |
+| `POST /api/v1/agent/tasks`                   | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                          |
+| `GET /api/v1/agent/tasks/{task_id}`          | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                               |
+| `POST /api/v1/agent/tasks/{task_id}/input`   | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                        |
+| `POST /api/v1/agent/tasks/{task_id}/confirm` | 消费服务端创建的卡片确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
+| `POST /api/v1/agent/tasks/{task_id}/cancel`  | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                      |
+| `GET /api/v1/agent/tasks/{task_id}/audit`    | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                          |
+
+`card.freeze` 与 `card.unfreeze` 不是独立 HTTP 写路由。Agent 工具提案只创建确认挑战；只有确认路由经过服务端复核后，才通过 Application 用例变更卡片。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
+
+任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
+
+`Idempotency-Key` 对当前所有 POST 写操作必需；键按 actor/任务/操作作用域保存。任务创建或输入补充的相同键、相同请求返回既有任务；同键、不同请求返回 `idempotency_conflict`。确认参数摘要不匹配会令挑战失效；重复的同一确认返回已保存任务结果。重复取消使用同一键返回已保存取消结果。取消不会回滚任何已提交操作。

@@ -15,7 +15,7 @@
 - [ ] Frontend lint and typecheck
 - [ ] Frontend build
 - [ ] Documentation/config formatting
-- [ ] GitHub Actions `phase-0 / checks` passed
+- [ ] GitHub Actions `finorch-ci / checks` passed
 - [ ] Independent review completed, or single-maintainer exception recorded per `docs/collaboration.md`
 - [ ] Not run (explain why below)
 
@@ -25,7 +25,7 @@ Commands and results:
 
 - [ ] No secrets, personal data, or real financial data added
 - [ ] Authorization, confirmation, idempotency, and audit boundaries reviewed if affected
-- [ ] Additional security review required / completed if this changes funds, permissions, or security contracts
+- [ ] Independent security review completed (required before merge when this changes funds, permissions, confirmation, idempotency, audit, or security contracts)
 
 ## Reviewer notes
 

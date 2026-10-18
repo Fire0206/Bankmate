@@ -2,7 +2,7 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 1A — Shared Banking Foundation。** 已实现 SQLite/SQLAlchemy/Alembic 底座、可重复合成数据、卡片读取 API 和冻结/解冻 Application 用例。前端仍为占位首页，写操作尚无 HTTP 入口、服务端确认流程或 Agent Runtime；不支持转账、理财或真实外部集成。
+> **项目状态：Phase 1B — Card Agent Vertical Slice。** 已交付本地可运行的单 Agent 卡片闭环：自然语言请求、Fake Provider、受控卡片工具、持久化任务、服务端确认、SQLite 卡片状态变更和通用审计，以及 React 操作界面。冻结/解冻必须确认。OpenAI-compatible Provider 已有可配置适配器和 Mock HTTP 测试，但未在真实模型服务上验证。其余五大场景、生产认证和真实金融服务均未实现。
 
 ## 产品规划
 
@@ -11,7 +11,7 @@
 1. 智能转账
 2. 账单分析
 3. 理财操作
-4. 卡片管理（仅有底层卡片模型、读取 API 和冻结/解冻用例；完整场景与 UI 为 Planned）
+4. 卡片管理（已实现模拟卡片查询、确认后冻结/解冻、任务进度和审计展示；真实认证、生产安全和其他扩展仍为 Planned）
 5. 订阅与代扣管理
 6. 跨场景联动
 
@@ -22,9 +22,9 @@
 ## 技术架构
 
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
-- **API**：Python、FastAPI、Pydantic、uv、pytest；已实现 `/api/v1/health`、`GET /api/v1/cards` 和 `GET /api/v1/cards/{card_id}`。
-- **Agent**：未来采用模型无关的 OpenAI-compatible Provider 抽象和受控 Tool Calling；尚无 LLM 接入或 Agent 框架。
-- **数据**：SQLAlchemy 2.x、SQLite、Alembic；当前仅有 DemoUser、Account、Card、AuditEvent 和合成数据。业务余额仍是 seed 中的模拟初始值，没有账本或资金变更功能。
+- **API**：Python、FastAPI、Pydantic、uv、pytest；包括健康检查、卡片查询、Demo Session，以及 Agent Task、输入补充、确认、取消和审计摘要 API。没有可绕过确认的卡片写入口。
+- **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；可选 OpenAI-compatible Chat Completions Adapter 需要自行配置服务端密钥。
+- **数据**：SQLAlchemy 2.x、SQLite、Alembic；包括 DemoUser、Account、Card、AgentTask、TaskStep、ToolExecution、ConfirmationChallenge 和追加式 AuditEvent。业务余额仍是 seed 中的模拟初始值，没有账本或资金变更功能。
 - **API 类型**：FastAPI/Pydantic 生成的 OpenAPI Schema 是单一事实来源；Web 类型通过 `openapi-typescript` 生成。
 
 系统逻辑分层、数据流和边界见[架构说明](docs/architecture.md)。
@@ -80,7 +80,9 @@ uv run --project apps/api python -m finorch_api
 pnpm --filter @finorch/web dev
 ```
 
-打开 Vite 显示的本地地址。前端通过 Vite 代理请求 `/api/v1/health`，并显示 API 连接状态。API 文档位于 `http://127.0.0.1:8000/docs`。
+打开 Vite 显示的本地地址即可在 Fake Provider 模式操作合成卡片。自然语言冻结/解冻先生成服务端确认卡片，确认后前端重新读取卡片状态。API 文档位于 `http://127.0.0.1:8000/docs`。
+
+可选真实模型模式需要在本地 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL`。该模式只支持 OpenAI-compatible Tool Calling Adapter；当前没有做真实供应商连通性或付费模型验证。不要将模型密钥提交到仓库。
 
 ## 测试与检查
 
