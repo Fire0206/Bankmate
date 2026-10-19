@@ -18,6 +18,11 @@ const eventLabels: Record<string, string> = {
   "card.confirmation_rejected": "确认未通过",
   "card.confirmation_consumed": "操作已确认",
   "card.status_changed": "银行卡状态变更",
+  "subscription.confirmation_requested": "等待确认",
+  "subscription.confirmation_invalidated": "确认已取消",
+  "subscription.confirmation_rejected": "确认未通过",
+  "subscription.confirmation_consumed": "操作已确认",
+  "subscription.status_changed": "订阅状态变更",
 };
 
 function dateTimeLabel(value: string): string {
@@ -34,11 +39,12 @@ function plainStatus(value: unknown): string | null {
   const labels: Record<string, string> = {
     active: "正常",
     frozen: "已冻结",
+    paused: "已暂停",
+    cancelled: "已取消",
     planning: "正在处理",
     pending: "等待处理",
     succeeded: "已完成",
     failed: "失败",
-    cancelled: "已取消",
     completed: "已完成",
     awaiting_confirmation: "等待确认",
     awaiting_input: "需要补充信息",
@@ -57,6 +63,13 @@ function stepLabel(step: Task["steps"][number]): string {
     "card.get": "查询卡片状态",
     "card.freeze": "冻结银行卡",
     "card.unfreeze": "解冻银行卡",
+    "bill.monthly_summary": "查询月度账单",
+    "bill.transactions": "查询交易明细",
+    "bill.anomalies": "检查异常消费",
+    "subscription.list": "查询自动扣费",
+    "subscription.pause": "暂停自动续费",
+    "subscription.resume": "恢复自动续费",
+    "subscription.cancel": "取消自动续费",
   };
   return labels[key] ?? key;
 }
@@ -67,8 +80,11 @@ function stepSummary(step: Task["steps"][number]): string {
     return "补充信息更新后，原确认已取消。";
   if (key === "planner" && step.status === "failed")
     return "请求处理失败，请查看任务错误信息。";
-  if (step.status === "awaiting_confirmation" && key.startsWith("card."))
-    return "已生成待确认操作；银行卡尚未变更。";
+  if (
+    step.status === "awaiting_confirmation" &&
+    (key.startsWith("card.") || key.startsWith("subscription."))
+  )
+    return "已生成待确认操作；业务状态尚未变更。";
   if (step.status === "cancelled" && key === "cancellation")
     return "任务已取消，待执行操作没有发生。";
   if (step.status !== "succeeded") return step.summary;
@@ -81,6 +97,13 @@ function stepSummary(step: Task["steps"][number]): string {
     "card.get": "卡片状态已查询。",
     "card.freeze": "银行卡已冻结。",
     "card.unfreeze": "银行卡已解冻。",
+    "bill.monthly_summary": "账单统计已读取。",
+    "bill.transactions": "交易明细已读取。",
+    "bill.anomalies": "异常消费检查已完成。",
+    "subscription.list": "自动扣费信息已读取。",
+    "subscription.pause": "自动续费已暂停。",
+    "subscription.resume": "自动续费已恢复。",
+    "subscription.cancel": "自动续费已取消。",
   };
   return summaries[key] ?? step.summary;
 }
@@ -118,7 +141,7 @@ export function TaskOverview({
       <div className="section-heading task-heading">
         <div>
           <h2 id="task-overview-title">处理进度</h2>
-          <p>{task ? "最近一项银行卡请求" : "尚无进行中的请求"}</p>
+          <p>{task ? "最近一项请求" : "尚无进行中的请求"}</p>
         </div>
         {task ? (
           <span className={"task-status task-status-" + task.status}>

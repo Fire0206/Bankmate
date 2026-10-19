@@ -43,18 +43,25 @@ class ConfirmationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
-    card_id: UUID
-    card_suffix: str
-    card_label: str
-    current_status: Literal["active", "frozen"]
-    target_status: Literal["active", "frozen"]
-    card_version: int
+    resource_type: Literal["card", "subscription"]
+    resource_id: UUID
+    resource_label: str
+    resource_version: int
+    current_status: Literal["active", "frozen", "paused", "cancelled"]
+    target_status: Literal["active", "frozen", "paused", "cancelled"]
     parameters_hash: str
     idempotency_key: str
     expires_at: datetime
     policy_version: str
     tool_name: str
     tool_version: str
+    card_id: UUID | None = None
+    card_suffix: str | None = None
+    card_label: str | None = None
+    card_version: int | None = None
+    subscription_id: UUID | None = None
+    merchant: str | None = None
+    subscription_version: int | None = None
 
 
 class AgentTaskResponse(BaseModel):

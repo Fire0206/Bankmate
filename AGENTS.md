@@ -4,8 +4,8 @@
 
 ## 项目与目录
 
-- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前为 Phase 1B：卡片查询和确认后冻结/解冻的本地 Agent 闭环已实现；转账、理财、订阅、跨场景业务、生产认证及生产部署仍为 Planned。不得把规划功能描述成已实现。
-- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化卡片 Workflow、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现；真实模型服务未做外部连通性验证。
+- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前 Phase 1C 正在扩展银行卡 Agent，账单分析及订阅/代扣基础闭环已实现：真实合成流水统计、规则提示、订阅识别，以及经服务端确认的暂停/恢复/取消；智能转账、理财、跨场景业务、生产认证及生产部署仍为 Planned。不得把规划功能描述成已实现。
+- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、银行卡/账单/订阅受控工具、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现；真实模型服务未做外部连通性验证。
 - `docs/` 是架构、产品、API、Agent、Workflow、安全、开发和协作契约入口；`docs/decisions/` 保存 ADR。
 - 逻辑分层：Web UI；API 验证和响应；Application 流程；Domain 规则；Infrastructure 存储/外部适配；Agent 意图/规划/工具编排；Security 授权/确认/策略/审计。按需落地，不为逻辑分层制造空模块。
 
@@ -26,7 +26,7 @@
 
 - API Schema 以 FastAPI/Pydantic 生成的 OpenAPI 为单一事实来源。变更模型或路由后运行 `pnpm run api:types`，提交 OpenAPI 与生成的 TypeScript 类型。
 - Agent Tool、Workflow 和 Data 契约分别遵循 `docs/agent-contract.md`、`docs/data-contract.md`、`docs/security.md` 与 `docs/api-contract.md` 的约定。
-- Card/Application、Agent Tool、确认流程及 Session/事务归属见 `docs/development/banking-core.md`、`docs/agent-contract.md` 和 `docs/security.md`；API、Agent、Web 不直接操作 ORM 表。
+- Banking Application、Agent Tool、通用确认流程及 Session/事务归属见 `docs/development/banking-core.md`、`docs/agent-contract.md` 和 `docs/security.md`；API、Agent、Web 不直接操作 ORM 表。
 - 跨模块接口变更必须先更新契约、版本兼容说明和相关文档，再改调用方与提供方。
 - 不假设 Agent 可绕过后端工具直接修改业务状态；金额、权限、策略和确认都由服务端确定。
 

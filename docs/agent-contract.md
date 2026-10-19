@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> Phase 1B 已交付本地卡片切片：有界单 Agent、Typed Tool Registry、持久化 Task/Step/ToolExecution/ConfirmationChallenge、确认后卡片冻结/解冻及 REST 任务读取。Phase 1B.5 增加 Provider Mock 验证、actor 范围任务恢复与安全同键重试；真实模型服务仍未验证。其余银行工具与场景仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
+> Phase 1C 当前分支已扩展至三类本地模拟场景：银行卡查询/确认后冻结解冻、账单查询与统计、订阅识别/查询/确认后暂停恢复取消。Phase 1B.5 的 Provider Mock 验证、actor 范围任务恢复与安全同键重试继续适用；真实模型服务仍未验证。智能转账、理财及跨场景工具仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -16,17 +16,26 @@
 - `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、Base URL、API Key 和模型名后才启用。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
 - Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
 - Agent Loop 最多处理 4 轮工具调用，累计 `tool_calls` 不超过 4 次，并最多额外请求一轮无工具的最终响应；同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。重复的工具名与规范化参数组合会失败停止；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
-- 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。完成只读工具后也由服务端生成“已查询、未改变卡片状态”的消息。
+- 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。只读结果和写入结果摘要均基于服务端工具数据生成，不将模型文本当作业务执行事实。
 - Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。当前未对任何实际模型供应商进行网络连通性、模型行为或付费调用测试。
 
 当前允许工具：
 
-| Tool            | 输入/输出                      | 权限 / 风险 / 确认                       | 实际行为                                               |
-| --------------- | ------------------------------ | ---------------------------------------- | ------------------------------------------------------ |
-| `card.list`     | 空输入 / 当前用户卡片列表      | `read_only` / `low` / `never`            | Application 查询 actor 自己的合成卡片                  |
-| `card.get`      | `card_suffix` / 一张卡的 DTO   | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found |
-| `card.freeze`   | `card_suffix` / 操作提案与挑战 | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态     |
-| `card.unfreeze` | `card_suffix` / 操作提案与挑战 | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态     |
+| Tool                   | 输入/输出                              | 权限 / 风险 / 确认                       | 实际行为                                                 |
+| ---------------------- | -------------------------------------- | ---------------------------------------- | -------------------------------------------------------- |
+| `card.list`            | 空输入 / 当前用户卡片列表              | `read_only` / `low` / `never`            | Application 查询 actor 自己的合成卡片                    |
+| `card.get`             | `card_suffix` / 一张卡的 DTO           | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found   |
+| `card.freeze`          | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态       |
+| `card.unfreeze`        | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态       |
+| `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额    |
+| `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                |
+| `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 仅标记非住房单笔支出达到 ¥1,000 的演示提示，不是欺诈检测 |
+| `subscription.list`    | 空输入 / 订阅、周期费用及下次模拟扣款  | `read_only` / `low` / `never`            | 返回基于周期合成交易识别并入库的订阅                     |
+| `subscription.pause`   | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；不调用真实商户或扣款网络           |
+| `subscription.resume`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 active                  |
+| `subscription.cancel`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 cancelled               |
+
+订阅变更确认与卡片共用 Agent Task 确认 API、幂等机制和通用审计；challenge 绑定 `resource_type/resource_id`、资源版本、工具/参数/策略、actor、幂等键及有效期。订阅状态转换由后端领域规则限制为 `active→paused`、`paused→active`、`active|paused→cancelled`，已取消订阅不可恢复。
 
 实际 Pydantic Schema 和版本定义在 `apps/api/src/finorch_api/agent/tools.py`、`application/agent.py`；新增工具必须有明确 handler、权限/风险/确认元数据、测试和审计，不允许模型自行注册工具。
 
@@ -83,7 +92,7 @@ Validation -> Authorization -> Confirmation -> Execution -> Audit
 1. **Validation**：验证 schema、当前资源状态、范围、幂等键和业务约束。
 2. **Authorization**：服务端验证身份、资源归属、权限级别和策略；模型提供的角色声明不可信。
 3. **Confirmation**：服务端按风险策略决定是否需要确认；高风险写操作由用户明确确认，并绑定将执行的输入摘要、操作、有效期和挑战 ID。确认后若输入改变，重新确认。
-4. **Execution**：在幂等边界内调用领域用例。卡片确认路径在一个 SQLite 写事务中复核 challenge、消费确认、变更卡片并更新 Task/Step/ToolExecution。
+4. **Execution**：在幂等边界内调用领域用例。卡片或订阅确认路径在一个 SQLite 写事务中复核 challenge、消费确认、变更对应资源并更新 Task/Step/ToolExecution。
 5. **Audit**：记录请求、策略决定、确认、执行结果、actor 和时间。审计记录不应包含不必要的敏感字段。
 
 Agent 不可跳过其中任一步骤。工具失败、超时和部分完成都必须返回实际服务端状态。

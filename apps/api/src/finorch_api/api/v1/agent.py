@@ -19,13 +19,15 @@ from finorch_api.application.agent import (
     AgentTaskNotFoundError,
     AgentTaskStateConflictError,
     cancel_agent_task,
-    confirm_card_change,
     create_agent_task,
     get_agent_task,
     get_agent_task_by_idempotency_key,
     get_recent_agent_task,
     get_task_audit,
     submit_task_input,
+)
+from finorch_api.application.agent import (
+    confirm_task_operation as confirm_agent_task_operation,
 )
 from finorch_api.config import Settings, get_settings
 from finorch_api.infrastructure.database import get_db_session
@@ -60,7 +62,7 @@ def _task_response(value) -> AgentTaskResponse:
     return AgentTaskResponse.model_validate(asdict(value))
 
 
-@router.post("", response_model=AgentTaskResponse, summary="Submit a natural-language card task")
+@router.post("", response_model=AgentTaskResponse, summary="Submit a natural-language banking task")
 def submit_task(
     body: AgentTaskCreateRequest,
     request: Request,
@@ -198,7 +200,7 @@ def provide_task_input(
 @router.post(
     "/{task_id}/confirm",
     response_model=AgentTaskResponse,
-    summary="Confirm a server-created card operation challenge",
+    summary="Confirm a server-created banking operation challenge",
 )
 def confirm_task_operation(
     task_id: UUID,
@@ -209,7 +211,7 @@ def confirm_task_operation(
     idempotency_key: IdempotencyKey,
 ) -> AgentTaskResponse:
     try:
-        task = confirm_card_change(
+        task = confirm_agent_task_operation(
             session,
             actor_id=actor.user_id,
             task_id=task_id,
@@ -228,13 +230,16 @@ def confirm_task_operation(
         raise _conflict("Confirmation is no longer pending.", "confirmation_not_pending") from None
     if task.error_code == "confirmation_parameters_mismatch":
         raise _conflict(
-            "Confirmation parameters changed; the challenge was invalidated.",
+            "Confirmation details changed; the challenge was invalidated.",
             "confirmation_invalidated",
         )
     if task.error_code == "confirmation_expired":
-        raise _conflict("Confirmation expired; no card change was made.", "confirmation_expired")
-    if task.error_code == "card_version_conflict":
-        raise _conflict("Card changed after this challenge was created.", "card_version_conflict")
+        raise _conflict("Confirmation expired; no business state changed.", "confirmation_expired")
+    if task.error_code in {"card_version_conflict", "subscription_version_conflict"}:
+        raise _conflict(
+            "The item changed after this confirmation was created.",
+            task.error_code,
+        )
     return _task_response(task)
 
 

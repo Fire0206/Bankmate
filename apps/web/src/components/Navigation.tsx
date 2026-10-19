@@ -4,9 +4,7 @@ type Section = "assistant" | "cards";
 
 const plannedItems = [
   ["overview", "账户总览"],
-  ["bill", "账单分析"],
   ["transfer", "转账"],
-  ["subscriptions", "订阅管理"],
   ["wealth", "理财"],
 ] as const;
 

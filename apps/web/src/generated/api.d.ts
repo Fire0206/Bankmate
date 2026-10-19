@@ -55,6 +55,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/transactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List synthetic transactions */
+        get: operations["read_transactions_api_v1_transactions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bills/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a monthly bill summary */
+        get: operations["read_bill_summary_api_v1_bills_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List synthetic recurring subscriptions */
+        get: operations["read_subscriptions_api_v1_subscriptions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/tasks": {
         parameters: {
             query?: never;
@@ -64,7 +115,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a natural-language card task */
+        /** Submit a natural-language banking task */
         post: operations["submit_task_api_v1_agent_tasks_post"];
         delete?: never;
         options?: never;
@@ -149,7 +200,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm a server-created card operation challenge */
+        /** Confirm a server-created banking operation challenge */
         post: operations["confirm_task_operation_api_v1_agent_tasks__task_id__confirm_post"];
         delete?: never;
         options?: never;
@@ -366,6 +417,82 @@ export interface components {
         ApiErrorResponse: {
             error: components["schemas"]["ApiError"];
         };
+        /** BillCategoryResponse */
+        BillCategoryResponse: {
+            /** Category */
+            category: string;
+            /** Amount Minor */
+            amount_minor: number;
+            /** Transaction Count */
+            transaction_count: number;
+        };
+        /** BillSummaryResponse */
+        BillSummaryResponse: {
+            /** Month */
+            month: string;
+            /** Currency */
+            currency: string;
+            /** Income Minor */
+            income_minor: number;
+            /** Expense Minor */
+            expense_minor: number;
+            /** Net Minor */
+            net_minor: number;
+            /** Selected Category */
+            selected_category: string | null;
+            /** Selected Category Expense Minor */
+            selected_category_expense_minor: number | null;
+            /** Categories */
+            categories: components["schemas"]["BillCategoryResponse"][];
+            /** Trends */
+            trends: components["schemas"]["BillTrendResponse"][];
+            /** Anomalies */
+            anomalies: components["schemas"]["BillTransactionResponse"][];
+        };
+        /** BillTransactionResponse */
+        BillTransactionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "income" | "expense";
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+            /** Merchant */
+            merchant: string;
+            /** Category */
+            category: string;
+            /** Description */
+            description: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Anomaly Reason */
+            anomaly_reason: string | null;
+        };
+        /** BillTrendResponse */
+        BillTrendResponse: {
+            /** Month */
+            month: string;
+            /** Income Minor */
+            income_minor: number;
+            /** Expense Minor */
+            expense_minor: number;
+        };
         /** CardListResponse */
         CardListResponse: {
             /** Items */
@@ -416,26 +543,29 @@ export interface components {
              */
             id: string;
             /**
-             * Card Id
+             * Resource Type
+             * @enum {string}
+             */
+            resource_type: "card" | "subscription";
+            /**
+             * Resource Id
              * Format: uuid
              */
-            card_id: string;
-            /** Card Suffix */
-            card_suffix: string;
-            /** Card Label */
-            card_label: string;
+            resource_id: string;
+            /** Resource Label */
+            resource_label: string;
+            /** Resource Version */
+            resource_version: number;
             /**
              * Current Status
              * @enum {string}
              */
-            current_status: "active" | "frozen";
+            current_status: "active" | "frozen" | "paused" | "cancelled";
             /**
              * Target Status
              * @enum {string}
              */
-            target_status: "active" | "frozen";
-            /** Card Version */
-            card_version: number;
+            target_status: "active" | "frozen" | "paused" | "cancelled";
             /** Parameters Hash */
             parameters_hash: string;
             /** Idempotency Key */
@@ -451,6 +581,20 @@ export interface components {
             tool_name: string;
             /** Tool Version */
             tool_version: string;
+            /** Card Id */
+            card_id?: string | null;
+            /** Card Suffix */
+            card_suffix?: string | null;
+            /** Card Label */
+            card_label?: string | null;
+            /** Card Version */
+            card_version?: number | null;
+            /** Subscription Id */
+            subscription_id?: string | null;
+            /** Merchant */
+            merchant?: string | null;
+            /** Subscription Version */
+            subscription_version?: number | null;
         };
         /** DemoSessionResponse */
         DemoSessionResponse: {
@@ -494,6 +638,66 @@ export interface components {
             service: string;
             /** Version */
             version: string;
+        };
+        /** SubscriptionListResponse */
+        SubscriptionListResponse: {
+            /** Items */
+            items: components["schemas"]["SubscriptionResponse"][];
+            /** Monthly Total Minor */
+            monthly_total_minor: number;
+            /** Currency */
+            currency: string;
+        };
+        /** SubscriptionResponse */
+        SubscriptionResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Merchant */
+            merchant: string;
+            /** Amount Minor */
+            amount_minor: number;
+            /** Currency */
+            currency: string;
+            /**
+             * Billing Cycle
+             * @constant
+             */
+            billing_cycle: "monthly";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "paused" | "cancelled";
+            /**
+             * Next Charge At
+             * Format: date-time
+             */
+            next_charge_at: string;
+            /** Version */
+            version: number;
+            /** Detected Charge Count */
+            detected_charge_count: number;
+        };
+        /** TransactionPageResponse */
+        TransactionPageResponse: {
+            /** Items */
+            items: components["schemas"]["BillTransactionResponse"][];
+            /** Total */
+            total: number;
+            /** Offset */
+            offset: number;
+            /** Limit */
+            limit: number;
+            /** Next Offset */
+            next_offset: number | null;
         };
     };
     responses: never;
@@ -691,6 +895,265 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_transactions_api_v1_transactions_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+                category?: string | null;
+                merchant?: string | null;
+                direction?: ("income" | "expense") | null;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransactionPageResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_bill_summary_api_v1_bills_summary_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+                category?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillSummaryResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_subscriptions_api_v1_subscriptions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionListResponse"];
                 };
             };
             /** @description Authentication required. */

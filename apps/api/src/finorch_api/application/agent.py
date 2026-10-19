@@ -1,6 +1,6 @@
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -20,12 +20,27 @@ from finorch_api.agent.runtime import (
     ToolSpec,
 )
 from finorch_api.agent.tools import (
+    BillAnomaliesOutput,
+    BillMonthInput,
+    BillSummaryInput,
+    BillSummaryOutput,
+    BillTransactionsInput,
+    BillTransactionsOutput,
     CardChangeProposalOutput,
     CardGetOutput,
     CardListOutput,
     CardSuffixInput,
     CardToolItem,
     EmptyToolInput,
+    SubscriptionChangeProposalOutput,
+    SubscriptionListOutput,
+    SubscriptionNameInput,
+    SubscriptionToolItem,
+)
+from finorch_api.application.bills import (
+    get_month_anomalies,
+    get_monthly_summary,
+    list_transactions,
 )
 from finorch_api.application.cards import (
     CardNotFoundError,
@@ -35,8 +50,21 @@ from finorch_api.application.cards import (
     list_cards,
     unfreeze_card,
 )
+from finorch_api.application.subscriptions import (
+    SubscriptionAmbiguousError,
+    SubscriptionNotFoundError,
+    SubscriptionWriteConflictError,
+    change_subscription_status,
+    find_owned_subscription,
+    get_owned_subscription,
+    list_subscriptions,
+)
 from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition, transition_card_status
+from finorch_api.domain.subscriptions import (
+    InvalidSubscriptionTransition,
+    transition_subscription_status,
+)
 from finorch_api.infrastructure.models import (
     AgentTask,
     AuditEvent,
@@ -48,6 +76,7 @@ from finorch_api.infrastructure.models import (
 from finorch_api.infrastructure.persistence.cards import get_owned_card
 
 POLICY_VERSION = "card-confirmation-v1"
+SUBSCRIPTION_POLICY_VERSION = "subscription-confirmation-v1"
 TOOL_VERSION = "1.0"
 CONFIRMATION_TTL = timedelta(minutes=5)
 
@@ -91,18 +120,25 @@ class TaskStepView:
 @dataclass(frozen=True)
 class ConfirmationView:
     id: UUID
-    card_id: UUID
-    card_suffix: str
-    card_label: str
+    resource_type: str
+    resource_id: UUID
+    resource_label: str
+    resource_version: int
     current_status: str
     target_status: str
-    card_version: int
     parameters_hash: str
     idempotency_key: str
     expires_at: datetime
     policy_version: str
     tool_name: str
     tool_version: str
+    card_id: UUID | None = None
+    card_suffix: str | None = None
+    card_label: str | None = None
+    card_version: int | None = None
+    subscription_id: UUID | None = None
+    merchant: str | None = None
+    subscription_version: int | None = None
 
 
 @dataclass(frozen=True)
@@ -279,7 +315,81 @@ def _card_change_proposal(
         parameters_hash=parameters_hash,
         idempotency_key=challenge.idempotency_key,
         expires_at=_utc(challenge.expires_at),
+        resource_type="card",
+        resource_id=card_view.id,
+        resource_label=card_view.label,
+        resource_version=card_view.version,
     )
+
+
+def _subscription_change_proposal(
+    *,
+    context: ToolCallContext,
+    merchant_name: str,
+    target_status: str,
+) -> SubscriptionChangeProposalOutput:
+    subscription = find_owned_subscription(
+        context.session, actor_id=context.actor_id, merchant_name=merchant_name
+    )
+    transition_subscription_status(subscription.status, target_status)
+    normalized = {
+        "tool_name": context.execution.tool_name,
+        "tool_version": context.execution.tool_version,
+        "subscription_id": str(subscription.id),
+        "target_status": target_status,
+    }
+    parameters_hash = _hash(normalized)
+    context.execution.input_hash = parameters_hash
+    challenge = ConfirmationChallenge(
+        id=uuid4(),
+        task_id=context.task.id,
+        tool_execution_id=context.execution.id,
+        actor_id=context.actor_id,
+        card_id=None,
+        subscription_id=subscription.id,
+        tool_name=context.execution.tool_name,
+        tool_version=context.execution.tool_version,
+        target_status=target_status,
+        parameters_hash=parameters_hash,
+        card_version=None,
+        subscription_version=subscription.version,
+        policy_version=SUBSCRIPTION_POLICY_VERSION,
+        idempotency_key=context.execution.idempotency_key,
+        status="pending",
+        expires_at=utc_now() + CONFIRMATION_TTL,
+    )
+    context.session.add(challenge)
+    context.session.flush()
+    return SubscriptionChangeProposalOutput(
+        status="awaiting_confirmation",
+        confirmation_required=True,
+        challenge_id=challenge.id,
+        subscription_id=subscription.id,
+        merchant=subscription.merchant,
+        current_status=subscription.status,
+        target_status=target_status,
+        subscription_version=subscription.version,
+        parameters_hash=parameters_hash,
+        idempotency_key=challenge.idempotency_key,
+        expires_at=_utc(challenge.expires_at),
+        resource_type="subscription",
+        resource_id=subscription.id,
+        resource_label=subscription.merchant,
+        resource_version=subscription.version,
+    )
+
+
+def _bill_transaction_output(value: Any) -> dict[str, Any]:
+    return {
+        "id": value.id,
+        "direction": value.direction,
+        "amount_minor": value.amount_minor,
+        "currency": value.currency,
+        "merchant": value.merchant,
+        "category": value.category,
+        "occurred_at": value.occurred_at,
+        "anomaly_reason": value.anomaly_reason,
+    }
 
 
 def _build_registry() -> ToolRegistry:
@@ -310,6 +420,83 @@ def _build_registry() -> ToolRegistry:
         return _card_change_proposal(
             context=context, card_suffix=typed.card_suffix, target_status=CardStatus.ACTIVE
         )
+
+    def bill_summary_handler(arguments: BaseModel, context: ToolCallContext) -> BillSummaryOutput:
+        typed = BillSummaryInput.model_validate(arguments)
+        view = get_monthly_summary(
+            context.session,
+            actor_id=context.actor_id,
+            month=typed.month,
+            category=typed.category,
+        )
+        data = asdict(view)
+        data["anomalies"] = [_bill_transaction_output(item) for item in view.anomalies]
+        return BillSummaryOutput.model_validate(data)
+
+    def bill_transactions_handler(
+        arguments: BaseModel, context: ToolCallContext
+    ) -> BillTransactionsOutput:
+        typed = BillTransactionsInput.model_validate(arguments)
+        page = list_transactions(
+            context.session,
+            actor_id=context.actor_id,
+            month=typed.month,
+            category=typed.category,
+            merchant=typed.merchant,
+            limit=100,
+        )
+        month = typed.month or datetime.now(UTC).strftime("%Y-%m")
+        return BillTransactionsOutput(
+            month=month,
+            items=[_bill_transaction_output(item) for item in page.items],
+            total=page.total,
+        )
+
+    def bill_anomalies_handler(
+        arguments: BaseModel, context: ToolCallContext
+    ) -> BillAnomaliesOutput:
+        typed = BillMonthInput.model_validate(arguments)
+        items = get_month_anomalies(context.session, actor_id=context.actor_id, month=typed.month)
+        month = typed.month or datetime.now(UTC).strftime("%Y-%m")
+        return BillAnomaliesOutput(
+            month=month,
+            items=[_bill_transaction_output(item) for item in items],
+        )
+
+    def subscription_list_handler(
+        _arguments: BaseModel, context: ToolCallContext
+    ) -> SubscriptionListOutput:
+        result = list_subscriptions(context.session, actor_id=context.actor_id)
+        items = [
+            SubscriptionToolItem(
+                id=item.id,
+                merchant=item.merchant,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                billing_cycle="monthly",
+                status=item.status,
+                next_charge_at=item.next_charge_at,
+                version=item.version,
+                detected_charge_count=item.detected_charge_count,
+            )
+            for item in result.items
+        ]
+        return SubscriptionListOutput(
+            items=items,
+            monthly_total_minor=result.monthly_total_minor,
+            currency=result.currency,
+        )
+
+    def subscription_change_handler(target_status: str):
+        def handle(arguments: BaseModel, context: ToolCallContext):
+            typed = SubscriptionNameInput.model_validate(arguments)
+            return _subscription_change_proposal(
+                context=context,
+                merchant_name=typed.merchant_name,
+                target_status=target_status,
+            )
+
+        return handle
 
     return ToolRegistry(
         (
@@ -363,6 +550,83 @@ def _build_registry() -> ToolRegistry:
                 confirmation_requirement="always",
                 handler=unfreeze_handler,
             ),
+            ToolSpec(
+                name="bill.monthly_summary",
+                description=(
+                    "Calculate monthly income, expenses, category totals, trends, and "
+                    "rule-based anomaly notices for the current demo user."
+                ),
+                version=TOOL_VERSION,
+                input_model=BillSummaryInput,
+                output_model=BillSummaryOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=bill_summary_handler,
+            ),
+            ToolSpec(
+                name="bill.transactions",
+                description=(
+                    "Read the current demo user's synthetic transactions filtered by "
+                    "month, category, or merchant."
+                ),
+                version=TOOL_VERSION,
+                input_model=BillTransactionsInput,
+                output_model=BillTransactionsOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=bill_transactions_handler,
+            ),
+            ToolSpec(
+                name="bill.anomalies",
+                description=(
+                    "Find monthly synthetic expenses matching the documented deterministic "
+                    "notice rule."
+                ),
+                version=TOOL_VERSION,
+                input_model=BillMonthInput,
+                output_model=BillAnomaliesOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=bill_anomalies_handler,
+            ),
+            ToolSpec(
+                name="subscription.list",
+                description=(
+                    "List recurring subscriptions detected from synthetic transaction "
+                    "history with their next charge dates."
+                ),
+                version=TOOL_VERSION,
+                input_model=EmptyToolInput,
+                output_model=SubscriptionListOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=subscription_list_handler,
+            ),
+            *tuple(
+                ToolSpec(
+                    name=f"subscription.{action}",
+                    description=(
+                        f"Propose a {action} operation for an owned synthetic recurring "
+                        "subscription; server-side confirmation is required."
+                    ),
+                    version=TOOL_VERSION,
+                    input_model=SubscriptionNameInput,
+                    output_model=SubscriptionChangeProposalOutput,
+                    permission_level="reversible_write",
+                    risk_level="medium",
+                    confirmation_requirement="always",
+                    handler=subscription_change_handler(target_status),
+                )
+                for action, target_status in (
+                    ("pause", "paused"),
+                    ("resume", "active"),
+                    ("cancel", "cancelled"),
+                )
+            ),
         )
     )
 
@@ -379,11 +643,19 @@ def _safe_tool_error(exception: Exception) -> tuple[str, str]:
         return "invalid_card_transition", "这张卡已经处于目标状态，未执行变更。"
     if isinstance(exception, ToolTargetAmbiguousError):
         return "ambiguous_card_target", "多张卡匹配该尾号，请提供更明确的卡片信息。"
+    if isinstance(exception, SubscriptionNotFoundError):
+        return "subscription_not_found", "没有找到当前模拟用户拥有的这项订阅。"
+    if isinstance(exception, SubscriptionAmbiguousError):
+        return "ambiguous_subscription_target", "订阅名称匹配多项，请提供更完整的名称。"
+    if isinstance(exception, InvalidSubscriptionTransition):
+        return "invalid_subscription_transition", "这项订阅当前无法变更到请求的状态。"
+    if isinstance(exception, SubscriptionWriteConflictError):
+        return "subscription_version_conflict", "订阅状态已更新，请重新读取后再操作。"
     if isinstance(exception, ToolExecutionError):
         return exception.code, str(exception)
     if isinstance(exception, ValidationError):
         return "tool_output_invalid", "工具输出未通过服务端 Schema 校验。"
-    return "tool_execution_failed", "银行卡工具执行失败，卡片状态未变更。"
+    return "tool_execution_failed", "模拟银行工具执行失败，业务状态未变更。"
 
 
 def _record_tool_failure(
@@ -500,6 +772,10 @@ def _dispatch_tool(
             CardWriteConflictError,
             InvalidCardTransition,
             ToolTargetAmbiguousError,
+            SubscriptionNotFoundError,
+            SubscriptionAmbiguousError,
+            SubscriptionWriteConflictError,
+            InvalidSubscriptionTransition,
             ValidationError,
             ToolExecutionError,
         ) as exc:
@@ -516,7 +792,7 @@ def _dispatch_tool(
         result_data = result.model_dump(mode="json")
         execution.result_data = result_data
         execution.result_summary = (
-            f"Card {result_data.get('card_suffix', '')} proposal needs confirmation."
+            f"{result_data.get('resource_type', 'business')} operation awaits confirmation."
             if result_data.get("status") == "awaiting_confirmation"
             else f"{spec.name} returned a validated result."
         )
@@ -525,29 +801,45 @@ def _dispatch_tool(
         if result_data.get("status") == "awaiting_confirmation":
             execution.status = "awaiting_confirmation"
             step.status = "awaiting_confirmation"
-            step.summary = "Server created a confirmation challenge; no card change has run."
+            step.summary = "已创建服务端确认请求；业务状态尚未变更。"
             _transition(task, "awaiting_confirmation")
+            resource_type = str(result_data["resource_type"])
+            resource_id = UUID(str(result_data["resource_id"]))
+            card_id = resource_id if resource_type == "card" else None
             _audit(
                 session,
                 actor_id=actor_id,
-                event_type="card.confirmation_requested",
-                resource_type="card",
-                resource_id=UUID(str(result_data["card_id"])),
-                card_id=UUID(str(result_data["card_id"])),
+                event_type=f"{resource_type}.confirmation_requested",
+                resource_type=resource_type,
+                resource_id=resource_id,
+                card_id=card_id,
                 request_id=request_id,
                 task_id=task.id,
                 tool_execution_id=execution.id,
                 outcome="awaiting_confirmation",
                 before_state={
                     "status": result_data["current_status"],
-                    "version": result_data["card_version"],
+                    "version": result_data["resource_version"],
                 },
                 after_state={"status": result_data["target_status"], "confirmation": "pending"},
+            )
+            target_status = str(result_data["target_status"])
+            action = {
+                "frozen": "冻结",
+                "active": "解冻" if resource_type == "card" else "恢复",
+                "paused": "暂停",
+                "cancelled": "取消",
+            }.get(target_status, "变更")
+            label = str(result_data.get("resource_label", "")).strip()
+            target = (
+                f"尾号 {result_data['card_suffix']} 的银行卡"
+                if resource_type == "card"
+                else f"{label} 自动续费"
             )
             return ToolDispatchResult(
                 "awaiting_confirmation",
                 result_data,
-                f"我已准备好对尾号 {result_data['card_suffix']} 的卡片进行变更，请先确认。",
+                f"已准备好{action}{target}，请先确认。",
             )
 
         execution.status = "succeeded"
@@ -627,23 +919,54 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
     )
     confirmation = None
     if challenge is not None:
-        card = get_owned_card(session, actor_id=actor_id, card_id=challenge.card_id)
+        card = (
+            get_owned_card(session, actor_id=actor_id, card_id=challenge.card_id)
+            if challenge.card_id is not None
+            else None
+        )
         if card is not None:
             confirmation = ConfirmationView(
                 id=challenge.id,
-                card_id=card.id,
-                card_suffix=card.card_suffix,
-                card_label=card.label,
+                resource_type="card",
+                resource_id=card.id,
+                resource_label=card.label,
+                resource_version=challenge.card_version or card.version,
                 current_status=card.status.value,
                 target_status=challenge.target_status,
-                card_version=challenge.card_version,
                 parameters_hash=challenge.parameters_hash,
                 idempotency_key=challenge.idempotency_key,
                 expires_at=_utc(challenge.expires_at),
                 policy_version=challenge.policy_version,
                 tool_name=challenge.tool_name,
                 tool_version=challenge.tool_version,
+                card_id=card.id,
+                card_suffix=card.card_suffix,
+                card_label=card.label,
+                card_version=challenge.card_version,
             )
+        elif challenge.subscription_id is not None:
+            subscription = get_owned_subscription(
+                session, actor_id=actor_id, subscription_id=challenge.subscription_id
+            )
+            if subscription is not None:
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="subscription",
+                    resource_id=subscription.id,
+                    resource_label=subscription.merchant,
+                    resource_version=challenge.subscription_version or subscription.version,
+                    current_status=subscription.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    subscription_id=subscription.id,
+                    merchant=subscription.merchant,
+                    subscription_version=challenge.subscription_version,
+                )
     return AgentTaskView(
         id=task.id,
         conversation_id=task.conversation_id,
@@ -779,7 +1102,7 @@ def _run_task(
         error = selection.error or AgentProviderError(
             "provider_not_configured", "The selected provider is not configured."
         )
-        message = "模型服务未配置或不可用；没有执行银行卡变更。"
+        message = "模型服务未配置或不可用；没有执行业务变更。"
         _finalize_run(
             session,
             actor_id=actor_id,
@@ -829,7 +1152,7 @@ def _run_task(
             task_id=task_id,
             request_id=request_id,
             status="failed",
-            message="模型服务调用失败；没有基于模型文本执行银行卡变更。",
+            message="模型服务调用失败；没有基于模型文本执行业务变更。",
             error_code=exc.code,
         )
         return _task_view(session, actor_id=actor_id, task_id=task_id)
@@ -940,17 +1263,19 @@ def _expire_pending_confirmation(
         if step is not None:
             step.status = "failed"
             step.error_code = "confirmation_expired"
-            step.summary = "The confirmation expired; no card change was made."
+            step.summary = "The confirmation expired; no business state change was made."
             step.completed_at = utc_now()
         _transition(task, "failed")
         task.error_code = "confirmation_expired"
-        task.message = "确认已过期，银行卡状态没有改变。"
+        resource_type = "card" if challenge.card_id is not None else "subscription"
+        resource_id = challenge.card_id or challenge.subscription_id
+        task.message = "确认已过期，业务状态没有改变。"
         _audit(
             session,
             actor_id=actor_id,
-            event_type="card.confirmation_expired",
-            resource_type="card",
-            resource_id=challenge.card_id,
+            event_type=f"{resource_type}.confirmation_expired",
+            resource_type=resource_type,
+            resource_id=resource_id,
             card_id=challenge.card_id,
             request_id=request_id,
             task_id=task.id,
@@ -1101,12 +1426,14 @@ def _invalidate_pending_challenges(
                 step.error_code = "superseded_by_new_input"
                 step.summary = "Pending confirmation was cancelled because the request changed."
                 step.completed_at = utc_now()
+        resource_type = "card" if challenge.card_id is not None else "subscription"
+        resource_id = challenge.card_id or challenge.subscription_id
         _audit(
             session,
             actor_id=actor_id,
-            event_type="card.confirmation_invalidated",
-            resource_type="card",
-            resource_id=challenge.card_id,
+            event_type=f"{resource_type}.confirmation_invalidated",
+            resource_type=resource_type,
+            resource_id=resource_id,
             card_id=challenge.card_id,
             request_id=request_id,
             task_id=task.id,
@@ -1248,7 +1575,7 @@ def _mark_confirmation_rejected(
     challenge.status = "invalidated" if error_code != "confirmation_expired" else "expired"
     execution.status = "failed"
     execution.error_code = error_code
-    execution.result_summary = "Confirmation was rejected; no card change was made."
+    execution.result_summary = "Confirmation was rejected; no business state change was made."
     execution.result_data = {"status": "failed", "error_code": error_code}
     execution.completed_at = utc_now()
     step = session.get(TaskStep, execution.step_id)
@@ -1260,13 +1587,15 @@ def _mark_confirmation_rejected(
     if task.status not in {"failed", "cancelled", "completed"}:
         _transition(task, "failed")
     task.error_code = error_code
-    task.message = "确认已失效或不匹配；银行卡状态没有改变。"
+    resource_type = "card" if challenge.card_id is not None else "subscription"
+    resource_id = challenge.card_id or challenge.subscription_id
+    task.message = "确认已失效或不匹配；业务状态没有改变。"
     _audit(
         session,
         actor_id=task.actor_id,
-        event_type="card.confirmation_rejected",
-        resource_type="card",
-        resource_id=challenge.card_id,
+        event_type=f"{resource_type}.confirmation_rejected",
+        resource_type=resource_type,
+        resource_id=resource_id,
         card_id=challenge.card_id,
         request_id=request_id,
         task_id=task.id,
@@ -1281,7 +1610,7 @@ def _mark_confirmation_rejected(
     )
 
 
-def confirm_card_change(
+def confirm_task_operation(
     session: Session,
     *,
     actor_id: UUID,
@@ -1291,7 +1620,7 @@ def confirm_card_change(
     idempotency_key: str,
     request_id: str,
 ) -> AgentTaskView:
-    stale_error: CardWriteConflictError | None = None
+    stale_error: Exception | None = None
     try:
         with write_transaction(session, immediate=True):
             task = _owned_task(session, actor_id=actor_id, task_id=task_id)
@@ -1336,6 +1665,116 @@ def confirm_card_change(
                     request_id=request_id,
                     error_code="confirmation_expired",
                     outcome="expired",
+                )
+                session.flush()
+                return _task_view(session, actor_id=actor_id, task_id=task.id)
+
+            if challenge.subscription_id is not None:
+                subscription = get_owned_subscription(
+                    session,
+                    actor_id=actor_id,
+                    subscription_id=challenge.subscription_id,
+                )
+                if subscription is None:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="subscription_not_found",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                normalized = {
+                    "tool_name": challenge.tool_name,
+                    "tool_version": challenge.tool_version,
+                    "subscription_id": str(challenge.subscription_id),
+                    "target_status": challenge.target_status,
+                }
+                expected_target = {
+                    "subscription.pause": "paused",
+                    "subscription.resume": "active",
+                    "subscription.cancel": "cancelled",
+                }.get(challenge.tool_name)
+                if (
+                    subscription.version != challenge.subscription_version
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or challenge.target_status != expected_target
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != SUBSCRIPTION_POLICY_VERSION
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="subscription_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+
+                before_status = subscription.status
+                before_version = subscription.version
+                _transition(task, "running")
+                execution.status = "running"
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                changed = change_subscription_status(
+                    session,
+                    actor_id=actor_id,
+                    subscription_id=subscription.id,
+                    target_status=challenge.target_status,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                )
+                execution.status = "succeeded"
+                execution.result_data = {
+                    "subscription": {
+                        "id": str(changed.id),
+                        "merchant": changed.merchant,
+                        "amount_minor": changed.amount_minor,
+                        "currency": changed.currency,
+                        "billing_cycle": changed.billing_cycle,
+                        "status": changed.status,
+                        "next_charge_at": changed.next_charge_at.isoformat(),
+                        "version": changed.version,
+                    },
+                    "status": "succeeded",
+                }
+                execution.result_summary = (
+                    f"Subscription {changed.merchant} status changed to {changed.status}."
+                )
+                execution.completed_at = utc_now()
+                step = session.get(TaskStep, execution.step_id)
+                if step is not None:
+                    step.status = "succeeded"
+                    step.summary = execution.result_summary
+                    step.completed_at = utc_now()
+                _transition(task, "completed")
+                action = {"paused": "已暂停", "active": "已恢复", "cancelled": "已取消"}[
+                    changed.status
+                ]
+                task.message = f"{changed.merchant}自动续费{action}。"
+                task.error_code = None
+                _audit(
+                    session,
+                    actor_id=actor_id,
+                    event_type="subscription.confirmation_consumed",
+                    resource_type="subscription",
+                    resource_id=subscription.id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                    outcome="succeeded",
+                    before_state={"status": before_status, "version": before_version},
+                    after_state={"status": changed.status, "version": changed.version},
                 )
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
@@ -1445,7 +1884,7 @@ def confirm_card_change(
                 after_state={"status": changed.status.value, "version": changed.version},
             )
             session.flush()
-    except CardWriteConflictError as exc:
+    except (CardWriteConflictError, SubscriptionWriteConflictError) as exc:
         stale_error = exc
 
     if stale_error is not None:
@@ -1461,7 +1900,11 @@ def confirm_card_change(
                         challenge=challenge,
                         execution=execution,
                         request_id=request_id,
-                        error_code="card_version_conflict",
+                        error_code=(
+                            "subscription_version_conflict"
+                            if challenge.subscription_id is not None
+                            else "card_version_conflict"
+                        ),
                         outcome="rejected",
                     )
         return _task_view(session, actor_id=actor_id, task_id=task_id)
@@ -1531,6 +1974,10 @@ def cancel_agent_task(
     return _task_view(session, actor_id=actor_id, task_id=task_id)
 
 
+# Backward-compatible application name retained for existing integrations.
+confirm_card_change = confirm_task_operation
+
+
 __all__ = [
     "AgentIdempotencyConflictError",
     "AgentTaskNotFoundError",
@@ -1539,6 +1986,7 @@ __all__ = [
     "AuditSummaryView",
     "cancel_agent_task",
     "confirm_card_change",
+    "confirm_task_operation",
     "create_agent_task",
     "get_agent_task",
     "get_agent_task_by_idempotency_key",

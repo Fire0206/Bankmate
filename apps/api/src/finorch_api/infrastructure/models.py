@@ -61,6 +61,8 @@ class Account(Base):
 
     demo_user: Mapped[DemoUser] = relationship(back_populates="accounts")
     cards: Mapped[list["Card"]] = relationship(back_populates="account")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
+    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="account")
 
 
 class Card(Base):
@@ -96,6 +98,79 @@ class Card(Base):
     __mapper_args__ = {"version_id_col": version}
 
     account: Mapped[Account] = relationship(back_populates="cards")
+
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="transaction_amount_positive"),
+        CheckConstraint("length(currency) = 3", name="transaction_currency_code_length"),
+        CheckConstraint("direction in ('income', 'expense')", name="transaction_direction_allowed"),
+        UniqueConstraint("synthetic_ref", name="uq_transactions_synthetic_ref"),
+        Index("ix_transactions_account_occurred_at", "account_id", "occurred_at"),
+        Index(
+            "ix_transactions_account_category_occurred_at", "account_id", "category", "occurred_at"
+        ),
+        Index(
+            "ix_transactions_account_merchant_occurred_at", "account_id", "merchant", "occurred_at"
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("accounts.id", name="fk_transactions_account_id_accounts", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    synthetic_ref: Mapped[str] = mapped_column(String(80), nullable=False)
+    direction: Mapped[str] = mapped_column(String(8), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    merchant: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str] = mapped_column(String(48), nullable=False)
+    description: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    account: Mapped[Account] = relationship(back_populates="transactions")
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="subscription_amount_positive"),
+        CheckConstraint("length(currency) = 3", name="subscription_currency_code_length"),
+        CheckConstraint("billing_cycle = 'monthly'", name="subscription_billing_cycle_allowed"),
+        CheckConstraint(
+            "status in ('active', 'paused', 'cancelled')", name="subscription_status_allowed"
+        ),
+        CheckConstraint("version >= 1", name="subscription_version_positive"),
+        UniqueConstraint("account_id", "merchant_key", name="uq_subscriptions_account_merchant"),
+        Index("ix_subscriptions_account_status", "account_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("accounts.id", name="fk_subscriptions_account_id_accounts", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    merchant_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    merchant: Mapped[str] = mapped_column(String(120), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    billing_cycle: Mapped[str] = mapped_column(String(16), nullable=False, default="monthly")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    next_charge_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_transaction_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
+
+    account: Mapped[Account] = relationship(back_populates="subscriptions")
 
 
 class AuditEvent(Base):
@@ -268,7 +343,13 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("actor_id", "idempotency_key", name="uq_confirmation_actor_idempotency"),
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
-            "target_status in ('active', 'frozen')", name="challenge_target_status_allowed"
+            "target_status in ('active', 'frozen', 'paused', 'cancelled')",
+            name="challenge_target_status_allowed",
+        ),
+        CheckConstraint(
+            "(card_id is not null and subscription_id is null) or "
+            "(card_id is null and subscription_id is not null)",
+            name="challenge_single_resource",
         ),
         CheckConstraint(
             "status in ('pending', 'consumed', 'expired', 'cancelled', 'invalidated')",
@@ -301,16 +382,25 @@ class ConfirmationChallenge(Base):
         ForeignKey("demo_users.id", name="fk_confirmation_challenges_actor_id_demo_users"),
         nullable=False,
     )
-    card_id: Mapped[UUID] = mapped_column(
+    card_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("cards.id", name="fk_confirmation_challenges_card_id_cards"),
-        nullable=False,
+        nullable=True,
+    )
+    subscription_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "subscriptions.id",
+            name="fk_confirmation_challenges_subscription_id_subscriptions",
+        ),
+        nullable=True,
     )
     tool_name: Mapped[str] = mapped_column(String(80), nullable=False)
     tool_version: Mapped[str] = mapped_column(String(16), nullable=False)
     target_status: Mapped[str] = mapped_column(String(16), nullable=False)
     parameters_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    card_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    subscription_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     policy_version: Mapped[str] = mapped_column(String(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)

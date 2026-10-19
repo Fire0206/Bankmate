@@ -1,5 +1,7 @@
 # Agent Provider 与任务恢复
 
+> 本文记录 Phase 1B.5 的 Provider 和任务恢复验证。当前 Phase 1C 复用同一 Runtime/Registry/Workflow，新增账单只读工具和订阅确认工具；真实模型服务仍未验证。
+
 ## Provider 验证范围
 
 `OpenAICompatibleProvider` 使用 Chat Completions `POST /chat/completions`，发送 `model`、`messages`、注册工具定义和 `tool_choice: auto`。适配层解析 `choices[0].message.tool_calls`；运行时会校验工具调用 ID、注册表、JSON 参数 Schema，并按每个原始 `tool_call_id` 回送工具结果。多个调用结果可以在下一轮一起返回。Provider 错误、无效响应、重复工具调用和步数上限均不会被当成业务成功。
