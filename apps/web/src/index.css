@@ -1295,6 +1295,31 @@ button:disabled {
   font-size: 13px;
 }
 
+.confirmation-details {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.confirmation-details > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line, #e6e9ed);
+  padding: 7px 0;
+}
+
+.confirmation-details dt {
+  color: var(--muted, #667085);
+}
+
+.confirmation-details dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
 .state-change {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);

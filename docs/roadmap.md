@@ -46,18 +46,28 @@
 - [x] Fake Provider 与 OpenAI-compatible Tool Registry 覆盖三类场景；前端展示流水、汇总、订阅及确认结果。
 - [x] 新增 Alembic migration、`phase1c-v1` Seed/Reset 和集成测试；PR #9 的 CI 已通过并合并至 `main`。
 
-## 后续业务场景（Planned）
+## Phase 1D — 智能转账与理财
 
-- 在确认赛题范围后选定优先场景；目标是实现六大场景可演示的基础模拟闭环。
-- 在 Phase 1A 和 Phase 1C 的共享合成数据、Domain 规则、迁移和 Demo seed 上扩展智能转账、理财和跨场景联动。
-- 实现基本前端体验、服务端权限与确认边界，以及 API/集成测试。
-- 按已定义 Tool/Workflow 契约先实现有限、可审计的流程，不接真实银行或支付系统。
+状态：**五个场景模拟闭环已实现；DeepSeek 真实模型 20 场景联调通过**
+
+- [x] 普通/定时模拟转账、收款人、账户余额、转账历史和确认后的模拟执行。
+- [x] AA 金额拆分、参与人及模拟收付款状态；变更需服务端确认。
+- [x] 模拟理财产品查询/比较、用户风险等级匹配、确认后申购/赎回、持仓和订单。
+- [x] 所有资金变更更新账户余额与交易/持仓，并与确认挑战、幂等和审计记录保持一致。
+- [x] 扩展 Agent Tool Registry、Fake Provider、前端结果卡和 OpenAPI 生成类型。
+- [x] DeepSeek `deepseek-flash` 本地端到端 20 项：工具选择、参数和任务完成均为 100%；结果和局限见[Agent 可靠性指南](development/agent-reliability.md)。
+- [x] 新增 Alembic migration、可重复的 `phase1d-v1` Seed/Reset、集成测试；PR 状态以当前 GitHub 记录为准。
+
+## 后续场景与扩展（Planned）
+
+- 在五个场景基础上实现用户授权的跨场景联动和部分成功恢复。
+- 扩展各业务场景的演示体验，不连接真实银行、支付网络或商户。
 - 五条工作流建议：A Banking Core & Database；B Banking Business APIs；C Agent & Tool Orchestration；D Frontend & UX；E Security, Testing & Integration。Phase 1A 完成共享 Banking Core 最小底座，详细职责见[Phase 1 实施计划](research/phase1-implementation-plan.md)。
 - 开工前选定负责人并将跨模块契约拆成可 Review 的任务；共享 API/Data/Tool 文件先协调所有权。
 
 ## Phase 2 — Agent 可靠性与安全增强（Planned）
 
-- 通过真实模型沙箱验证 OpenAI-compatible Provider 行为并建立可靠性评测，不将模型输出视为权威结果。
+- 在本地 DeepSeek 20 场景基线之上持续扩展模型兼容性和回归评测，不将模型输出视为权威结果。
 - 对多步部分成功、超时、崩溃恢复、长时间运行取消、异步状态推送和跨场景幂等进行设计与验证。
 - 建立越权、Prompt Injection、重试、失败和可靠性评测；只据实报告测量结果。
 - 若考虑 LangGraph、MCP 或其他编排框架，先记录 ADR 并对比简单自研状态机的复杂度、恢复和可观测性。

@@ -42,7 +42,7 @@ Web（另开终端）：
 pnpm --filter @finorch/web dev
 ```
 
-Vite 将 `/api` 代理到本地 API。打开终端输出的地址进入 Banking Agent 工作界面；默认 Fake Provider 可无密钥查询合成银行卡、账单和订阅。冻结/解冻及暂停/恢复/取消订阅会先生成服务端确认挑战，明确确认后由 API 写入状态并返回实际结果。账单统计与异常提示由合成流水和确定性规则计算。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
+Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银行卡、账单、订阅、转账、AA 分账和理财。转账及申购/赎回会先生成服务端确认挑战，确认后才更新模拟账户余额、交易、持仓和审计；定时转账只由显式本地模拟工具执行。账单与投资产品数据是合成/确定性模拟数据。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
 
 ## 验证命令
 
@@ -60,7 +60,9 @@ pnpm run format:check
 
 ## 配置说明
 
-环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；可选择在本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible` 及 `FINORCH_LLM_BASE_URL`、`FINORCH_LLM_API_KEY`、`FINORCH_LLM_MODEL`。Provider Adapter 仅通过 Mock HTTP 验证，真实模型服务未测试。不要将本地服务绑定公网地址；Demo Identity 只在 development/test 启用，不是用户认证系统。
+环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；DeepSeek 可通过本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。密钥只在服务端使用，不得提交到仓库。Demo Identity 只在 development/test 启用，不是用户认证系统。
+
+DeepSeek 真实模型测试可在迁移并 Seed 后启动 API，再通过 `apps/api/scripts/deepseek_eval.py` 执行脱敏场景集。该脚本只输出测试编号、工具选择、任务状态和安全错误码，不保存原始请求或模型响应。真实调用需消耗模型额度；自动化 CI 仍使用 Fake Provider 和 Mock HTTP。
 
 Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新恢复与幂等重试说明见[Agent 可靠性指南](development/agent-reliability.md)。
 

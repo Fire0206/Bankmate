@@ -52,9 +52,52 @@ def test_tool_registry_generates_closed_openai_function_schema() -> None:
     )
 
     definition = registry.definitions()[0]
-    assert definition["function"]["name"] == "card.list"
+    assert definition["function"]["name"] == "card__list"
     assert definition["function"]["parameters"]["additionalProperties"] is False
     assert registry.get("card.not_registered") is None
+    assert registry.get("card__list") is not None
+    assert registry.get("card__list").name == "card.list"
+
+
+def test_runtime_maps_provider_tool_alias_to_canonical_internal_name() -> None:
+    registry = ToolRegistry(
+        (
+            ToolSpec(
+                name="transfer.accounts",
+                description="List synthetic account balances.",
+                version="1.0",
+                input_model=EmptyToolInput,
+                output_model=CardListOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=lambda _arguments, _context: {"items": []},
+            ),
+        )
+    )
+
+    class AliasProvider(FakeProvider):
+        def complete(self, messages, tools):
+            if any(message.get("role") == "tool" for message in messages):
+                return ModelTurn("Balances read.")
+            assert tools[0]["function"]["name"] == "transfer__accounts"
+            return ModelTurn("", (ModelToolCall("call-1", "transfer__accounts", "{}"),))
+
+    dispatched: list[str] = []
+    result = AgentRuntime(AliasProvider()).run(
+        request_text="query balances",
+        trusted_context={},
+        registry=registry,
+        dispatch=lambda spec, _args, call, _sequence, error: (
+            dispatched.append(call.name) or ToolDispatchResult("failed", {}, error_code=error.code)
+            if error is not None
+            else dispatched.append(call.name)
+            or ToolDispatchResult("succeeded", {"tool": spec.name})
+        ),
+    )
+
+    assert result.status == "completed"
+    assert dispatched == ["transfer.accounts"]
 
 
 def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypatch) -> None:
@@ -117,6 +160,66 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
     assert provider.mode == "openai-compatible"
     assert turn.tool_calls[0].name == "card.freeze"
     assert json.loads(turn.tool_calls[0].arguments) == {"card_suffix": "1042"}
+
+
+def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"choices": [{"message": {"content": "已查询。"}}]}).encode()
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.deepseek.com/v1",
+        api_key=SecretStr("unit-test-key"),
+        model="deepseek-flash",
+    )
+
+    turn = provider.complete([{"role": "user", "content": "查询账户"}], [])
+
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+    assert captured["body"]["tool_choice"] == "auto"
+    assert turn.tool_calls == ()
+
+
+def test_other_openai_compatible_adapters_keep_provider_defaults(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode()
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        base_url="https://model.example/v1",
+        api_key=SecretStr("unit-test-key"),
+        model="mock-model",
+    )
+    provider.complete([], [])
+    assert "thinking" not in captured["body"]
 
 
 def test_openai_compatible_adapter_preserves_multiple_tool_calls_and_empty_turn(
@@ -439,7 +542,7 @@ def test_runtime_limits_tool_repetition_and_model_steps() -> None:
 
 
 def test_openai_mode_without_settings_fails_closed_without_secret() -> None:
-    selection = select_provider(Settings(agent_provider="openai-compatible"))
+    selection = select_provider(Settings(_env_file=None, agent_provider="openai-compatible"))
 
     assert selection.provider is None
     assert selection.mode == "openai-compatible"

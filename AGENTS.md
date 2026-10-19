@@ -4,8 +4,8 @@
 
 ## 项目与目录
 
-- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前 Phase 1C 正在扩展银行卡 Agent，账单分析及订阅/代扣基础闭环已实现：真实合成流水统计、规则提示、订阅识别，以及经服务端确认的暂停/恢复/取消；智能转账、理财、跨场景业务、生产认证及生产部署仍为 Planned。不得把规划功能描述成已实现。
-- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、银行卡/账单/订阅受控工具、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现；真实模型服务未做外部连通性验证。
+- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前 Phase 1D 已覆盖银行卡、账单、订阅、转账和理财五类模拟业务；跨场景联动、生产认证及真实金融服务仍为 Planned。所有金额、产品与账户数据均为合成数据。
+- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态。
 - `docs/` 是架构、产品、API、Agent、Workflow、安全、开发和协作契约入口；`docs/decisions/` 保存 ADR。
 - 逻辑分层：Web UI；API 验证和响应；Application 流程；Domain 规则；Infrastructure 存储/外部适配；Agent 意图/规划/工具编排；Security 授权/确认/策略/审计。按需落地，不为逻辑分层制造空模块。
 
@@ -40,7 +40,7 @@
 ## 验证、Git 与文档
 
 - 对变更运行相关 lint、类型检查、测试和构建；只报告实际运行的命令及结果，不伪造测试、接口或业务执行结果。
-- 使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`chore/*` 分支和 Conventional Commits；通过 PR 合并到 `main`。多人协作时普通 PR 至少一名其他成员 Review；单人维护期间遵循 `docs/collaboration.md` 的人工流程例外，不得将自审称为独立 Review。资金、权限或安全契约变更仍需独立安全 Review。
+- 使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`chore/*` 分支和 Conventional Commits；通过 PR 合并到 `main`。合并前必须检查 CI、Diff、冲突和文档。多人协作优先安排其他成员 Review；单一维护者可按 `docs/collaboration.md` 在 CI 通过后完成自审并合并，须准确记录未做独立 Review 的情况。
 - 当前 GitHub `main` 尚未启用 Branch Protection 或 Ruleset，CI 不能在服务端阻止绕过；遵循 `docs/collaboration.md` 的人工门禁并准确说明其限制。
 - 功能状态、命令、架构和 API 有变化时同步更新 README 或对应文档；重要设计决策写 ADR。
 - 保持 PR 聚焦，避免多人无协调地同时编辑相同契约或入口文件。

@@ -235,7 +235,18 @@ def confirm_task_operation(
         )
     if task.error_code == "confirmation_expired":
         raise _conflict("Confirmation expired; no business state changed.", "confirmation_expired")
-    if task.error_code in {"card_version_conflict", "subscription_version_conflict"}:
+    if task.error_code in {
+        "card_version_conflict",
+        "subscription_version_conflict",
+        "transfer_version_conflict",
+        "transfer_state_conflict",
+        "split_version_conflict",
+        "split_state_conflict",
+        "investment_order_conflict",
+        "holding_version_conflict",
+        "insufficient_funds",
+        "risk_mismatch",
+    }:
         raise _conflict(
             "The item changed after this confirmation was created.",
             task.error_code,

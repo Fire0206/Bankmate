@@ -2,9 +2,9 @@
 
 ## 当前实现与计划边界
 
-已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面、FastAPI 健康/卡片/交易/账单/订阅/Agent Task API、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、DemoUser/Account/Card/Transaction/Subscription 与持久化 Workflow 表、合成 seed/reset、卡片和订阅状态规则、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。
+已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面、FastAPI 账户/银行卡/账单/订阅/转账/分账/理财/Agent Task API、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、合成 seed/reset、持久化 Agent Workflow、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。模拟转账会更新账户余额与交易记录；理财操作会更新账户余额、持仓和订单记录。
 
-**Planned**：智能转账、理财、跨场景联动、真实用户认证、账本/资金变更、SSE/WebSocket 事件推送和生产部署。当前 Agent 覆盖本地模拟卡片查询及确认后冻结/解冻、基于合成交易的账单分析，以及基于周期流水识别的订阅读取和确认后暂停/恢复/取消。异常提示是确定性金额规则，不是欺诈检测；Fake Provider 是确定性演示逻辑，不代表模型推理。OpenAI-compatible Adapter 通过 Mock HTTP 验证，未对真实模型服务做连通性测试。Demo Identity 不具备生产级安全性。数据库与调用边界见[数据契约](data-contract.md)和[Banking Core 接口说明](development/banking-core.md)。
+**Planned**：跨场景联动、真实用户认证、外部银行/支付网络、SSE/WebSocket 事件推送和生产部署。当前 Agent 覆盖五类本地模拟场景；异常提示是确定性规则，不是欺诈检测；产品价格/收益均为模拟信息；Fake Provider 是确定性规则，不代表模型推理。DeepSeek 的真实调用情况以当前分支测试记录为准。Demo Identity 不具备生产级安全性。数据和调用边界见[数据契约](data-contract.md)及[Banking Core 接口说明](development/banking-core.md)。
 
 ## 逻辑层职责
 
@@ -38,9 +38,9 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 - `apps/web/`：独立 Web 应用；前端不维护手工副本 API 类型。
 - `apps/api/`：FastAPI 服务、配置、生成 OpenAPI 的脚本和后端测试。
 - `apps/api/alembic/`：唯一数据库迁移历史；业务表不得在应用启动时自动创建。
-- `apps/api/src/finorch_api/application/`：确定性用例、事务边界和持久化任务编排；卡片变更仅由确认流程调用。
-- `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter；Provider 不获得数据库写权限。
-- `apps/api/src/finorch_api/domain/`：框架无关的卡片/订阅状态规则和账单提示规则。
+- `apps/api/src/finorch_api/application/`：确定性用例、资金事务边界、服务端确认和持久化任务编排。
+- `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、按业务分开的银行卡/账单/订阅/转账/理财 Tool 适配器，以及 Fake 与 OpenAI-compatible Provider；Provider 不获得数据库写权限。
+- `apps/api/src/finorch_api/domain/`：框架无关的业务金额、状态转换和账单提示规则。
 - `apps/api/src/finorch_api/infrastructure/`：共享 SQLAlchemy Base、engine/session、ORM 模型和持久化查询。
 - `apps/api/src/finorch_api/security/`：development/test 专用 DemoActor 上下文。
 - `docs/`：跨模块产品、架构、安全、协作和比赛事实；契约变更同 PR 更新。
@@ -54,10 +54,10 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 - FastAPI + Pydantic：HTTP 路由和可生成 OpenAPI 的数据模型。
 - uv + pytest + Ruff：Python 依赖锁定、测试和静态检查。
 - shadcn/ui：后续可选的组件集成方法，未安装、未建立组件复制流程。
-- SQLAlchemy 2.x、SQLite、Alembic：Phase 1A–1C 使用；一个共享 Session provider，API 依赖创建并关闭 Session；Application `write_transaction` 拥有或加入明确写事务。读取自动事务不会造成不兼容嵌套，待处理写入要求先处于显式写事务；迁移由 Alembic 管理，不在启动时自动建表。
+- SQLAlchemy 2.x、SQLite、Alembic：Phase 1A–1D 使用；一个共享 Session provider，API 依赖创建并关闭 Session；Application `write_transaction` 拥有或加入明确写事务。读取自动事务不会造成不兼容嵌套，待处理写入要求先处于显式写事务；迁移由 Alembic 管理，不在启动时自动建表。
 - LangGraph、MCP：当前不预先引入；如后续需要，先比较状态持久化、恢复、可观测性、工具边界与复杂度并记录 ADR。
 - 不引入 Redis、Kafka、Kubernetes 或真实银行/支付 API。
 
 ## 运行时关系
 
-Web 开发服务器将 `/api` 请求代理到本地 FastAPI。前端通过 `/api/v1/cards`、`/api/v1/transactions`、`/api/v1/bills/summary`、`/api/v1/subscriptions` 和 Agent Task API 查询并完成当前三类场景；卡片和订阅写入均经 Agent 服务端确认流程。健康检查只返回 API 进程状态，不代表数据库或 Agent 可用。
+Web 开发服务器将 `/api` 请求代理到本地 FastAPI。界面通过 Agent Task API 调用当前五类业务工具；查询与操作结果由真实 API 返回。所有资金变更和高风险状态修改均经服务端确认流程。健康检查只返回 API 进程状态，不代表数据库或模型服务可用。

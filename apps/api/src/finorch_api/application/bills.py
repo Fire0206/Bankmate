@@ -118,6 +118,7 @@ def _owned_transactions(
         .join(Account, Account.id == Transaction.account_id)
         .where(
             Account.demo_user_id == actor_id,
+            Transaction.entry_kind == "bill",
             Transaction.occurred_at >= start,
             Transaction.occurred_at < end,
         )

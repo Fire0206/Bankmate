@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> Phase 1C 当前分支已扩展至三类本地模拟场景：银行卡查询/确认后冻结解冻、账单查询与统计、订阅识别/查询/确认后暂停恢复取消。Phase 1B.5 的 Provider Mock 验证、actor 范围任务恢复与安全同键重试继续适用；真实模型服务仍未验证。智能转账、理财及跨场景工具仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
+> Phase 1D 已覆盖五类本地模拟场景：银行卡、账单、订阅、转账和理财。跨场景联动仍为 Planned。Provider Mock、actor 范围任务恢复与幂等重试规则继续适用；真实模型范围以本轮执行记录为准。Banking Core 调用边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -34,6 +34,8 @@
 | `subscription.pause`   | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；不调用真实商户或扣款网络           |
 | `subscription.resume`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 active                  |
 | `subscription.cancel`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 cancelled               |
+
+Phase 1D 扩展的受控工具：`transfer.accounts`、`transfer.payees`、`transfer.history`、`transfer.create`、`transfer.schedule`、`transfer.cancel_scheduled`、`transfer.simulate_due`、`transfer.splits`、`transfer.split_create`、`transfer.split_collect`；`investment.products`、`investment.compare`、`investment.profile`、`investment.portfolio`、`investment.orders`、`investment.buy`、`investment.redeem`。所有读取按 actor 限定；资金变更工具只创建服务端 challenge，确认时再次校验账户归属、余额/持仓、参数摘要、资源版本、策略版本、有效期及幂等键。定时转账只由开发/测试环境里的显式模拟器执行。
 
 订阅变更确认与卡片共用 Agent Task 确认 API、幂等机制和通用审计；challenge 绑定 `resource_type/resource_id`、资源版本、工具/参数/策略、actor、幂等键及有效期。订阅状态转换由后端领域规则限制为 `active→paused`、`paused→active`、`active|paused→cancelled`，已取消订阅不可恢复。
 

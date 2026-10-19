@@ -43,12 +43,12 @@ class ConfirmationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
-    resource_type: Literal["card", "subscription"]
+    resource_type: Literal["card", "subscription", "transfer", "split", "investment_order"]
     resource_id: UUID
     resource_label: str
     resource_version: int
-    current_status: Literal["active", "frozen", "paused", "cancelled"]
-    target_status: Literal["active", "frozen", "paused", "cancelled"]
+    current_status: str
+    target_status: str
     parameters_hash: str
     idempotency_key: str
     expires_at: datetime
@@ -62,6 +62,7 @@ class ConfirmationResponse(BaseModel):
     subscription_id: UUID | None = None
     merchant: str | None = None
     subscription_version: int | None = None
+    details: dict[str, Any] | None = None
 
 
 class AgentTaskResponse(BaseModel):
