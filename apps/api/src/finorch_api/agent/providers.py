@@ -3,6 +3,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import SecretStr
 
@@ -78,9 +79,18 @@ class OpenAICompatibleProvider(LLMProvider):
             if self.base_url.endswith("/chat/completions")
             else f"{self.base_url}/chat/completions"
         )
-        body = json.dumps(
-            {"model": self.model, "messages": messages, "tools": tools, "tool_choice": "auto"}
-        ).encode("utf-8")
+        request_body: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+        # DeepSeek's reasoning mode uses a separate reasoning_content field in
+        # multi-turn tool calls. The current common adapter intentionally does
+        # not persist or replay that field, so disable reasoning for tool turns.
+        if urlparse(self.base_url).hostname == "api.deepseek.com":
+            request_body["thinking"] = {"type": "disabled"}
+        body = json.dumps(request_body).encode("utf-8")
         request = urllib.request.Request(
             endpoint,
             data=body,

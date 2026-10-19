@@ -15,10 +15,17 @@ from finorch_api.infrastructure.models import (
     Card,
     ConfirmationChallenge,
     DemoUser,
+    InvestmentHolding,
+    InvestmentOrder,
+    InvestmentProduct,
+    Payee,
+    SplitBill,
+    SplitParticipant,
     Subscription,
     TaskStep,
     ToolExecution,
     Transaction,
+    Transfer,
 )
 from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
 
@@ -59,6 +66,13 @@ def reset_demo_data(session: Session) -> None:
     session.execute(delete(ToolExecution))
     session.execute(delete(TaskStep))
     session.execute(delete(AgentTask))
+    session.execute(delete(InvestmentOrder))
+    session.execute(delete(InvestmentHolding))
+    session.execute(delete(InvestmentProduct))
+    session.execute(delete(SplitParticipant))
+    session.execute(delete(SplitBill))
+    session.execute(delete(Transfer))
+    session.execute(delete(Payee))
     session.execute(delete(Subscription))
     session.execute(delete(Transaction))
     session.execute(delete(Card))

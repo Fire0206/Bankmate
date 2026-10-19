@@ -46,6 +46,11 @@ function statusLabel(value: unknown): string {
     paused: "已暂停",
     cancelled: "已取消",
     frozen: "已冻结",
+    awaiting_confirmation: "等待确认",
+    scheduled: "待执行",
+    executed: "已执行",
+    open: "待收款",
+    settled: "已结清",
   };
   const text = stringValue(value);
   return labels[text] ?? text;
@@ -211,6 +216,339 @@ function SubscriptionChange({ data }: { data: JsonObject }) {
   );
 }
 
+function AccountBalances({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  return (
+    <section aria-label="账户余额" className="task-result">
+      <div className="task-result-heading">
+        <strong>账户余额</strong>
+        <span>{items.length} 个账户</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.map((item) => (
+            <div className="task-result-row" key={stringValue(item.id)}>
+              <span>{stringValue(item.label)}</span>
+              <strong>{formatAmount(item.balance_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂时没有可用账户。</p>
+      )}
+    </section>
+  );
+}
+
+function PayeeList({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  return (
+    <section aria-label="收款人" className="task-result">
+      <div className="task-result-heading">
+        <strong>已保存收款人</strong>
+        <span>{items.length} 人</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.map((item) => (
+            <div className="task-result-row" key={stringValue(item.id)}>
+              <span>{stringValue(item.display_name)}</span>
+              <small>{stringValue(item.destination_account_label)}</small>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂无已保存收款人。</p>
+      )}
+    </section>
+  );
+}
+
+function TransferList({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  const labels: Record<string, string> = {
+    awaiting_confirmation: "等待确认",
+    scheduled: "待执行",
+    executed: "已完成",
+    cancelled: "已取消",
+    failed: "失败",
+  };
+  return (
+    <section aria-label="转账记录" className="task-result">
+      <div className="task-result-heading">
+        <strong>转账记录</strong>
+        <span>{items.length} 笔</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.slice(0, 8).map((item) => (
+            <div
+              className="task-result-row transaction-result-row"
+              key={stringValue(item.id)}
+            >
+              <div>
+                <strong>{stringValue(item.payee_name)}</strong>
+                <small>
+                  {labels[stringValue(item.status)] ?? stringValue(item.status)}
+                  {item.transfer_type === "scheduled" ? " · 定时转账" : ""}
+                  {item.scheduled_at
+                    ? ` · ${dateLabel(item.scheduled_at)}`
+                    : ""}
+                </small>
+              </div>
+              <strong>{formatAmount(item.amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂无转账记录。</p>
+      )}
+    </section>
+  );
+}
+
+function TransferResult({ data }: { data: JsonObject }) {
+  const transfer = isObject(data.transfer) ? data.transfer : data;
+  const status = stringValue(transfer.status);
+  const label: Record<string, string> = {
+    executed: "转账已完成",
+    scheduled: "定时转账已创建",
+    cancelled: "定时转账已取消",
+    failed: "转账未完成",
+  };
+  return (
+    <section aria-label="转账结果" className="task-result task-result-success">
+      <strong>{label[status] ?? "转账状态已更新"}</strong>
+      <span>
+        {stringValue(transfer.payee_name)} ·{" "}
+        {formatAmount(transfer.amount_minor)}
+      </span>
+      {transfer.scheduled_at ? (
+        <span>计划时间：{dateLabel(transfer.scheduled_at)}</span>
+      ) : null}
+    </section>
+  );
+}
+
+function SplitList({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  const labels: Record<string, string> = {
+    awaiting_confirmation: "等待确认",
+    open: "待收款",
+    settled: "已结清",
+    cancelled: "已取消",
+  };
+  return (
+    <section aria-label="AA 分账" className="task-result">
+      <div className="task-result-heading">
+        <strong>AA 分账</strong>
+        <span>{items.length} 笔</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.slice(0, 8).map((item) => (
+            <div
+              className="task-result-row transaction-result-row"
+              key={stringValue(item.id)}
+            >
+              <div>
+                <strong>{stringValue(item.title)}</strong>
+                <small>
+                  {labels[stringValue(item.status)] ?? stringValue(item.status)}{" "}
+                  · {numberValue(item.participant_count) ?? 0} 人
+                </small>
+              </div>
+              <strong>{formatAmount(item.total_amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂无 AA 分账。</p>
+      )}
+    </section>
+  );
+}
+
+function SplitResult({ data }: { data: JsonObject }) {
+  const participants = objectArray(data.participants);
+  return (
+    <section
+      aria-label="AA 分账结果"
+      className="task-result task-result-success"
+    >
+      <strong>
+        {stringValue(data.status) === "succeeded"
+          ? "AA 分账已更新"
+          : "AA 分账结果"}
+      </strong>
+      <span>
+        {stringValue(data.title)} · 总额 {formatAmount(data.total_amount_minor)}
+      </span>
+      {participants.length ? (
+        <div className="task-result-list">
+          {participants.map((item, index) => (
+            <div
+              className="task-result-row"
+              key={
+                stringValue(item.id) ||
+                `${stringValue(item.display_name)}-${index}`
+              }
+            >
+              <span>{stringValue(item.display_name)}</span>
+              <strong>{formatAmount(item.amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function InvestmentProducts({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  return (
+    <section aria-label="模拟理财产品" className="task-result">
+      <div className="task-result-heading">
+        <strong>模拟理财产品</strong>
+        <span>
+          {stringValue(data.risk_label) ||
+            `风险等级 R${String(data.risk_level ?? "—")}`}
+        </span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.slice(0, 8).map((item) => (
+            <div
+              className="task-result-row transaction-result-row"
+              key={stringValue(item.id)}
+            >
+              <div>
+                <strong>{stringValue(item.name)}</strong>
+                <small>
+                  {stringValue(item.category)} · 风险 R
+                  {String(item.risk_level ?? "—")} ·{" "}
+                  {numberValue(item.annual_yield_bps) === null
+                    ? "收益模拟"
+                    : `年化参考 ${(numberValue(item.annual_yield_bps)! / 100).toFixed(2)}%`}
+                </small>
+                <small>
+                  {item.suitable === true
+                    ? "符合当前模拟风险等级"
+                    : "超出当前模拟风险等级"}
+                </small>
+              </div>
+              <strong>起购 {formatAmount(item.minimum_amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">没有符合筛选条件的模拟产品。</p>
+      )}
+      <p className="task-result-notice">
+        产品与收益均为模拟信息，不构成投资建议。
+      </p>
+    </section>
+  );
+}
+
+function Portfolio({ data }: { data: JsonObject }) {
+  const holdings = objectArray(data.holdings);
+  return (
+    <section aria-label="模拟理财持仓" className="task-result">
+      <div className="task-result-heading">
+        <strong>模拟资产</strong>
+        <span>
+          风险等级{" "}
+          {stringValue(data.risk_label) || `R${String(data.risk_level ?? "—")}`}
+        </span>
+      </div>
+      <div className="bill-total-row">
+        <div>
+          <span>现金</span>
+          <strong>{formatAmount(data.cash_balance_minor)}</strong>
+        </div>
+        <div>
+          <span>持仓</span>
+          <strong>{formatAmount(data.invested_value_minor)}</strong>
+        </div>
+        <div>
+          <span>资产合计</span>
+          <strong>{formatAmount(data.total_assets_minor)}</strong>
+        </div>
+      </div>
+      {holdings.length ? (
+        <div className="task-result-list">
+          {holdings.map((item) => (
+            <div className="task-result-row" key={stringValue(item.id)}>
+              <span>{stringValue(item.product_name)}</span>
+              <strong>{formatAmount(item.current_value_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂无模拟持仓。</p>
+      )}
+    </section>
+  );
+}
+
+function InvestmentOrders({ data }: { data: JsonObject }) {
+  const items = objectArray(data.items);
+  const labels: Record<string, string> = {
+    buy: "申购",
+    redeem: "赎回",
+    executed: "已完成",
+    awaiting_confirmation: "等待确认",
+    cancelled: "已取消",
+    failed: "失败",
+  };
+  return (
+    <section aria-label="理财操作记录" className="task-result">
+      <div className="task-result-heading">
+        <strong>理财操作记录</strong>
+        <span>{items.length} 笔</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.slice(0, 8).map((item) => (
+            <div
+              className="task-result-row transaction-result-row"
+              key={stringValue(item.id)}
+            >
+              <div>
+                <strong>{stringValue(item.product_name)}</strong>
+                <small>
+                  {labels[stringValue(item.order_type)] ?? "操作"} ·{" "}
+                  {labels[stringValue(item.status)] ?? stringValue(item.status)}
+                </small>
+              </div>
+              <strong>{formatAmount(item.amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">暂无理财操作记录。</p>
+      )}
+    </section>
+  );
+}
+
+function InvestmentResult({ data }: { data: JsonObject }) {
+  const order = isObject(data.order) ? data.order : data;
+  const action = stringValue(order.order_type) === "redeem" ? "赎回" : "申购";
+  return (
+    <section
+      aria-label="理财操作结果"
+      className="task-result task-result-success"
+    >
+      <strong>
+        {stringValue(order.product_name)}已{action}
+      </strong>
+      <span>{formatAmount(order.amount_minor)} · 模拟订单已更新</span>
+    </section>
+  );
+}
+
 export function TaskResult({ task }: { task: Task }) {
   const completedTool = [...task.steps]
     .reverse()
@@ -227,6 +565,33 @@ export function TaskResult({ task }: { task: Task }) {
 
   const data = completedTool.result_data;
   switch (completedTool.tool_name) {
+    case "transfer.accounts":
+      return <AccountBalances data={data} />;
+    case "transfer.payees":
+      return <PayeeList data={data} />;
+    case "transfer.history":
+      return <TransferList data={data} />;
+    case "transfer.simulate_due":
+      return <TransferList data={data} />;
+    case "transfer.create":
+    case "transfer.schedule":
+    case "transfer.cancel_scheduled":
+      return <TransferResult data={data} />;
+    case "transfer.splits":
+      return <SplitList data={data} />;
+    case "transfer.split_create":
+    case "transfer.split_collect":
+      return <SplitResult data={data} />;
+    case "investment.products":
+    case "investment.compare":
+      return <InvestmentProducts data={data} />;
+    case "investment.portfolio":
+      return <Portfolio data={data} />;
+    case "investment.orders":
+      return <InvestmentOrders data={data} />;
+    case "investment.buy":
+    case "investment.redeem":
+      return <InvestmentResult data={data} />;
     case "bill.monthly_summary":
       return <BillSummary data={data} />;
     case "bill.transactions":

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -9,6 +10,8 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.context import ToolCallContext
+from finorch_api.agent.investment_tools import investment_tool_specs
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import (
     AgentProviderError,
@@ -37,6 +40,7 @@ from finorch_api.agent.tools import (
     SubscriptionNameInput,
     SubscriptionToolItem,
 )
+from finorch_api.agent.transfer_tools import transfer_tool_specs
 from finorch_api.application.bills import (
     get_month_anomalies,
     get_monthly_summary,
@@ -50,6 +54,8 @@ from finorch_api.application.cards import (
     list_cards,
     unfreeze_card,
 )
+from finorch_api.application.errors import BankingRuleError
+from finorch_api.application.investments import confirm_order
 from finorch_api.application.subscriptions import (
     SubscriptionAmbiguousError,
     SubscriptionNotFoundError,
@@ -60,22 +66,30 @@ from finorch_api.application.subscriptions import (
     list_subscriptions,
 )
 from finorch_api.application.transactions import write_transaction
+from finorch_api.application.transfers import confirm_split, confirm_transfer
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition, transition_card_status
 from finorch_api.domain.subscriptions import (
     InvalidSubscriptionTransition,
     transition_subscription_status,
 )
 from finorch_api.infrastructure.models import (
+    Account,
     AgentTask,
     AuditEvent,
     ConfirmationChallenge,
+    InvestmentOrder,
+    InvestmentProduct,
+    SplitBill,
+    SplitParticipant,
     TaskStep,
     ToolExecution,
+    Transfer,
     utc_now,
 )
 from finorch_api.infrastructure.persistence.cards import get_owned_card
 
 POLICY_VERSION = "card-confirmation-v1"
+logger = logging.getLogger("finorch.agent")
 SUBSCRIPTION_POLICY_VERSION = "subscription-confirmation-v1"
 TOOL_VERSION = "1.0"
 CONFIRMATION_TTL = timedelta(minutes=5)
@@ -139,6 +153,7 @@ class ConfirmationView:
     subscription_id: UUID | None = None
     merchant: str | None = None
     subscription_version: int | None = None
+    details: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -168,16 +183,6 @@ class AuditSummaryView:
     before_state: dict[str, Any] | None
     after_state: dict[str, Any] | None
     occurred_at: datetime
-
-
-@dataclass(frozen=True)
-class ToolCallContext:
-    session: Session
-    actor_id: UUID
-    task: AgentTask
-    step: TaskStep
-    execution: ToolExecution
-    request_id: str
 
 
 def _utc(value: datetime) -> datetime:
@@ -627,6 +632,8 @@ def _build_registry() -> ToolRegistry:
                     ("cancel", "cancelled"),
                 )
             ),
+            *transfer_tool_specs(),
+            *investment_tool_specs(),
         )
     )
 
@@ -651,6 +658,8 @@ def _safe_tool_error(exception: Exception) -> tuple[str, str]:
         return "invalid_subscription_transition", "这项订阅当前无法变更到请求的状态。"
     if isinstance(exception, SubscriptionWriteConflictError):
         return "subscription_version_conflict", "订阅状态已更新，请重新读取后再操作。"
+    if isinstance(exception, BankingRuleError):
+        return exception.code, exception.public_message
     if isinstance(exception, ToolExecutionError):
         return exception.code, str(exception)
     if isinstance(exception, ValidationError):
@@ -775,10 +784,22 @@ def _dispatch_tool(
             SubscriptionNotFoundError,
             SubscriptionAmbiguousError,
             SubscriptionWriteConflictError,
+            BankingRuleError,
             InvalidSubscriptionTransition,
             ValidationError,
             ToolExecutionError,
         ) as exc:
+            if isinstance(exc, ValidationError):
+                logger.warning(
+                    "Agent tool result failed schema validation",
+                    extra={
+                        "tool_name": spec.name,
+                        "validation_fields": [
+                            ".".join(str(part) for part in error.get("loc", ()))
+                            for error in exc.errors(include_input=False)
+                        ],
+                    },
+                )
             return _record_tool_failure(
                 session,
                 task=task,
@@ -829,13 +850,25 @@ def _dispatch_tool(
                 "active": "解冻" if resource_type == "card" else "恢复",
                 "paused": "暂停",
                 "cancelled": "取消",
+                "executed": "转账",
+                "scheduled": "创建定时转账",
+                "open": "创建分账",
+                "settled": "模拟收取分账",
             }.get(target_status, "变更")
             label = str(result_data.get("resource_label", "")).strip()
-            target = (
-                f"尾号 {result_data['card_suffix']} 的银行卡"
-                if resource_type == "card"
-                else f"{label} 自动续费"
-            )
+            if resource_type == "card":
+                target = f"尾号 {result_data['card_suffix']} 的银行卡"
+            elif resource_type == "subscription":
+                target = f"{label} 自动续费"
+            elif resource_type == "transfer":
+                target = f"给{label}的模拟转账"
+            elif resource_type == "split":
+                target = f"{label} AA 分账"
+            elif resource_type == "investment_order":
+                action = "模拟申购" if result_data.get("order_type") == "buy" else "模拟赎回"
+                target = f"{label}理财产品"
+            else:
+                target = label
             return ToolDispatchResult(
                 "awaiting_confirmation",
                 result_data,
@@ -966,6 +999,113 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                     subscription_id=subscription.id,
                     merchant=subscription.merchant,
                     subscription_version=challenge.subscription_version,
+                )
+        elif challenge.transfer_id is not None:
+            transfer = session.scalar(
+                select(Transfer).where(
+                    Transfer.id == challenge.transfer_id, Transfer.actor_id == actor_id
+                )
+            )
+            if transfer is not None:
+                source = session.get(Account, transfer.source_account_id)
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="transfer",
+                    resource_id=transfer.id,
+                    resource_label=transfer.payee_name,
+                    resource_version=challenge.transfer_version or transfer.version,
+                    current_status=transfer.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    details={
+                        "amount_minor": transfer.amount_minor,
+                        "currency": transfer.currency,
+                        "transfer_type": transfer.transfer_type,
+                        "scheduled_at": _utc(transfer.scheduled_at).isoformat()
+                        if transfer.scheduled_at
+                        else None,
+                        "source_account_label": source.label if source else "模拟账户",
+                        "payee_name": transfer.payee_name,
+                    },
+                )
+        elif challenge.split_bill_id is not None:
+            bill = session.scalar(
+                select(SplitBill).where(
+                    SplitBill.id == challenge.split_bill_id, SplitBill.actor_id == actor_id
+                )
+            )
+            if bill is not None:
+                participants = list(
+                    session.scalars(
+                        select(SplitParticipant)
+                        .where(SplitParticipant.split_bill_id == bill.id)
+                        .order_by(SplitParticipant.sequence)
+                    )
+                )
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="split",
+                    resource_id=bill.id,
+                    resource_label=bill.title,
+                    resource_version=challenge.split_bill_version or bill.version,
+                    current_status=bill.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    details={
+                        "total_amount_minor": bill.total_amount_minor,
+                        "currency": bill.currency,
+                        "participants": [
+                            {
+                                "display_name": item.display_name,
+                                "amount_minor": item.amount_minor,
+                                "status": item.status,
+                            }
+                            for item in participants
+                        ],
+                    },
+                )
+        elif challenge.investment_order_id is not None:
+            order = session.scalar(
+                select(InvestmentOrder).where(
+                    InvestmentOrder.id == challenge.investment_order_id,
+                    InvestmentOrder.actor_id == actor_id,
+                )
+            )
+            if order is not None:
+                product = session.get(InvestmentProduct, order.product_id)
+                account = session.get(Account, order.account_id)
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="investment_order",
+                    resource_id=order.id,
+                    resource_label=product.name if product else "模拟理财产品",
+                    resource_version=challenge.investment_order_version or order.version,
+                    current_status=order.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    details={
+                        "order_type": order.order_type,
+                        "amount_minor": order.amount_minor,
+                        "currency": order.currency,
+                        "units_micros": order.units_micros,
+                        "risk_level": product.risk_level if product else None,
+                        "account_label": account.label if account else "模拟账户",
+                    },
                 )
     return AgentTaskView(
         id=task.id,
@@ -1214,6 +1354,38 @@ def create_agent_task(
     )
 
 
+def _challenge_resource(challenge: ConfirmationChallenge) -> tuple[str, UUID]:
+    for kind, resource_id in (
+        ("card", challenge.card_id),
+        ("subscription", challenge.subscription_id),
+        ("transfer", challenge.transfer_id),
+        ("split", challenge.split_bill_id),
+        ("investment_order", challenge.investment_order_id),
+    ):
+        if resource_id is not None:
+            return kind, resource_id
+    raise AgentTaskStateConflictError("Confirmation has no resource.")
+
+
+def _cancel_unexecuted_proposal(
+    session: Session, challenge: ConfirmationChallenge
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    resource: Transfer | SplitBill | InvestmentOrder | None = None
+    if challenge.transfer_id is not None and challenge.target_status != "cancelled":
+        resource = session.get(Transfer, challenge.transfer_id)
+    elif challenge.split_bill_id is not None and challenge.target_status == "open":
+        resource = session.get(SplitBill, challenge.split_bill_id)
+    elif challenge.investment_order_id is not None:
+        resource = session.get(InvestmentOrder, challenge.investment_order_id)
+
+    if resource is None or resource.status != "awaiting_confirmation":
+        return None, None
+    before = {"status": resource.status, "version": resource.version}
+    resource.status = "cancelled"
+    session.flush()
+    return before, {"status": resource.status, "version": resource.version}
+
+
 def _expire_pending_confirmation(
     session: Session,
     *,
@@ -1267,8 +1439,8 @@ def _expire_pending_confirmation(
             step.completed_at = utc_now()
         _transition(task, "failed")
         task.error_code = "confirmation_expired"
-        resource_type = "card" if challenge.card_id is not None else "subscription"
-        resource_id = challenge.card_id or challenge.subscription_id
+        resource_type, resource_id = _challenge_resource(challenge)
+        resource_before, resource_after = _cancel_unexecuted_proposal(session, challenge)
         task.message = "确认已过期，业务状态没有改变。"
         _audit(
             session,
@@ -1281,8 +1453,16 @@ def _expire_pending_confirmation(
             task_id=task.id,
             tool_execution_id=execution.id,
             outcome="expired",
-            before_state={"task_status": "awaiting_confirmation", "confirmation": "pending"},
-            after_state={"task_status": "failed", "confirmation": "expired"},
+            before_state={
+                "task_status": "awaiting_confirmation",
+                "confirmation": "pending",
+                "resource": resource_before,
+            },
+            after_state={
+                "task_status": "failed",
+                "confirmation": "expired",
+                "resource": resource_after,
+            },
         )
 
 
@@ -1415,6 +1595,8 @@ def _invalidate_pending_challenges(
     )
     for challenge in challenges:
         challenge.status = "cancelled"
+        resource_type, resource_id = _challenge_resource(challenge)
+        resource_before, resource_after = _cancel_unexecuted_proposal(session, challenge)
         execution = session.get(ToolExecution, challenge.tool_execution_id)
         if execution is not None:
             execution.status = "cancelled"
@@ -1426,8 +1608,6 @@ def _invalidate_pending_challenges(
                 step.error_code = "superseded_by_new_input"
                 step.summary = "Pending confirmation was cancelled because the request changed."
                 step.completed_at = utc_now()
-        resource_type = "card" if challenge.card_id is not None else "subscription"
-        resource_id = challenge.card_id or challenge.subscription_id
         _audit(
             session,
             actor_id=actor_id,
@@ -1439,8 +1619,12 @@ def _invalidate_pending_challenges(
             task_id=task.id,
             tool_execution_id=challenge.tool_execution_id,
             outcome="cancelled",
-            before_state={"confirmation": "pending", "target_status": challenge.target_status},
-            after_state={"confirmation": "cancelled"},
+            before_state={
+                "confirmation": "pending",
+                "target_status": challenge.target_status,
+                "resource": resource_before,
+            },
+            after_state={"confirmation": "cancelled", "resource": resource_after},
         )
 
 
@@ -1587,8 +1771,8 @@ def _mark_confirmation_rejected(
     if task.status not in {"failed", "cancelled", "completed"}:
         _transition(task, "failed")
     task.error_code = error_code
-    resource_type = "card" if challenge.card_id is not None else "subscription"
-    resource_id = challenge.card_id or challenge.subscription_id
+    resource_type, resource_id = _challenge_resource(challenge)
+    resource_before, resource_after = _cancel_unexecuted_proposal(session, challenge)
     task.message = "确认已失效或不匹配；业务状态没有改变。"
     _audit(
         session,
@@ -1601,13 +1785,64 @@ def _mark_confirmation_rejected(
         task_id=task.id,
         tool_execution_id=execution.id,
         outcome=outcome,
-        before_state={"status": before_task, "confirmation": "pending"},
+        before_state={
+            "status": before_task,
+            "confirmation": "pending",
+            "resource": resource_before,
+        },
         after_state={
             "status": task.status,
             "confirmation": challenge.status,
             "error_code": error_code,
+            "resource": resource_after,
         },
     )
+
+
+def _complete_confirmed_resource(
+    session: Session,
+    *,
+    actor_id: UUID,
+    task: AgentTask,
+    challenge: ConfirmationChallenge,
+    execution: ToolExecution,
+    request_id: str,
+    resource_type: str,
+    resource_id: UUID,
+    result_data: dict[str, Any],
+    result_summary: str,
+    user_message: str,
+    before_state: dict[str, Any],
+    after_state: dict[str, Any],
+) -> AgentTaskView:
+    result_data["status"] = "succeeded"
+    execution.status = "succeeded"
+    execution.result_data = result_data
+    execution.result_summary = result_summary
+    execution.completed_at = utc_now()
+    step = session.get(TaskStep, execution.step_id)
+    if step is not None:
+        step.status = "succeeded"
+        step.summary = result_summary
+        step.completed_at = utc_now()
+    _transition(task, "completed")
+    task.message = user_message
+    task.error_code = None
+    _audit(
+        session,
+        actor_id=actor_id,
+        event_type=f"{resource_type}.confirmation_consumed",
+        resource_type=resource_type,
+        resource_id=resource_id,
+        request_id=request_id,
+        task_id=task.id,
+        tool_execution_id=execution.id,
+        outcome="succeeded",
+        before_state=before_state,
+        after_state=after_state,
+    )
+    session.flush()
+    return _task_view(session, actor_id=actor_id, task_id=task.id)
 
 
 def confirm_task_operation(
@@ -1779,6 +2014,370 @@ def confirm_task_operation(
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
 
+            if challenge.transfer_id is not None:
+                transfer = session.scalar(
+                    select(Transfer).where(
+                        Transfer.id == challenge.transfer_id, Transfer.actor_id == actor_id
+                    )
+                )
+                if transfer is None:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="transfer_not_found",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                target = challenge.target_status
+                is_cancel = target == "cancelled"
+                expected_tool = (
+                    "transfer.cancel_scheduled"
+                    if is_cancel
+                    else "transfer.schedule"
+                    if target == "scheduled"
+                    else "transfer.create"
+                )
+                normalized = (
+                    {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "transfer_id": str(transfer.id),
+                        "target_status": "cancelled",
+                        "transfer_version": transfer.version,
+                    }
+                    if is_cancel
+                    else {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "transfer_id": str(transfer.id),
+                        "source_account_id": str(transfer.source_account_id),
+                        "destination_account_id": str(transfer.destination_account_id),
+                        "payee_id": str(transfer.payee_id),
+                        "amount_minor": transfer.amount_minor,
+                        "currency": transfer.currency,
+                        "transfer_type": transfer.transfer_type,
+                        "scheduled_at": _utc(transfer.scheduled_at).isoformat()
+                        if transfer.scheduled_at
+                        else None,
+                        "target_status": target,
+                    }
+                )
+                expected_state = "scheduled" if is_cancel else "awaiting_confirmation"
+                if (
+                    transfer.version != challenge.transfer_version
+                    or transfer.status != expected_state
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or challenge.tool_name != expected_tool
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != "transfer-confirmation-v1"
+                    or execution.idempotency_key != challenge.idempotency_key
+                    or (target == "executed" and transfer.transfer_type != "immediate")
+                    or (target == "scheduled" and transfer.transfer_type != "scheduled")
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="transfer_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+
+                before_state = {"status": transfer.status, "version": transfer.version}
+                _transition(task, "running")
+                execution.status = "running"
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                try:
+                    with session.begin_nested():
+                        changed = confirm_transfer(
+                            session,
+                            actor_id=actor_id,
+                            transfer_id=transfer.id,
+                            target_status=target,
+                            request_id=request_id,
+                            task_id=task.id,
+                            tool_execution_id=execution.id,
+                        )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                after_state = {"status": changed.status, "version": changed.version}
+                result_data = json.loads(
+                    json.dumps(asdict(changed), ensure_ascii=False, default=str)
+                )
+                result_data["transfer"] = result_data.copy()
+                if target == "executed":
+                    action_message = f"已向{changed.payee_name}转账。"
+                    summary = f"Simulated transfer to {changed.payee_name} executed."
+                elif target == "scheduled":
+                    action_message = f"已创建向{changed.payee_name}的定时转账。"
+                    summary = f"Scheduled transfer to {changed.payee_name} created."
+                else:
+                    action_message = f"已取消向{changed.payee_name}的定时转账。"
+                    summary = f"Scheduled transfer to {changed.payee_name} cancelled."
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="transfer",
+                    resource_id=changed.id,
+                    result_data=result_data,
+                    result_summary=summary,
+                    user_message=action_message,
+                    before_state=before_state,
+                    after_state=after_state,
+                )
+
+            if challenge.split_bill_id is not None:
+                bill = session.scalar(
+                    select(SplitBill).where(
+                        SplitBill.id == challenge.split_bill_id, SplitBill.actor_id == actor_id
+                    )
+                )
+                if bill is None:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="split_not_found",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                target = challenge.target_status
+                if target == "open":
+                    participants = list(
+                        session.scalars(
+                            select(SplitParticipant)
+                            .where(SplitParticipant.split_bill_id == bill.id)
+                            .order_by(SplitParticipant.sequence)
+                        )
+                    )
+                    normalized = {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "split_bill_id": str(bill.id),
+                        "account_id": str(bill.account_id),
+                        "title": bill.title,
+                        "total_amount_minor": bill.total_amount_minor,
+                        "participants": [item.display_name for item in participants[1:]],
+                        "shares_minor": [item.amount_minor for item in participants],
+                        "target_status": "open",
+                    }
+                    expected_tool = "transfer.split_create"
+                else:
+                    normalized = {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "split_bill_id": str(bill.id),
+                        "target_status": "settled",
+                        "split_bill_version": bill.version,
+                    }
+                    expected_tool = "transfer.split_collect"
+                expected_state = "awaiting_confirmation" if target == "open" else "open"
+                if (
+                    bill.version != challenge.split_bill_version
+                    or bill.status != expected_state
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or challenge.target_status not in {"open", "settled"}
+                    or challenge.tool_name != expected_tool
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != "transfer-confirmation-v1"
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="split_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                before_state = {"status": bill.status, "version": bill.version}
+                _transition(task, "running")
+                execution.status = "running"
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                try:
+                    with session.begin_nested():
+                        changed = confirm_split(
+                            session,
+                            actor_id=actor_id,
+                            split_bill_id=bill.id,
+                            target_status=target,
+                            request_id=request_id,
+                            task_id=task.id,
+                            tool_execution_id=execution.id,
+                        )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                after_state = {"status": changed.status, "version": changed.version}
+                result_data = json.loads(
+                    json.dumps(asdict(changed), ensure_ascii=False, default=str)
+                )
+                message = (
+                    f"AA 分账“{changed.title}”已创建。"
+                    if target == "open"
+                    else f"AA 分账“{changed.title}”的模拟收款已完成。"
+                )
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="split",
+                    resource_id=changed.id,
+                    result_data=result_data,
+                    result_summary=message,
+                    user_message=message,
+                    before_state=before_state,
+                    after_state=after_state,
+                )
+
+            if challenge.investment_order_id is not None:
+                order = session.scalar(
+                    select(InvestmentOrder).where(
+                        InvestmentOrder.id == challenge.investment_order_id,
+                        InvestmentOrder.actor_id == actor_id,
+                    )
+                )
+                if order is None:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="investment_order_not_found",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                product = session.get(InvestmentProduct, order.product_id)
+                normalized = {
+                    "tool_name": challenge.tool_name,
+                    "tool_version": challenge.tool_version,
+                    "order_id": str(order.id),
+                    "order_type": order.order_type,
+                    "account_id": str(order.account_id),
+                    "product_id": str(order.product_id),
+                    "holding_id": str(order.holding_id) if order.holding_id else None,
+                    "amount_minor": order.amount_minor,
+                    "units_micros": order.units_micros,
+                    "unit_price_minor": product.unit_price_minor if product else None,
+                    "target_status": "executed",
+                }
+                if (
+                    order.version != challenge.investment_order_version
+                    or order.status != "awaiting_confirmation"
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or challenge.target_status != "executed"
+                    or challenge.tool_name != f"investment.{order.order_type}"
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != "investment-confirmation-v1"
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="investment_order_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                before_state = {"status": order.status, "version": order.version}
+                _transition(task, "running")
+                execution.status = "running"
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                try:
+                    with session.begin_nested():
+                        changed = confirm_order(
+                            session,
+                            actor_id=actor_id,
+                            order_id=order.id,
+                            request_id=request_id,
+                            task_id=task.id,
+                            tool_execution_id=execution.id,
+                        )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                after_state = {"status": changed.status, "version": order.version}
+                result_data = json.loads(
+                    json.dumps(asdict(changed), ensure_ascii=False, default=str)
+                )
+                result_data["order"] = result_data.copy()
+                action = "申购" if changed.order_type == "buy" else "赎回"
+                message = f"{changed.product_name}已{action}。"
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="investment_order",
+                    resource_id=changed.id,
+                    result_data=result_data,
+                    result_summary=message,
+                    user_message=message,
+                    before_state=before_state,
+                    after_state=after_state,
+                )
+
             card = get_owned_card(session, actor_id=actor_id, card_id=challenge.card_id)
             if card is None:
                 _mark_confirmation_rejected(
@@ -1946,7 +2545,7 @@ def cancel_agent_task(
             step.summary = "Step was cancelled before its side effect completed."
             step.completed_at = utc_now()
         _transition(task, "cancelled")
-        task.message = "任务已取消；尚未确认的卡片操作没有执行。"
+        task.message = "任务已取消；尚未确认的操作没有执行。"
         session.add(
             TaskStep(
                 task_id=task.id,

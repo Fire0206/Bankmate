@@ -14,7 +14,9 @@ from finorch_api.api.v1.bills import router as bills_router
 from finorch_api.api.v1.cards import router as cards_router
 from finorch_api.api.v1.demo_session import router as demo_session_router
 from finorch_api.api.v1.health import router as health_router
+from finorch_api.api.v1.investments import router as investments_router
 from finorch_api.api.v1.subscriptions import router as subscriptions_router
+from finorch_api.api.v1.transfers import router as transfers_router
 from finorch_api.config import get_settings
 from finorch_api.schemas import ApiError, ApiErrorResponse, ErrorDetail
 
@@ -26,8 +28,8 @@ app = FastAPI(
     title="FinOrch API",
     version=settings.service_version,
     description=(
-        "Synthetic banking demo for cards, bill analytics, and recurring subscription controls. "
-        "No real banking or money movement."
+        "Synthetic banking demo for cards, bills, subscriptions, transfers, and investments. "
+        "No real bank, merchant, or payment-network integration."
     ),
     responses={
         401: {"model": ApiErrorResponse, "description": "Authentication required."},
@@ -43,6 +45,8 @@ app.include_router(health_router, prefix="/api/v1")
 app.include_router(cards_router, prefix="/api/v1")
 app.include_router(bills_router, prefix="/api/v1")
 app.include_router(subscriptions_router, prefix="/api/v1")
+app.include_router(transfers_router, prefix="/api/v1")
+app.include_router(investments_router, prefix="/api/v1")
 app.include_router(agent_router, prefix="/api/v1")
 app.include_router(demo_session_router, prefix="/api/v1")
 

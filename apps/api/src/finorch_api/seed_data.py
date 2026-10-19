@@ -7,15 +7,23 @@ from sqlalchemy.orm import Session
 from finorch_api.domain.cards import CardStatus
 from finorch_api.domain.subscriptions import detect_recurring_subscriptions
 from finorch_api.infrastructure.database import Base
-from finorch_api.infrastructure.models import Account, Card, DemoUser, Subscription, Transaction
+from finorch_api.infrastructure.models import (
+    Account,
+    Card,
+    DemoUser,
+    InvestmentProduct,
+    Payee,
+    Subscription,
+    Transaction,
+)
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 
-DATASET_VERSION = "phase1c-v1"
+DATASET_VERSION = "phase1d-v1"
 _SYNTHETIC_NAMESPACE = UUID("a0000000-0000-4000-8000-000000000001")
 
 _USERS = (
-    (DEMO_USER_ONE_ID, "Demo User One"),
-    (DEMO_USER_TWO_ID, "Demo User Two"),
+    (DEMO_USER_ONE_ID, "Demo User One", 3),
+    (DEMO_USER_TWO_ID, "Demo User Two", 1),
 )
 
 _ACCOUNTS = (
@@ -63,6 +71,66 @@ _CARDS = (
         "Travel debit",
         "2729",
         CardStatus.ACTIVE,
+    ),
+)
+
+_PAYEES = (
+    (
+        UUID("30000000-0000-4000-8000-000000000001"),
+        DEMO_USER_ONE_ID,
+        UUID("10000000-0000-4000-8000-000000000003"),
+        "小林",
+    ),
+    (
+        UUID("30000000-0000-4000-8000-000000000002"),
+        DEMO_USER_ONE_ID,
+        UUID("10000000-0000-4000-8000-000000000002"),
+        "储蓄账户",
+    ),
+    (
+        UUID("30000000-0000-4000-8000-000000000003"),
+        DEMO_USER_TWO_ID,
+        UUID("10000000-0000-4000-8000-000000000001"),
+        "小林",
+    ),
+)
+
+_PRODUCTS = (
+    (
+        UUID("40000000-0000-4000-8000-000000000001"),
+        "CASH-001",
+        "安稳现金管理",
+        "货币基金",
+        1,
+        10_000,
+        10_000,
+        180,
+        0,
+        "模拟净值固定，收益率为演示估值。",
+    ),
+    (
+        UUID("40000000-0000-4000-8000-000000000002"),
+        "BOND-001",
+        "稳健短债组合",
+        "债券基金",
+        2,
+        100_000,
+        10_000,
+        320,
+        90,
+        "中低风险短债类模拟产品，收益不保证。",
+    ),
+    (
+        UUID("40000000-0000-4000-8000-000000000003"),
+        "INDEX-001",
+        "成长指数模拟",
+        "指数基金",
+        4,
+        50_000,
+        15_000,
+        800,
+        0,
+        "较高波动的指数类模拟产品，收益不保证。",
     ),
 )
 
@@ -173,7 +241,7 @@ def _add_missing(session: Session, model: type[Base], entity_id: UUID, **values:
 
 def seed_demo_data(session: Session) -> None:
     """Insert missing deterministic fixtures; the caller owns the transaction."""
-    for user_id, display_name in _USERS:
+    for user_id, display_name, risk_level in _USERS:
         user = session.get(DemoUser, user_id)
         if user is None:
             session.add(
@@ -181,10 +249,12 @@ def seed_demo_data(session: Session) -> None:
                     id=user_id,
                     display_name=display_name,
                     dataset_version=DATASET_VERSION,
+                    risk_level=risk_level,
                 )
             )
         else:
             user.dataset_version = DATASET_VERSION
+            user.risk_level = risk_level
     session.flush()
 
     for account_id, user_id, label, currency, opening_balance_minor in _ACCOUNTS:
@@ -196,8 +266,48 @@ def seed_demo_data(session: Session) -> None:
             label=label,
             currency=currency,
             opening_balance_minor=opening_balance_minor,
+            balance_minor=opening_balance_minor,
+            version=1,
         )
     session.flush()
+
+    for payee_id, user_id, destination_account_id, display_name in _PAYEES:
+        _add_missing(
+            session,
+            Payee,
+            payee_id,
+            actor_id=user_id,
+            destination_account_id=destination_account_id,
+            display_name=display_name,
+            normalized_name="".join(display_name.split()).casefold(),
+        )
+    for (
+        product_id,
+        code,
+        name,
+        category,
+        risk_level,
+        minimum_amount_minor,
+        unit_price_minor,
+        annual_yield_bps,
+        term_days,
+        description,
+    ) in _PRODUCTS:
+        _add_missing(
+            session,
+            InvestmentProduct,
+            product_id,
+            code=code,
+            name=name,
+            category=category,
+            risk_level=risk_level,
+            minimum_amount_minor=minimum_amount_minor,
+            unit_price_minor=unit_price_minor,
+            annual_yield_bps=annual_yield_bps,
+            term_days=term_days,
+            currency="CNY",
+            description=description,
+        )
 
     for card_id, account_id, label, suffix, status in _CARDS:
         _add_missing(

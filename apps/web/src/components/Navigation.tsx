@@ -2,10 +2,13 @@ import { AppIcon } from "./AppIcon";
 
 type Section = "assistant" | "cards";
 
-const plannedItems = [
-  ["overview", "账户总览"],
-  ["transfer", "转账"],
-  ["wealth", "理财"],
+const shortcuts = [
+  ["overview", "账户余额", "查询我的账户余额"],
+  ["bill", "账单", "我这个月花了多少钱"],
+  ["subscriptions", "自动扣费", "我有哪些自动扣费"],
+  ["transfer", "转账记录", "查看我的转账记录"],
+  ["transfer", "AA 分账", "查看我的 AA 分账"],
+  ["wealth", "理财", "查看适合我的理财产品"],
 ] as const;
 
 export function Navigation({
@@ -15,6 +18,7 @@ export function Navigation({
   onClose,
   onSelect,
   onShowDetails,
+  onPrompt,
 }: {
   mobileOpen: boolean;
   activeSection: Section;
@@ -22,6 +26,7 @@ export function Navigation({
   onClose: () => void;
   onSelect: (section: Section) => void;
   onShowDetails: () => void;
+  onPrompt: (prompt: string) => void;
 }) {
   return (
     <>
@@ -94,17 +99,20 @@ export function Navigation({
             <span>操作记录</span>
           </button>
 
-          <p className="nav-section-label nav-section-spaced">更多服务</p>
-          {plannedItems.map(([icon, label]) => (
-            <div
-              aria-disabled="true"
-              className="nav-link nav-link-disabled"
+          <p className="nav-section-label nav-section-spaced">业务查询</p>
+          {shortcuts.map(([icon, label, prompt]) => (
+            <button
+              className="nav-link"
               key={label}
+              onClick={() => {
+                onPrompt(prompt);
+                onClose();
+              }}
+              type="button"
             >
               <AppIcon name={icon} />
               <span>{label}</span>
-              <small>规划中</small>
-            </div>
+            </button>
           ))}
         </nav>
 

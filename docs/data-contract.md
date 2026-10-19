@@ -1,6 +1,6 @@
 # 数据契约与建模规则
 
-> Phase 1A–1C 已实现 SQLite/SQLAlchemy/Alembic、合成卡片与交易数据、订阅记录，以及 `agent_tasks`、`task_steps`、`tool_executions`、卡片/订阅共用的 `confirmation_challenges` 和通用 `audit_events`。智能转账和理财实体仍为 Planned；以下规则同时约束当前实现和后续扩展。
+> Phase 1A–1D 已实现 SQLite/SQLAlchemy/Alembic、合成账户/卡片/交易/订阅/转账/分账/理财数据，以及持久化 Agent Workflow、通用确认挑战和追加审计。以下规则适用于当前实现和后续扩展。
 
 ## 数据边界
 
@@ -26,34 +26,38 @@
 首批已实现实体及字段以 ORM 模型和 Alembic 迁移为准：
 
 - `demo_users`：固定合成用户及 `dataset_version`，不含真实登录资料。
-- `accounts`：所属 DemoUser、标签、币种和 `opening_balance_minor`。这是演示初始余额，不是账本余额，也不能用于资金变更。
+- `accounts`：所属 DemoUser、标签、币种、`opening_balance_minor` 和由服务端事务维护的 `balance_minor` 投影；金额变化与对应交易记录在同一事务提交。
 - `cards`：所属 Account、展示标签、假卡号后四位、`active`/`frozen` 状态、乐观并发 `version`。
 - `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
-- `confirmation_challenges`：一次性绑定 actor、单一目标资源（卡片或订阅）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
+- `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；转账/收款执行由 Application 用例在事务内更新余额与关联流水。
+- `investment_products`、`investment_holdings`、`investment_orders`：确定性模拟产品和价格、风险等级、用户持仓及申购/赎回订单；不代表真实理财产品或收益。
+- `confirmation_challenges`：一次性绑定 actor、单一目标资源（银行卡、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
+- `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。
 - `audit_events`：通用 actor、event type、resource、request/task/tool execution ID、outcome、可选前后状态摘要和 UTC 时间；兼容既有卡片状态语义。正常业务路径只追加，不覆盖或删除历史。不得在审计事件中存密钥、原始敏感数据或完整 Prompt。
 
-`seed` 会按固定 UUID 插入缺失样例并将两位固定 Demo User 的 `dataset_version` 更新为当前值；不会重置既有卡片或订阅状态。当前数据集版本为 `phase1c-v1`，包含两位模拟用户、账户、卡片、2026 年合成交易流水及由重复月度扣款识别出的订阅。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
+`seed` 会按固定 UUID 幂等插入合成样例。当前数据集版本为 `phase1d-v1`，包含两位模拟用户、账户、卡片、收款人、理财产品、合成流水和订阅。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
 
 下表为后续场景实体草图，不代表已实现：
 
-| 实体                      | 主要关系                                                      | 说明                                                                      |
-| ------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `demo_users`              | 1 对多 `accounts`                                             | 已实现；仅演示身份，不存真实登录资料                                      |
-| `accounts`                | 多对 1 `demo_users`；1 对多 `ledger_entries`                  | 基础合成账户已实现；账本关系仍为 Planned                                  |
-| `transactions`            | 多对 1 `accounts`；可作为订阅检测来源                         | 已实现合成收支流水及按月份、类别、商户筛选；不直接作为余额事实            |
-| `ledger_entries`          | 多对 1 `accounts`；可选关联 `transfer_id`、`transaction_id`   | 不可变的模拟账务条目；金额符号和借贷方向由领域契约确定                    |
-| `transfers`               | 多对 1 source/destination `accounts`；1 对多 `ledger_entries` | 一次模拟转账的业务聚合，不能由模型直接写表                                |
-| `cards`                   | 多对 1 `accounts`                                             | 已实现 active/frozen 与假卡号后四位；扩展场景仍为 Planned                 |
-| `subscriptions`           | 多对 1 `accounts`；记录来源交易 ID                            | 已实现周期候选持久化、月费/下次模拟扣款和经确认的状态管理；不操作真实商户 |
-| `investment_products`     | 1 对多 `investment_holdings`                                  | 使用明确标记的演示产品信息，不暗示真实投资建议                            |
-| `investment_holdings`     | 多对 1 `accounts` 和 `investment_products`                    | 持仓快照与币种；未来操作记录需审计                                        |
-| `agent_tasks`             | 1 对多 `task_steps`                                           | 已实现；受限保存用户请求和 Workflow 当前状态                              |
-| `task_steps`              | 多对 1 `agent_tasks`；1 对多 `tool_executions`                | 已实现；有序规划、输入、取消和工具步骤及安全错误摘要                      |
-| `tool_executions`         | 多对 1 `task_steps`；可关联领域业务记录                       | 已实现；受控工具调用状态、幂等引用、结果和错误                            |
-| `confirmation_challenges` | 多对 1 `agent_tasks` / `cards` / `tool_executions`            | 已实现；绑定 actor、目标、版本、摘要和有效期的一次性确认                  |
-| `audit_events`            | 引用 actor、task/tool execution 和业务资源                    | 已实现通用追加事件；保存执行结果及可选前后状态摘要                        |
+| 实体                                 | 主要关系                                           | 说明                                                                      |
+| ------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------- |
+| `demo_users`                         | 1 对多 `accounts`                                  | 已实现；仅演示身份，不存真实登录资料                                      |
+| `accounts`                           | 多对 1 `demo_users`；关联 `cards`、`transactions`  | 已实现；服务端在单个事务内维护余额投影和资金流水                          |
+| `transactions`                       | 多对 1 `accounts`；可作为订阅检测来源              | 已实现合成账单及 transfer/investment 记账条目；账单统计仅查询 `bill` 类型 |
+| `transfers`                          | 多对 1 source/destination `accounts` 和 `payees`   | 已实现普通/定时模拟转账，需服务端确认后执行                               |
+| `split_bills` / `split_participants` | 分账归属 account/actor；参与者按金额顺序关联       | 已实现模拟 AA 拆分及受控的模拟收款                                        |
+| `cards`                              | 多对 1 `accounts`                                  | 已实现 active/frozen 与假卡号后四位；扩展场景仍为 Planned                 |
+| `subscriptions`                      | 多对 1 `accounts`；记录来源交易 ID                 | 已实现周期候选持久化、月费/下次模拟扣款和经确认的状态管理；不操作真实商户 |
+| `investment_products`                | 1 对多 `investment_holdings` / `investment_orders` | 已实现确定性模拟价格、风险等级和参考收益                                  |
+| `investment_holdings`                | 多对 1 `accounts` 和 `investment_products`         | 已实现模拟持仓及余额变化                                                  |
+| `investment_orders`                  | 多对 1 actor/account/product，可选关联 holding     | 已实现确认后的模拟申购/赎回订单                                           |
+| `agent_tasks`                        | 1 对多 `task_steps`                                | 已实现；受限保存用户请求和 Workflow 当前状态                              |
+| `task_steps`                         | 多对 1 `agent_tasks`；1 对多 `tool_executions`     | 已实现；有序规划、输入、取消和工具步骤及安全错误摘要                      |
+| `tool_executions`                    | 多对 1 `task_steps`；可关联领域业务记录            | 已实现；受控工具调用状态、幂等引用、结果和错误                            |
+| `confirmation_challenges`            | 多对 1 `agent_tasks` / `cards` / `tool_executions` | 已实现；绑定 actor、目标、版本、摘要和有效期的一次性确认                  |
+| `audit_events`                       | 引用 actor、task/tool execution 和业务资源         | 已实现通用追加事件；保存执行结果及可选前后状态摘要                        |
 
 余额的权威值由服务端对已提交账务条目计算或维护受控投影，永不由前端或模型提供。关系采用最小必要字段；财务流水、任务状态和审计状态不得通过覆盖历史来隐藏既有结果。具体表结构、索引、删除保留策略和事务边界需各场景实现前另行评审。
 

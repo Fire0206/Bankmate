@@ -3,17 +3,17 @@ from uuid import UUID
 
 from alembic import command
 from alembic.config import Config
-from finorch_api.domain.cards import CardStatus
 from finorch_api.infrastructure.database import build_engine
 from finorch_api.infrastructure.models import (
     Account,
     AuditEvent,
     Card,
     DemoUser,
+    InvestmentProduct,
+    Payee,
     Subscription,
     Transaction,
 )
-from finorch_api.security.demo_identity import DEMO_USER_ONE_ID
 from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
 from sqlalchemy import func, inspect, select, text
 from sqlalchemy.engine import URL
@@ -36,10 +36,17 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
         "task_steps",
         "tool_executions",
         "confirmation_challenges",
+        "payees",
+        "transfers",
+        "split_bills",
+        "split_participants",
+        "investment_products",
+        "investment_holdings",
+        "investment_orders",
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0003_bills_and_subscriptions"
+        assert revision == "0004_transfers_and_investments"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
 
 
@@ -52,9 +59,11 @@ def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
             session.scalar(select(func.count()).select_from(AuditEvent)),
             session.scalar(select(func.count()).select_from(Transaction)),
             session.scalar(select(func.count()).select_from(Subscription)),
+            session.scalar(select(func.count()).select_from(Payee)),
+            session.scalar(select(func.count()).select_from(InvestmentProduct)),
             session.scalar(select(DemoUser.dataset_version).limit(1)),
         )
-        assert first_state[6] == DATASET_VERSION
+        assert first_state[8] == DATASET_VERSION
 
     with seeded_database.session_factory.begin() as session:
         seed_demo_data(session)
@@ -65,10 +74,12 @@ def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
             session.scalar(select(func.count()).select_from(AuditEvent)),
             session.scalar(select(func.count()).select_from(Transaction)),
             session.scalar(select(func.count()).select_from(Subscription)),
+            session.scalar(select(func.count()).select_from(Payee)),
+            session.scalar(select(func.count()).select_from(InvestmentProduct)),
             session.scalar(select(DemoUser.dataset_version).limit(1)),
         )
 
-    assert second_state == first_state == (2, 3, 3, 0, 30, 3, DATASET_VERSION)
+    assert second_state == first_state == (2, 3, 3, 0, 30, 3, 3, 3, DATASET_VERSION)
 
 
 def test_seed_updates_dataset_version_for_existing_demo_users(seeded_database) -> None:
@@ -91,34 +102,38 @@ def test_phase1a_card_audit_data_survives_generic_audit_migration(tmp_path: Path
     config.attributes["database_url"] = url
     try:
         command.upgrade(config, "0001_banking_core")
-        factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-        with factory.begin() as session:
-            user_id = DEMO_USER_ONE_ID
-            account_id = UUID("10000000-0000-4000-8000-000000000001")
-            card_id = UUID("20000000-0000-4000-8000-000000000001")
-            session.add(
-                DemoUser(id=user_id, display_name="Demo User One", dataset_version=DATASET_VERSION)
-            )
-            session.add(
-                Account(
-                    id=account_id,
-                    demo_user_id=user_id,
-                    label="Everyday account",
-                    currency="CNY",
-                    opening_balance_minor=1_250_000,
-                )
-            )
-            session.add(
-                Card(
-                    id=card_id,
-                    account_id=account_id,
-                    label="Everyday debit",
-                    card_suffix="1042",
-                    status=CardStatus.ACTIVE,
-                    version=1,
-                )
-            )
         with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO demo_users (id, display_name, dataset_version, created_at) "
+                    "VALUES (:id, 'Demo User One', 'phase1a-v1', '2026-10-18 00:00:00')"
+                ),
+                {"id": "00000000000040008000000000000001"},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO accounts "
+                    "(id, demo_user_id, label, currency, opening_balance_minor, created_at) "
+                    "VALUES (:id, :user_id, 'Everyday account', 'CNY', 1250000, "
+                    "'2026-10-18 00:00:00')"
+                ),
+                {
+                    "id": "10000000000040008000000000000001",
+                    "user_id": "00000000000040008000000000000001",
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO cards "
+                    "(id, account_id, label, card_suffix, status, version, created_at, updated_at) "
+                    "VALUES (:id, :account_id, 'Everyday debit', '1042', 'active', 1, "
+                    "'2026-10-18 00:00:00', '2026-10-18 00:00:00')"
+                ),
+                {
+                    "id": "20000000000040008000000000000001",
+                    "account_id": "10000000000040008000000000000001",
+                },
+            )
             connection.execute(
                 text(
                     "INSERT INTO audit_events "
@@ -135,6 +150,7 @@ def test_phase1a_card_audit_data_survives_generic_audit_migration(tmp_path: Path
             )
 
         command.upgrade(config, "head")
+        factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
         with factory() as session:
             event = session.get(AuditEvent, UUID("60000000-0000-4000-8000-000000000001"))
             assert event is not None

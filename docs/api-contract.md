@@ -47,7 +47,7 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 ## 幂等与兼容
 
 - 创建或有副作用的请求应使用 `Idempotency-Key`。服务端按用户/作用域和键保存请求摘要及最终结果；相同键、相同请求返回原结果，相同键、不同请求返回 `idempotency_conflict`。
-- Phase 1B/1B.5/1C 的任务创建、补充/修订输入、卡片或订阅确认和取消 API 已实现持久化幂等检查；键在 actor/任务/操作作用域内绑定规范化输入。并发确认由 SQLite 写事务串行化，确认键与 challenge 绑定。当前没有通用幂等中间件。
+- Phase 1B–1D 的任务创建、补充/修订输入、卡片、订阅、转账、分账或理财确认和取消 API 已实现持久化幂等检查；键在 actor/任务/操作作用域内绑定规范化输入。并发确认由 SQLite 写事务串行化，确认键与 challenge 绑定。当前没有通用幂等中间件。
 - 增加可选响应字段通常向后兼容；删除/重命名字段、收窄输入或改变既有含义属于破坏性变更。先弃用并沟通，再在新主版本移除。
 - PR 必须更新 Schema、类型生成物、兼容说明、消费者和测试。Breaking change 需 ADR 或版本变更评审。
 
@@ -80,25 +80,40 @@ Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`te
 
 账单 API 的金额均为整数 `amount_minor` 和 ISO 4217 `currency`；异常仅表示匹配确定性演示规则，不代表欺诈结论。当前订阅端点只读；暂停、恢复和取消只能经 Agent Tool 提案与下述任务确认端点执行，不能直接写 Subscription。
 
+Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
+
+| 方法与路径                                                             | 说明                                            |
+| ---------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /api/v1/accounts`                                                 | 当前 actor 的模拟账户及服务端余额投影。         |
+| `GET /api/v1/payees`                                                   | 当前 actor 已保存的模拟收款人。                 |
+| `GET /api/v1/transfers?limit=50`                                       | 普通/定时转账历史及模拟状态。                   |
+| `GET /api/v1/transfers/{transfer_id}`                                  | actor 范围内的单笔转账；越权按 not found 处理。 |
+| `GET /api/v1/splits?limit=50`                                          | AA 分账、参与人及模拟收付状态。                 |
+| `GET /api/v1/investments/profile`                                      | 服务端模拟风险等级。                            |
+| `GET /api/v1/investments/products?category=...&maximum_risk_level=...` | 模拟产品筛选及风险匹配结果。                    |
+| `GET /api/v1/investments/portfolio`                                    | 模拟现金、持仓、资产及估算盈亏。                |
+| `GET /api/v1/investments/orders`                                       | 当前 actor 的模拟申购/赎回历史。                |
+
+普通转账、定时转账、AA 分账收付、理财申购和赎回没有绕过确认的独立写 API；只能经 Agent Task proposal 和确认 API 执行。定时任务仅支持开发/测试环境的显式本地模拟执行，不是后台自动调度。
 Demo Session 与 Agent Task 端点：
 
-| 方法与路径                                                                                       | 说明                                                                                                                  |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                        |
-| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                |
-| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                     |
-| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                             |
-| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                 |
-| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                              |
-| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片或订阅确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
-| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                            |
-| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                |
+| 方法与路径                                                                                       | 说明                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                                          |
+| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                                  |
+| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                                       |
+| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                                               |
+| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                                   |
+| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                                                |
+| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片、订阅、转账、分账或理财确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
+| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                                              |
+| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                                  |
 
-`card.freeze`、`card.unfreeze`、`subscription.pause`、`subscription.resume` 与 `subscription.cancel` 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
+`card.freeze`、`card.unfreeze`、`subscription.pause`、`subscription.resume`、`subscription.cancel`、转账、分账和理财写工具 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
 
 任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`subscription_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
 
-任务读取发现已过期的 pending confirmation 时，由服务端将挑战、ToolExecution、TaskStep 和 Task 状态在同一事务中结算为过期/失败并追加审计；卡片状态保持不变。这个惰性过期处理保证刷新恢复显示服务端实际状态，不依赖前端时钟。
+任务读取发现已过期的 pending confirmation 时，由服务端将挑战、ToolExecution、TaskStep 和 Task 状态在同一事务中结算为过期/失败并追加审计；业务状态保持不变。这个惰性过期处理保证刷新恢复显示服务端实际状态，不依赖前端时钟。
 
 `Idempotency-Key` 对当前所有 POST 写操作必需；键按 actor/任务/操作作用域保存。任务创建或输入补充的相同键、相同请求返回既有任务；同键、不同请求返回 `idempotency_conflict`。确认参数摘要不匹配会令挑战失效；重复的同一确认返回已保存任务结果。重复取消使用同一键返回已保存取消结果。取消不会回滚任何已提交操作。
 

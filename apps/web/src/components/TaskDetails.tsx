@@ -23,6 +23,15 @@ const eventLabels: Record<string, string> = {
   "subscription.confirmation_rejected": "确认未通过",
   "subscription.confirmation_consumed": "操作已确认",
   "subscription.status_changed": "订阅状态变更",
+  "transfer.confirmation_requested": "等待确认",
+  "transfer.confirmation_invalidated": "确认已取消",
+  "transfer.confirmation_rejected": "确认未通过",
+  "transfer.confirmation_consumed": "转账已处理",
+  "transfer.executed": "模拟转账完成",
+  "split.confirmation_requested": "等待确认",
+  "split.confirmation_consumed": "分账已处理",
+  "investment_order.confirmation_requested": "等待确认",
+  "investment_order.confirmation_consumed": "理财操作已处理",
 };
 
 function dateTimeLabel(value: string): string {
@@ -49,6 +58,10 @@ function plainStatus(value: unknown): string | null {
     awaiting_confirmation: "等待确认",
     awaiting_input: "需要补充信息",
     running: "正在处理",
+    scheduled: "待执行",
+    executed: "已完成",
+    open: "待收款",
+    settled: "已结清",
   };
   return labels[value] ?? value;
 }
@@ -70,6 +83,23 @@ function stepLabel(step: Task["steps"][number]): string {
     "subscription.pause": "暂停自动续费",
     "subscription.resume": "恢复自动续费",
     "subscription.cancel": "取消自动续费",
+    "transfer.accounts": "查询账户余额",
+    "transfer.payees": "查询收款人",
+    "transfer.history": "查询转账记录",
+    "transfer.create": "普通转账",
+    "transfer.schedule": "定时转账",
+    "transfer.cancel_scheduled": "取消定时转账",
+    "transfer.simulate_due": "执行到期转账",
+    "transfer.splits": "查询 AA 分账",
+    "transfer.split_create": "创建 AA 分账",
+    "transfer.split_collect": "模拟收款",
+    "investment.products": "查询模拟理财产品",
+    "investment.compare": "比较理财产品",
+    "investment.profile": "查询风险等级",
+    "investment.portfolio": "查询模拟持仓",
+    "investment.orders": "查询理财记录",
+    "investment.buy": "申购模拟理财",
+    "investment.redeem": "赎回模拟理财",
   };
   return labels[key] ?? key;
 }
@@ -82,7 +112,10 @@ function stepSummary(step: Task["steps"][number]): string {
     return "请求处理失败，请查看任务错误信息。";
   if (
     step.status === "awaiting_confirmation" &&
-    (key.startsWith("card.") || key.startsWith("subscription."))
+    (key.startsWith("card.") ||
+      key.startsWith("subscription.") ||
+      key.startsWith("transfer.") ||
+      key.startsWith("investment."))
   )
     return "已生成待确认操作；业务状态尚未变更。";
   if (step.status === "cancelled" && key === "cancellation")
@@ -104,6 +137,15 @@ function stepSummary(step: Task["steps"][number]): string {
     "subscription.pause": "自动续费已暂停。",
     "subscription.resume": "自动续费已恢复。",
     "subscription.cancel": "自动续费已取消。",
+    "transfer.accounts": "账户余额已读取。",
+    "transfer.payees": "收款人信息已读取。",
+    "transfer.history": "转账记录已读取。",
+    "transfer.splits": "AA 分账记录已读取。",
+    "investment.products": "模拟理财产品已读取。",
+    "investment.compare": "产品信息已按模拟数据比较。",
+    "investment.profile": "模拟风险等级已读取。",
+    "investment.portfolio": "模拟持仓已读取。",
+    "investment.orders": "理财操作记录已读取。",
   };
   return summaries[key] ?? step.summary;
 }

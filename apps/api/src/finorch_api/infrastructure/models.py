@@ -33,6 +33,7 @@ class DemoUser(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     display_name: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     dataset_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    risk_level: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     accounts: Mapped[list["Account"]] = relationship(back_populates="demo_user")
@@ -57,7 +58,18 @@ class Account(Base):
     label: Mapped[str] = mapped_column(String(80), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     opening_balance_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    balance_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, server_default="0"
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
+        onupdate=utc_now,
+        server_default="1970-01-01 00:00:00",
+    )
+    __mapper_args__ = {"version_id_col": version}
 
     demo_user: Mapped[DemoUser] = relationship(back_populates="accounts")
     cards: Mapped[list["Card"]] = relationship(back_populates="account")
@@ -106,6 +118,10 @@ class Transaction(Base):
         CheckConstraint("amount_minor > 0", name="transaction_amount_positive"),
         CheckConstraint("length(currency) = 3", name="transaction_currency_code_length"),
         CheckConstraint("direction in ('income', 'expense')", name="transaction_direction_allowed"),
+        CheckConstraint(
+            "entry_kind in ('bill', 'transfer', 'investment')",
+            name="transaction_entry_kind_allowed",
+        ),
         UniqueConstraint("synthetic_ref", name="uq_transactions_synthetic_ref"),
         Index("ix_transactions_account_occurred_at", "account_id", "occurred_at"),
         Index(
@@ -124,6 +140,7 @@ class Transaction(Base):
     )
     synthetic_ref: Mapped[str] = mapped_column(String(80), nullable=False)
     direction: Mapped[str] = mapped_column(String(8), nullable=False)
+    entry_kind: Mapped[str] = mapped_column(String(16), nullable=False, default="bill")
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     merchant: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -133,6 +150,300 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     account: Mapped[Account] = relationship(back_populates="transactions")
+
+
+class Payee(Base):
+    __tablename__ = "payees"
+    __table_args__ = (
+        UniqueConstraint("actor_id", "normalized_name", name="uq_payees_actor_name"),
+        Index("ix_payees_actor_name", "actor_id", "normalized_name"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("demo_users.id", name="fk_payees_actor_id_demo_users", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    destination_account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "accounts.id", name="fk_payees_destination_account_id_accounts", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Transfer(Base):
+    __tablename__ = "transfers"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="transfer_amount_positive"),
+        CheckConstraint("length(currency) = 3", name="transfer_currency_code_length"),
+        CheckConstraint(
+            "transfer_type in ('immediate', 'scheduled')", name="transfer_type_allowed"
+        ),
+        CheckConstraint(
+            "status in ('awaiting_confirmation', 'scheduled', 'executed', 'cancelled', 'failed')",
+            name="transfer_status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="transfer_version_positive"),
+        CheckConstraint(
+            "(transfer_type = 'scheduled' and scheduled_at is not null) or "
+            "(transfer_type = 'immediate' and scheduled_at is null)",
+            name="transfer_schedule_matches_type",
+        ),
+        UniqueConstraint("actor_id", "idempotency_key", name="uq_transfers_actor_idempotency"),
+        Index("ix_transfers_actor_created_at", "actor_id", "created_at"),
+        Index("ix_transfers_status_scheduled_at", "status", "scheduled_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("demo_users.id", name="fk_transfers_actor_id_demo_users", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "accounts.id", name="fk_transfers_source_account_id_accounts", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    destination_account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "accounts.id", name="fk_transfers_destination_account_id_accounts", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    payee_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("payees.id", name="fk_transfers_payee_id_payees", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    payee_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    transfer_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
+
+
+class SplitBill(Base):
+    __tablename__ = "split_bills"
+    __table_args__ = (
+        CheckConstraint("total_amount_minor > 0", name="split_bill_amount_positive"),
+        CheckConstraint("length(currency) = 3", name="split_bill_currency_code_length"),
+        CheckConstraint("participant_count between 2 and 11", name="split_bill_count_allowed"),
+        CheckConstraint(
+            "status in ('awaiting_confirmation', 'open', 'settled', 'cancelled', 'failed')",
+            name="split_bill_status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="split_bill_version_positive"),
+        UniqueConstraint("actor_id", "idempotency_key", name="uq_split_bills_actor_idempotency"),
+        Index("ix_split_bills_actor_created_at", "actor_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("demo_users.id", name="fk_split_bills_actor_id_demo_users", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("accounts.id", name="fk_split_bills_account_id_accounts", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    total_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    participant_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
+
+
+class SplitParticipant(Base):
+    __tablename__ = "split_participants"
+    __table_args__ = (
+        CheckConstraint("amount_minor > 0", name="split_participant_amount_positive"),
+        CheckConstraint(
+            "status in ('organizer_paid', 'pending', 'paid')",
+            name="split_participant_status_allowed",
+        ),
+        UniqueConstraint("split_bill_id", "sequence", name="uq_split_participants_sequence"),
+        Index("ix_split_participants_split_bill_id", "split_bill_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    split_bill_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "split_bills.id",
+            name="fk_split_participants_split_bill_id_split_bills",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InvestmentProduct(Base):
+    __tablename__ = "investment_products"
+    __table_args__ = (
+        CheckConstraint("risk_level between 1 and 5", name="investment_product_risk_allowed"),
+        CheckConstraint("minimum_amount_minor > 0", name="investment_product_minimum_positive"),
+        CheckConstraint("unit_price_minor > 0", name="investment_product_price_positive"),
+        CheckConstraint(
+            "annual_yield_bps between -10000 and 100000", name="investment_product_yield_allowed"
+        ),
+        CheckConstraint("term_days >= 0", name="investment_product_term_nonnegative"),
+        CheckConstraint("length(currency) = 3", name="investment_product_currency_code_length"),
+        UniqueConstraint("code", name="uq_investment_products_code"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str] = mapped_column(String(48), nullable=False)
+    risk_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    minimum_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    unit_price_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    annual_yield_bps: Mapped[int] = mapped_column(Integer, nullable=False)
+    term_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    description: Mapped[str] = mapped_column(String(240), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class InvestmentHolding(Base):
+    __tablename__ = "investment_holdings"
+    __table_args__ = (
+        CheckConstraint("units_micros >= 0", name="investment_holding_units_nonnegative"),
+        CheckConstraint("purchase_price_minor > 0", name="investment_holding_price_positive"),
+        CheckConstraint("version >= 1", name="investment_holding_version_positive"),
+        Index("ix_investment_holdings_actor_account", "actor_id", "account_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "demo_users.id", name="fk_investment_holdings_actor_id_demo_users", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "accounts.id", name="fk_investment_holdings_account_id_accounts", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    product_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "investment_products.id",
+            name="fk_investment_holdings_product_id_investment_products",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    units_micros: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    purchase_price_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
+
+
+class InvestmentOrder(Base):
+    __tablename__ = "investment_orders"
+    __table_args__ = (
+        CheckConstraint("order_type in ('buy', 'redeem')", name="investment_order_type_allowed"),
+        CheckConstraint("amount_minor > 0", name="investment_order_amount_positive"),
+        CheckConstraint("units_micros >= 0", name="investment_order_units_nonnegative"),
+        CheckConstraint(
+            "status in ('awaiting_confirmation', 'executed', 'cancelled', 'failed')",
+            name="investment_order_status_allowed",
+        ),
+        CheckConstraint("version >= 1", name="investment_order_version_positive"),
+        UniqueConstraint(
+            "actor_id", "idempotency_key", name="uq_investment_orders_actor_idempotency"
+        ),
+        Index("ix_investment_orders_actor_created_at", "actor_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "demo_users.id", name="fk_investment_orders_actor_id_demo_users", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "accounts.id", name="fk_investment_orders_account_id_accounts", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    product_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "investment_products.id",
+            name="fk_investment_orders_product_id_investment_products",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+    )
+    holding_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "investment_holdings.id",
+            name="fk_investment_orders_holding_id_investment_holdings",
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    order_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    units_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
 
 
 class Subscription(Base):
@@ -343,12 +654,16 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("actor_id", "idempotency_key", name="uq_confirmation_actor_idempotency"),
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
-            "target_status in ('active', 'frozen', 'paused', 'cancelled')",
+            "target_status in ('active', 'frozen', 'paused', 'cancelled', 'executed', "
+            "'scheduled', 'open', 'settled')",
             name="challenge_target_status_allowed",
         ),
         CheckConstraint(
-            "(card_id is not null and subscription_id is null) or "
-            "(card_id is null and subscription_id is not null)",
+            "(case when card_id is not null then 1 else 0 end + "
+            "case when subscription_id is not null then 1 else 0 end + "
+            "case when transfer_id is not null then 1 else 0 end + "
+            "case when split_bill_id is not null then 1 else 0 end + "
+            "case when investment_order_id is not null then 1 else 0 end) = 1",
             name="challenge_single_resource",
         ),
         CheckConstraint(
@@ -395,12 +710,33 @@ class ConfirmationChallenge(Base):
         ),
         nullable=True,
     )
+    transfer_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("transfers.id", name="fk_confirmation_challenges_transfer_id_transfers"),
+        nullable=True,
+    )
+    split_bill_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("split_bills.id", name="fk_confirmation_challenges_split_bill_id_split_bills"),
+        nullable=True,
+    )
+    investment_order_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "investment_orders.id",
+            name="fk_confirmation_challenges_investment_order_id_investment_orders",
+        ),
+        nullable=True,
+    )
     tool_name: Mapped[str] = mapped_column(String(80), nullable=False)
     tool_version: Mapped[str] = mapped_column(String(16), nullable=False)
     target_status: Mapped[str] = mapped_column(String(16), nullable=False)
     parameters_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subscription_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transfer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    split_bill_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    investment_order_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     policy_version: Mapped[str] = mapped_column(String(32), nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)

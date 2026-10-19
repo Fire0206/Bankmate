@@ -359,6 +359,9 @@ function promptSuggestions(cards: CardListResponse["items"]): string[] {
     "我这个月花了多少钱",
     "最近有没有异常消费",
     "我有哪些自动扣费",
+    "查询我的账户余额",
+    "查看我的转账记录",
+    "查看适合我的理财产品",
   ];
   const activeCard = cards.find((item) => item.status === "active");
   if (activeCard)
@@ -835,6 +838,7 @@ export default function App() {
           if (section === "cards") setContextOpen(true);
         }}
         onShowDetails={showTaskDetails}
+        onPrompt={(prompt) => void sendMessage(prompt)}
       />
 
       <div className="app-main">
@@ -915,7 +919,7 @@ export default function App() {
               <div className="assistant-header">
                 <div>
                   <h2 id="assistant-title">对话</h2>
-                  <p>账单、订阅与银行卡</p>
+                  <p>账户、银行卡、账单、转账、分账与理财</p>
                 </div>
               </div>
 
@@ -934,7 +938,7 @@ export default function App() {
                     <p>
                       {loading
                         ? "正在读取演示账户…"
-                        : "可以查询账单、查看自动扣费，也可以在确认后管理订阅或银行卡。"}
+                        : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
                     </p>
                     {!loading ? (
                       <div className="suggestion-group">
