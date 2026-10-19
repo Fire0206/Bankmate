@@ -703,6 +703,35 @@ class FakeProvider(LLMProvider):
             and re.search(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request) is not None
         )
         if not has_followup and succeeded and not investment_purchase_followup:
+            completion_messages = {
+                "card.freeze": "银行卡已冻结。",
+                "card.unfreeze": "银行卡已解冻。",
+                "subscription.pause": "自动扣费已暂停。",
+                "subscription.resume": "自动扣费已恢复。",
+                "subscription.cancel": "已取消该项自动扣费。",
+                "transfer.create": "模拟转账已完成。",
+                "transfer.schedule": "定时转账已创建。",
+                "transfer.cancel_scheduled": "定时转账已取消。",
+                "transfer.simulate_due": "已完成到期转账的本地模拟。",
+                "transfer.split_create": "AA 分账已创建。",
+                "transfer.split_collect": "模拟收款已完成。",
+                "investment.buy": "模拟理财申购已完成。",
+                "investment.redeem": "模拟理财赎回已完成。",
+            }
+            successful_write = next(
+                (
+                    item
+                    for item in reversed(history)
+                    if item.get("status") == "succeeded"
+                    and item.get("tool_name") in completion_messages
+                ),
+                None,
+            )
+            if successful_write is not None:
+                return ModelTurn(
+                    completion_messages[successful_write["tool_name"]],
+                    status="completed",
+                )
             return ModelTurn(
                 "已读取模拟数据，结果以任务步骤中的服务端返回为准。",
                 status="completed",
