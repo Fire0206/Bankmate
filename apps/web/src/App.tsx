@@ -11,6 +11,7 @@ import { AppIcon } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
 import { ConfirmationCard } from "./components/ConfirmationCard";
 import { Navigation } from "./components/Navigation";
+import { TaskResult } from "./components/TaskResult";
 import { TaskDetails, TaskOverview } from "./components/TaskDetails";
 import { statusLabel, taskMessage } from "./components/taskFormat";
 
@@ -327,7 +328,7 @@ function EnvironmentDetails({
           </div>
         </dl>
         <p className="environment-note">
-          账户和银行卡均为模拟数据，不连接真实银行或支付服务。
+          银行卡、账单和订阅均为模拟数据，不连接真实银行或支付服务。
         </p>
       </div>
     </details>
@@ -354,16 +355,15 @@ function StatusIndicator({ status }: { status: ApiState }) {
 }
 
 function promptSuggestions(cards: CardListResponse["items"]): string[] {
-  const suggestions = ["查看我的银行卡"];
-  const card = cards[0];
-  if (card) suggestions.push("查询尾号 " + card.card_suffix + " 的卡片状态");
+  const suggestions = [
+    "我这个月花了多少钱",
+    "最近有没有异常消费",
+    "我有哪些自动扣费",
+  ];
   const activeCard = cards.find((item) => item.status === "active");
   if (activeCard)
     suggestions.push("冻结尾号 " + activeCard.card_suffix + " 的卡");
-  const frozenCard = cards.find((item) => item.status === "frozen");
-  if (frozenCard)
-    suggestions.push("解冻尾号 " + frozenCard.card_suffix + " 的卡");
-  return suggestions.slice(0, 3);
+  return suggestions;
 }
 
 export default function App() {
@@ -915,7 +915,7 @@ export default function App() {
               <div className="assistant-header">
                 <div>
                   <h2 id="assistant-title">对话</h2>
-                  <p>银行卡服务</p>
+                  <p>账单、订阅与银行卡</p>
                 </div>
               </div>
 
@@ -934,7 +934,7 @@ export default function App() {
                     <p>
                       {loading
                         ? "正在读取演示账户…"
-                        : "我可以帮你查询银行卡，也可以在你确认后冻结或解冻卡片。"}
+                        : "可以查询账单、查看自动扣费，也可以在确认后管理订阅或银行卡。"}
                     </p>
                     {!loading ? (
                       <div className="suggestion-group">
@@ -999,6 +999,7 @@ export default function App() {
                                 }
                               />
                             ) : null}
+                            <TaskResult task={message.task} />
                           </>
                         ) : null}
                       </article>
@@ -1032,7 +1033,7 @@ export default function App() {
                   </p>
                 ) : null}
                 <label className="visually-hidden" htmlFor="agent-request">
-                  输入银行卡请求
+                  输入请求
                 </label>
                 <div className="composer-row">
                   <textarea
@@ -1050,7 +1051,7 @@ export default function App() {
                         void sendMessage();
                       }
                     }}
-                    placeholder="例如：冻结尾号 1042 的卡"
+                    placeholder="例如：我这个月花了多少钱"
                     rows={2}
                     value={draft}
                   />
@@ -1067,7 +1068,7 @@ export default function App() {
                 </div>
                 <div className="composer-foot">
                   <span>Enter 发送，Shift + Enter 换行</span>
-                  <span>只处理演示银行卡</span>
+                  <span>仅处理模拟数据</span>
                 </div>
               </form>
             </section>

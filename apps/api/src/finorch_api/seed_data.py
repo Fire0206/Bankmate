@@ -1,13 +1,17 @@
-from uuid import UUID
+from datetime import UTC, datetime
+from uuid import UUID, uuid5
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from finorch_api.domain.cards import CardStatus
+from finorch_api.domain.subscriptions import detect_recurring_subscriptions
 from finorch_api.infrastructure.database import Base
-from finorch_api.infrastructure.models import Account, Card, DemoUser
+from finorch_api.infrastructure.models import Account, Card, DemoUser, Subscription, Transaction
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 
-DATASET_VERSION = "phase1a-v1"
+DATASET_VERSION = "phase1c-v1"
+_SYNTHETIC_NAMESPACE = UUID("a0000000-0000-4000-8000-000000000001")
 
 _USERS = (
     (DEMO_USER_ONE_ID, "Demo User One"),
@@ -63,6 +67,105 @@ _CARDS = (
 )
 
 
+def _monthly_transaction_fixtures() -> tuple[tuple[object, ...], ...]:
+    fixtures: list[tuple[object, ...]] = []
+    account_id = UUID("10000000-0000-4000-8000-000000000001")
+    for month, day in ((5, 5), (6, 5), (7, 5), (8, 5), (9, 5), (10, 5)):
+        fixtures.append(
+            (
+                account_id,
+                f"video-{month:02d}",
+                "expense",
+                3_000,
+                "腾讯视频会员",
+                "订阅",
+                datetime(2026, month, day, 2, tzinfo=UTC),
+            )
+        )
+    for month, day in ((5, 12), (6, 12), (7, 12), (8, 12), (9, 12), (10, 12)):
+        fixtures.append(
+            (
+                account_id,
+                f"music-{month:02d}",
+                "expense",
+                1_800,
+                "网易云音乐会员",
+                "订阅",
+                datetime(2026, month, day, 2, tzinfo=UTC),
+            )
+        )
+    for month, day in ((5, 19), (6, 19), (7, 19), (8, 19), (9, 19), (10, 19)):
+        fixtures.append(
+            (
+                account_id,
+                f"cloud-{month:02d}",
+                "expense",
+                800,
+                "云盘会员",
+                "订阅",
+                datetime(2026, month, day, 2, tzinfo=UTC),
+            )
+        )
+
+    ordinary = (
+        ("salary-oct", "income", 650_000, "工资", "收入", datetime(2026, 10, 1, 1, tzinfo=UTC)),
+        ("food-oct-1", "expense", 3_680, "小满面馆", "餐饮", datetime(2026, 10, 2, 4, tzinfo=UTC)),
+        ("food-oct-2", "expense", 5_280, "邻里超市", "餐饮", datetime(2026, 10, 8, 11, tzinfo=UTC)),
+        ("food-oct-3", "expense", 2_480, "咖啡工坊", "餐饮", datetime(2026, 10, 16, 3, tzinfo=UTC)),
+        (
+            "transport-oct-1",
+            "expense",
+            560,
+            "深圳地铁",
+            "交通",
+            datetime(2026, 10, 3, 0, tzinfo=UTC),
+        ),
+        (
+            "transport-oct-2",
+            "expense",
+            1_200,
+            "网约车",
+            "交通",
+            datetime(2026, 10, 9, 12, tzinfo=UTC),
+        ),
+        (
+            "shopping-oct",
+            "expense",
+            12_900,
+            "日用百货",
+            "购物",
+            datetime(2026, 10, 11, 7, tzinfo=UTC),
+        ),
+        ("home-oct", "expense", 1_800_000, "房租", "住房", datetime(2026, 10, 1, 0, tzinfo=UTC)),
+        (
+            "anomaly-oct",
+            "expense",
+            168_800,
+            "星河数码",
+            "数码",
+            datetime(2026, 10, 17, 6, tzinfo=UTC),
+        ),
+        ("food-sep", "expense", 4_260, "小满面馆", "餐饮", datetime(2026, 9, 8, 4, tzinfo=UTC)),
+        ("transport-sep", "expense", 720, "深圳地铁", "交通", datetime(2026, 9, 12, 3, tzinfo=UTC)),
+    )
+    fixtures.extend((account_id, *item) for item in ordinary)
+    fixtures.append(
+        (
+            UUID("10000000-0000-4000-8000-000000000003"),
+            "user-two-food",
+            "expense",
+            3_600,
+            "海边食堂",
+            "餐饮",
+            datetime(2026, 10, 4, 5, tzinfo=UTC),
+        )
+    )
+    return tuple(fixtures)
+
+
+_TRANSACTIONS = _monthly_transaction_fixtures()
+
+
 def _add_missing(session: Session, model: type[Base], entity_id: UUID, **values: object) -> None:
     if session.get(model, entity_id) is None:
         session.add(model(id=entity_id, **values))
@@ -71,13 +174,17 @@ def _add_missing(session: Session, model: type[Base], entity_id: UUID, **values:
 def seed_demo_data(session: Session) -> None:
     """Insert missing deterministic fixtures; the caller owns the transaction."""
     for user_id, display_name in _USERS:
-        _add_missing(
-            session,
-            DemoUser,
-            user_id,
-            display_name=display_name,
-            dataset_version=DATASET_VERSION,
-        )
+        user = session.get(DemoUser, user_id)
+        if user is None:
+            session.add(
+                DemoUser(
+                    id=user_id,
+                    display_name=display_name,
+                    dataset_version=DATASET_VERSION,
+                )
+            )
+        else:
+            user.dataset_version = DATASET_VERSION
     session.flush()
 
     for account_id, user_id, label, currency, opening_balance_minor in _ACCOUNTS:
@@ -103,4 +210,53 @@ def seed_demo_data(session: Session) -> None:
             status=status,
             version=1,
         )
+    session.flush()
+
+    for (
+        account_id,
+        reference,
+        direction,
+        amount_minor,
+        merchant,
+        category,
+        occurred_at,
+    ) in _TRANSACTIONS:
+        transaction_id = uuid5(_SYNTHETIC_NAMESPACE, str(reference))
+        _add_missing(
+            session,
+            Transaction,
+            transaction_id,
+            account_id=account_id,
+            synthetic_ref=str(reference),
+            direction=direction,
+            amount_minor=amount_minor,
+            currency="CNY",
+            merchant=merchant,
+            category=category,
+            description=f"模拟{category}流水",
+            occurred_at=occurred_at,
+        )
+    session.flush()
+
+    transactions = list(session.scalars(select(Transaction).order_by(Transaction.occurred_at)))
+    for candidate in detect_recurring_subscriptions(transactions):
+        subscription_id = uuid5(
+            _SYNTHETIC_NAMESPACE, f"subscription:{candidate.account_id}:{candidate.merchant_key}"
+        )
+        if session.get(Subscription, subscription_id) is None:
+            session.add(
+                Subscription(
+                    id=subscription_id,
+                    account_id=candidate.account_id,
+                    merchant_key=candidate.merchant_key,
+                    merchant=candidate.merchant,
+                    amount_minor=candidate.amount_minor,
+                    currency=candidate.currency,
+                    billing_cycle="monthly",
+                    status="active",
+                    next_charge_at=candidate.next_charge_at,
+                    source_transaction_ids=list(candidate.source_transaction_ids),
+                    version=1,
+                )
+            )
     session.flush()

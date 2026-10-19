@@ -1,14 +1,14 @@
-# Banking Core 与 Card Agent 接口说明（Phase 1B）
+# Banking Core 与 Banking Agent 接口说明（Phase 1C）
 
 本文是 Banking Core 的共享调用入口。所有场景模块都通过 Application 用例操作数据；API、Agent 和前端不得直接写 ORM 表、拼 SQL 或自行提交业务事务。
 
 ## 模块边界
 
-- `domain/`：纯业务状态和转换规则；不依赖 SQLAlchemy、FastAPI 或模型服务。
+- `domain/`：纯业务状态和转换/检测规则；不依赖 SQLAlchemy、FastAPI 或模型服务。
 - `application/`：确定性用例、DTO、资源授权查询和写事务边界。
 - `infrastructure/`：共享 SQLAlchemy Base、engine/session factory、ORM 模型和持久化查询。
 - `api/`：HTTP Schema、身份依赖、参数校验和响应；只调用 Application。
-- `security/`：当前提供 development/test 专用的服务端 DemoActor；真实身份认证仍未实现，卡片确认策略由 `application.agent` 的服务端用例执行。
+- `security/`：当前提供 development/test 专用的服务端 DemoActor；真实身份认证仍未实现，卡片与订阅确认策略由 `application.agent` 的服务端用例执行。
 
 ## Session 与 Unit of Work
 
@@ -18,7 +18,7 @@
 
 卡片状态、确认消费、ToolExecution、Task/Step 状态与对应 AuditEvent 由同一显式事务提交或回滚。卡片 ORM 使用乐观版本字段；确认时还会在写锁内复核 challenge 绑定的卡片版本。不要在事务中调用外部模型服务；模型规划在业务写事务以外完成。
 
-## Card Application API
+## Banking Application API
 
 入口：`finorch_api.application.cards`
 
@@ -42,20 +42,29 @@ with session_factory() as session:
 - `freeze_card(...)` / `unfreeze_card(...) -> CardView`：仅允许 `active → frozen` 和 `frozen → active`；无效转换抛出 `InvalidCardTransition`。仅由 Application 确认用例 `confirm_card_change` 在验证一次性 challenge 后调用；路由、Agent Provider 和 Web 不得直接调用或写 ORM。成功改变状态时在同一事务追加通用 `card.status_changed` 审计事件；失败时状态和审计一并回滚。
 - 并发版本冲突抛出 `CardWriteConflictError`。调用方应返回可识别冲突或按上层幂等策略处理，不可假报成功。
 
+## Bills 与 Subscription Application API
+
+- 入口：`finorch_api.application.bills` 与 `finorch_api.application.subscriptions`。
+- `list_transactions(session, actor_id, month, category, merchant, direction, offset, limit)`：只返回 actor 所属账户内的合成流水，含稳定总数/下一 offset；金额始终是整数最小货币单位。
+- `get_monthly_summary(session, actor_id, month, category)`：服务端基于流水计算收支、类别合计、近六个月趋势与规则提示。异常规则当前仅提示非住房单笔支出不少于 `100_000` CNY minor units；它不判断欺诈。
+- `list_subscriptions(session, actor_id)`：读取 seed 时按相同账户、商户、金额、币种且间隔 25–35 天至少三次的周期流水识别并保存的订阅。
+- `change_subscription_status(...)`：只在确认 Application 用例中调用；仅允许 `active→paused`、`paused→active`、`active|paused→cancelled`。同一事务内更新版本并追加通用审计；不调用真实商户。
+- Web/API/Agent 不能直接写 `transactions` 或 `subscriptions` ORM。账单 Tool 只读；`subscription.pause/resume/cancel` 仅提议 challenge，写入经过共用确认路径。
+
 ## Agent / Workflow 调用边界
 
 - `application.agent.create_agent_task` 建立 Task，再把用户文本、可信服务端上下文和已注册工具交给有界 `AgentRuntime`；Provider 只返回建议的工具调用，不持有 Session。
-- 工具实现使用允许列表并通过 Pydantic Input/Output Schema 校验。只读卡片工具调用 `list_cards` / `get_card`；冻结/解冻工具只验证资源归属并创建 challenge，不改卡状态。
-- `application.agent.confirm_card_change` 是唯一的卡片确认写路径。它在单一 Unit of Work 内复核 actor、card、tool/version、参数摘要、策略版本、卡片版本、有效期和幂等键，消费 challenge，调用 `freeze_card` / `unfreeze_card` 并写执行/审计状态。
+- 工具实现使用允许列表并通过 Pydantic Input/Output Schema 校验。只读卡片/账单/订阅工具调用对应 Application 查询；冻结/解冻和订阅变更工具只创建 challenge，不直接改变资源状态。
+- `application.agent.confirm_agent_task_operation` 是卡片与订阅共用的确认写路径。它在单一 Unit of Work 内复核 actor、资源归属、tool/version、参数摘要、策略版本、资源版本、有效期和幂等键，消费 challenge，调用对应确定性 Application 用例并写任务/执行/审计状态。
 - Web 只消费 API DTO 和 OpenAPI 生成类型，不读取数据库，不根据模型文本推断执行结果。
 
 `/api/v1/agent/tasks` 及其 `/recent`、`/by-idempotency-key/{key}`、`/{task_id}`、`/input`、`/confirm`、`/cancel`、`/audit` 路径的 DTO 与行为以 [API 契约](../api-contract.md)和 FastAPI OpenAPI 为准。任务恢复查询按服务端 actor、会话和操作类型过滤；读取过期确认时会惰性结算 Workflow 与审计，但不改变卡片。当前 Demo actor 仅用于 development/test，不构成真实认证。
 
 ## Seed 与 Reset
 
-- `python -m finorch_api.seed`：仅 development/test 可运行；幂等插入固定 UUID 的 `phase1a-v1` 合成数据，不覆盖现有业务变更。
+- `python -m finorch_api.seed`：仅 development/test 可运行；幂等插入固定 UUID 的 `phase1c-v1` 合成用户、账户、卡片、交易和周期订阅，不覆盖现有业务变更。
 - `python -m finorch_api.reset --confirm`：仅 development 的仓库 `.data/finorch.db` 或 test 下临时 `finorch-test*.sqlite3` 可执行；清空业务、Agent Workflow、确认和审计记录后恢复 seed。必须显式 `--confirm`，拒绝其他环境、路径和数据库文件。
-- 不将 seed 账户余额解释为账本事实或可转账资金；它只是演示初始值。
+- 不将 seed 账户余额解释为账本事实或可转账资金；交易和订阅为演示流水及模拟状态，不触发外部商户扣款或取消。
 
 ## 开发协作约定
 

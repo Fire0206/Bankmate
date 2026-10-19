@@ -42,7 +42,7 @@ Web（另开终端）：
 pnpm --filter @finorch/web dev
 ```
 
-Vite 将 `/api` 代理到本地 API。打开终端输出的地址进入 Card Agent 工作界面；默认 Fake Provider 可无密钥查询合成银行卡、提出冻结/解冻方案并在明确确认后执行。卡片状态从 API 重新读取。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
+Vite 将 `/api` 代理到本地 API。打开终端输出的地址进入 Banking Agent 工作界面；默认 Fake Provider 可无密钥查询合成银行卡、账单和订阅。冻结/解冻及暂停/恢复/取消订阅会先生成服务端确认挑战，明确确认后由 API 写入状态并返回实际结果。账单统计与异常提示由合成流水和确定性规则计算。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
 
 ## 验证命令
 
@@ -74,4 +74,4 @@ Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新
 - 若 Python 版本不符，安装 Python 3.13 后运行 `uv sync --project apps/api`。
 - 前端显示 API 未连接时，先确认 API 在 `127.0.0.1:8000` 正在运行，并已运行 Alembic migration 和 seed，再刷新页面。
 - OpenAPI 类型有变化时运行 `pnpm run api:types` 并提交两项生成物。
-- Banking Core 的 Card/Application、Session 和事务调用边界见[接口说明](development/banking-core.md)。
+- Banking Core 的卡片、账单、订阅 Application、Session 和事务调用边界见[接口说明](development/banking-core.md)。

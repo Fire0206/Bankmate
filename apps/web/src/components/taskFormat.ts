@@ -20,10 +20,12 @@ export function statusLabel(status: Task["status"]): string {
 export function taskMessage(task: Task): string {
   if (task.status !== "failed") return task.message;
   const known: Record<string, string> = {
-    provider_not_configured: "兼容模型服务尚未配置，任务没有执行。",
+    provider_not_configured: "模型服务尚未配置，任务没有执行。",
     card_not_found: "没有找到这张银行卡，请检查尾号后重试。",
-    unknown_tool: "这项操作暂不支持，银行卡状态没有改变。",
-    tool_input_invalid: "银行卡信息无法识别，请重新描述。",
+    subscription_not_found: "没有找到这项自动扣费，请检查订阅名称。",
+    invalid_subscription_transition: "这项订阅当前无法变更到请求的状态。",
+    unknown_tool: "这项业务操作暂不支持，状态没有改变。",
+    tool_input_invalid: "请求信息无法识别，请重新描述。",
     agent_step_limit_exceeded: "任务未能完成，请重新描述操作。",
   };
   return known[task.error_code ?? ""] ?? task.message;

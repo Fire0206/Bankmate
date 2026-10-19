@@ -1,16 +1,18 @@
 # 安全设计
 
-> 当前状态：Phase 1B 已实现本地 Demo Identity、卡片资源归属检查、受控 Agent Tools、持久化 Task/Workflow、服务端一次性确认挑战、幂等和通用审计。未实现生产身份认证、真实银行数据/服务或生产部署。Demo Identity 仅用于本地 development/test，不具备生产级安全性。下文未标为已实现的能力仍是设计约束。
+> 当前状态：Phase 1C 已实现本地 Demo Identity、卡片/订阅资源归属检查、账单只读工具、订阅受控变更工具、持久化 Task/Workflow、服务端一次性确认挑战、幂等和通用审计。未实现生产身份认证、真实银行/商户数据与服务或生产部署。Demo Identity 仅用于本地 development/test，不具备生产级安全性。下文未标为已实现的能力仍是设计约束。
 
 ## 权限与风险
 
 - 当前 API 的 actor 由服务端 `FINORCH_DEMO_USER_ID` 配置提供，只在 `development`/`test` 环境启用；生产环境不可用。客户端的 `user_id` 和角色字段不可信，也不作为身份来源。这个本机 Demo 身份不适用于远程共享或真实用户场景。
 - 卡片读取在 SQL 查询中按 actor 所属用户范围过滤；不属于 actor 的卡片与不存在卡片统一返回 404。未来 API 在应用边界验证真实身份并做资源级授权；只在后端授予最小权限。
+- 交易、月度汇总和订阅读取同样按 actor 所属账户过滤。Agent 工具和 HTTP 只读 API 使用相同 Application 查询边界；账单汇总来自合成流水的服务端确定性计算。
 - 工具权限建议分为 `read_only`、`reversible_write`、`high_risk_write`；风险级别为 `low`、`medium`、`high`、`critical`。操作权限和操作风险分别评估。
 - 读取类工具仍需要用户/资源授权。写入按风险、可逆性、金额/影响和场景制定服务端策略。
 - 当前卡片冻结/解冻均为 `reversible_write`、`medium`，服务端策略要求每次确认。challenge 绑定 actor、card ID、tool 名称/版本、目标状态、规范化参数摘要、卡片版本、policy 版本、幂等键和 5 分钟有效期；参数改变会失效，确认时在 SQLite `BEGIN IMMEDIATE` 写事务中重新授权并校验所有绑定字段。
-- 确认消费、Card 状态变更、Task/Step/ToolExecution 结果和 AuditEvent 同事务提交；写入失败时整体回滚。challenge 消费和执行记录受唯一约束及事务锁保护，重复确认不会产生第二次业务副作用。卡片的乐观版本变化会拒绝旧 challenge。
-- 卡片写入只能从受控 Tool proposal 与服务端确认 API 到达 `confirm_card_change` Application 用例；没有普通冻结/解冻 API。模型不能设置 actor、权限、目标资源身份、策略等级或绕过确认。
+- 当前订阅暂停/恢复/取消均为 `reversible_write`、`medium`，服务端策略要求每次确认。通用 challenge 绑定 actor、单一资源类型/ID、工具/版本、目标状态、规范化参数摘要、对应资源版本、policy 版本、幂等键和 5 分钟有效期；确认时重新检查 actor 归属、状态转换和版本。
+- 确认消费、Card/Subscription 状态变更、Task/Step/ToolExecution 结果和 AuditEvent 同事务提交；写入失败时整体回滚。challenge 消费和执行记录受唯一约束及 SQLite 写事务保护，重复确认不会产生第二次业务副作用。资源乐观版本变化会拒绝旧 challenge。
+- 卡片和订阅写入只能从受控 Tool proposal 与服务端确认 API 到达 Application 用例；没有普通冻结/解冻或订阅状态写入路由。模型不能设置 actor、权限、目标资源身份、策略等级或绕过确认。
 - 额度、余额、交易限制、幂等和合法状态由确定性后端逻辑判定，不能由 LLM 推断。
 
 ## Prompt Injection 与模型隔离
@@ -31,7 +33,7 @@
 - 浏览器 `sessionStorage` 可能短暂保存待核实请求的文本、操作参数和幂等键，以便先查询结果或用同键安全重试；它不是可信存储，数据可被本机用户或页面脚本读取。真实个人/金融信息仍禁止输入。
 - 审计日志采用追加式记录；正常业务路径不覆盖历史。仅受限 development/test 的显式 Demo Reset 会清空合成审计数据并重置数据库。保留期限、访问权限和删除义务需在真实业务范围确定后审议。
 - 日志和错误响应按最小需要记录；遮蔽账户标识和手机号，永不记录完整卡号、认证材料、访问令牌、API Key 或不必要的 prompt/正文。
-- 全部开发、测试、演示金融记录均为合成数据；当前 seed 使用固定 ID 和 `phase1a-v1` 数据集版本，可重复执行。显式 reset 的路径白名单见[数据契约](data-contract.md)。
+- 全部开发、测试、演示金融记录均为合成数据；当前 seed 使用固定 ID 和 `phase1c-v1` 数据集版本，可重复执行。异常提示为“非住房单笔支出达到 ¥1,000”的确定性演示规则，不是欺诈检测。显式 reset 的路径白名单见[数据契约](data-contract.md)。
 
 ## 错误、幂等和滥用防护
 

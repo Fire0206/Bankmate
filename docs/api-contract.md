@@ -34,9 +34,9 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 
 响应携带 `X-Request-ID`。接受合法的调用方 request ID 或生成新 ID，并在错误体中回传。Trace ID 用于跨服务观测时采用独立 `traceparent` 或已批准的追踪规范；Phase 0 不实现分布式 tracing。
 
-## 分页和筛选（Planned）
+## 分页和筛选
 
-列表端点统一使用 cursor pagination：`limit`（默认 20，最大 100）和不透明 `cursor`。响应为 `{ "items": [], "next_cursor": null }`。筛选项作为有类型、文档化的 query 参数；排序需显式限定稳定字段和方向。不得在不同列表随意混用 offset 与 cursor。
+新列表优先采用 cursor pagination：`limit`（默认 20，最大 100）和不透明 `cursor`。卡片列表已采用该方式；Phase 1C 的交易流水为兼容本地有限合成数据，使用 `offset`（默认 0，最大 10,000）/`limit`（默认 50，最大 100），响应包含 `total` 和 `next_offset`。后续如需统一分页，必须评估兼容性并通过接口变更流程处理。筛选项作为有类型、文档化的 query 参数；排序需显式限定稳定字段和方向。
 
 ## 时间、金额和货币
 
@@ -47,11 +47,11 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 ## 幂等与兼容
 
 - 创建或有副作用的请求应使用 `Idempotency-Key`。服务端按用户/作用域和键保存请求摘要及最终结果；相同键、相同请求返回原结果，相同键、不同请求返回 `idempotency_conflict`。
-- Phase 1B 的任务创建、补充/修订输入、确认和取消 API 已实现持久化幂等检查；键在 actor/任务/操作作用域内绑定规范化输入。并发确认由 SQLite 写事务串行化，确认键与 challenge 绑定。其他业务 API 的保留期、并发行为和失败重试仍须在实现时明确；当前没有通用幂等中间件。
+- Phase 1B/1B.5/1C 的任务创建、补充/修订输入、卡片或订阅确认和取消 API 已实现持久化幂等检查；键在 actor/任务/操作作用域内绑定规范化输入。并发确认由 SQLite 写事务串行化，确认键与 challenge 绑定。当前没有通用幂等中间件。
 - 增加可选响应字段通常向后兼容；删除/重命名字段、收窄输入或改变既有含义属于破坏性变更。先弃用并沟通，再在新主版本移除。
 - PR 必须更新 Schema、类型生成物、兼容说明、消费者和测试。Breaking change 需 ADR 或版本变更评审。
 
-## Phase 1B 已实现端点
+## 已实现端点
 
 `GET /api/v1/health` 返回 `HealthResponse`：
 
@@ -70,23 +70,33 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 
 Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`test` 可用；客户端提供的 `user_id` 或角色字段不参与身份判定。两端点的响应 DTO 与 SQLAlchemy 模型分离，Schema 仍以 OpenAPI 和自动生成的 TypeScript 类型为准。
 
+账单和订阅只读端点（所有查询均限定为当前服务端 Demo actor 的合成数据）：
+
+| 方法与路径                                                                                                      | 说明                                                                                 |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `GET /api/v1/transactions?month=YYYY-MM&category=...&merchant=...&direction=income%7Cexpense&offset=0&limit=50` | 按月份、类别、商户、收支方向筛选流水；返回 `items/total/offset/limit/next_offset`。  |
+| `GET /api/v1/bills/summary?month=YYYY-MM&category=...`                                                          | 返回月度收入、支出、结余、类别汇总、近六个月趋势及规则提示；可选类别筛选。           |
+| `GET /api/v1/subscriptions`                                                                                     | 返回从周期模拟交易识别并持久化的订阅、月费合计、状态、检测扣款数及下次模拟扣款时间。 |
+
+账单 API 的金额均为整数 `amount_minor` 和 ISO 4217 `currency`；异常仅表示匹配确定性演示规则，不代表欺诈结论。当前订阅端点只读；暂停、恢复和取消只能经 Agent Tool 提案与下述任务确认端点执行，不能直接写 Subscription。
+
 Demo Session 与 Agent Task 端点：
 
-| 方法与路径                                                                                       | 说明                                                                                                            |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                  |
-| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                          |
-| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                               |
-| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                       |
-| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                           |
-| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                        |
-| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
-| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                      |
-| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                          |
+| 方法与路径                                                                                       | 说明                                                                                                                  |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                        |
+| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                |
+| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                     |
+| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                             |
+| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                 |
+| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                              |
+| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片或订阅确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
+| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                            |
+| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                |
 
-`card.freeze` 与 `card.unfreeze` 不是独立 HTTP 写路由。Agent 工具提案只创建确认挑战；只有确认路由经过服务端复核后，才通过 Application 用例变更卡片。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
+`card.freeze`、`card.unfreeze`、`subscription.pause`、`subscription.resume` 与 `subscription.cancel` 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
 
-任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
+任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`subscription_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
 
 任务读取发现已过期的 pending confirmation 时，由服务端将挑战、ToolExecution、TaskStep 和 Task 状态在同一事务中结算为过期/失败并追加审计；卡片状态保持不变。这个惰性过期处理保证刷新恢复显示服务端实际状态，不依赖前端时钟。
 

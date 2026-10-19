@@ -54,3 +54,133 @@ class CardChangeProposalOutput(BaseModel):
     parameters_hash: str
     idempotency_key: str
     expires_at: datetime
+    resource_type: Literal["card"] = "card"
+    resource_id: UUID
+    resource_label: str
+    resource_version: int = Field(ge=1)
+
+
+class BillMonthInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str | None = Field(
+        default=None,
+        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
+        description="Calendar month in UTC using YYYY-MM; omit for the current month.",
+    )
+
+
+class BillSummaryInput(BillMonthInput):
+    category: str | None = Field(default=None, min_length=1, max_length=48)
+
+
+class BillTransactionsInput(BillMonthInput):
+    category: str | None = Field(default=None, min_length=1, max_length=48)
+    merchant: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class BillCategoryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: str
+    amount_minor: int
+    transaction_count: int
+
+
+class BillTrendOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    income_minor: int
+    expense_minor: int
+
+
+class BillTransactionOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    direction: Literal["income", "expense"]
+    amount_minor: int
+    currency: str
+    merchant: str
+    category: str
+    occurred_at: datetime
+    anomaly_reason: str | None
+
+
+class BillSummaryOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    currency: str
+    income_minor: int
+    expense_minor: int
+    net_minor: int
+    selected_category: str | None
+    selected_category_expense_minor: int | None
+    categories: list[BillCategoryOutput]
+    trends: list[BillTrendOutput]
+    anomalies: list[BillTransactionOutput]
+
+
+class BillTransactionsOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    items: list[BillTransactionOutput]
+    total: int
+
+
+class BillAnomaliesOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    items: list[BillTransactionOutput]
+
+
+class SubscriptionNameInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    merchant_name: str = Field(min_length=2, max_length=120)
+
+
+class SubscriptionToolItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    merchant: str
+    amount_minor: int
+    currency: str
+    billing_cycle: Literal["monthly"]
+    status: Literal["active", "paused", "cancelled"]
+    next_charge_at: datetime
+    version: int = Field(ge=1)
+    detected_charge_count: int = Field(ge=3)
+
+
+class SubscriptionListOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SubscriptionToolItem]
+    monthly_total_minor: int
+    currency: str
+
+
+class SubscriptionChangeProposalOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["awaiting_confirmation"]
+    confirmation_required: Literal[True]
+    challenge_id: UUID
+    subscription_id: UUID
+    merchant: str
+    current_status: Literal["active", "paused", "cancelled"]
+    target_status: Literal["active", "paused", "cancelled"]
+    subscription_version: int
+    parameters_hash: str
+    idempotency_key: str
+    expires_at: datetime
+    resource_type: Literal["subscription"] = "subscription"
+    resource_id: UUID
+    resource_label: str
+    resource_version: int = Field(ge=1)
