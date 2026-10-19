@@ -41,12 +41,16 @@ docs/
   decisions/           架构决策记录（ADR）
   development/         开发和发布前检查说明
   research/            Phase 0.5 开源源码研究
+skills/
+  finorch-banking-agent/  团队 Codex Skill（安装后用于 PRD、六场景后端、安全和 Demo）
 .github/
   ISSUE_TEMPLATE/      Bug 与功能请求表单
   workflows/           GitHub Actions CI
 ```
 
 各层职责和当前实现边界见[架构说明](docs/architecture.md)。
+
+团队 Codex Skill 的安装和使用见[skills/INSTALL.md](skills/INSTALL.md)。
 
 ## 环境要求
 
