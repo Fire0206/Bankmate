@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from finorch_api.main import app
 
 client = TestClient(app)

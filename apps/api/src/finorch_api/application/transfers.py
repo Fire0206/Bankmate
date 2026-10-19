@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
@@ -241,9 +241,10 @@ def propose_transfer(
         raise BankingRuleError("insufficient_funds", "账户余额不足，未创建转账。")
     if scheduled_at is not None:
         scheduled_at = _utc(scheduled_at)
-        if scheduled_at is None or scheduled_at <= utc_now():
+        now = utc_now()
+        if scheduled_at is None or scheduled_at <= now:
             raise BankingRuleError("invalid_schedule_time", "定时转账时间必须晚于当前时间。")
-        if scheduled_at > utc_now().replace(year=utc_now().year + 1):
+        if scheduled_at > now + timedelta(days=365):
             raise BankingRuleError("invalid_schedule_time", "定时转账不能超过一年。")
     transfer_type = "scheduled" if scheduled_at is not None else "immediate"
     transfer = Transfer(

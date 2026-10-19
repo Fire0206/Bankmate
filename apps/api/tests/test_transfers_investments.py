@@ -4,8 +4,10 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
 from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider, ModelToolCall, ModelTurn
+from finorch_api.agent.runtime import FakeProvider, LLMProvider, ModelToolCall, ModelTurn
 from finorch_api.api.v1.agent import get_provider_selection
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.infrastructure.models import (
@@ -27,7 +29,6 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from sqlalchemy import func, select
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
 ALICE_SAVINGS_ACCOUNT = UUID("10000000-0000-4000-8000-000000000002")
@@ -194,6 +195,51 @@ def test_scheduled_transfer_is_confirmed_then_simulated_only_when_due(banking_ap
     assert balances(database) == after_execution
     with database.session_factory() as session:
         assert session.scalar(select(Transfer).where(Transfer.status == "cancelled")) is not None
+
+
+def test_scheduled_transfer_one_year_limit_handles_leap_day(banking_api, monkeypatch) -> None:
+    client, _actor, _database = banking_api
+    leap_day_now = datetime(2024, 2, 29, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr("finorch_api.application.transfers.utc_now", lambda: leap_day_now)
+
+    class ScheduledTransferProvider(LLMProvider):
+        mode = "openai-compatible"
+
+        def complete(self, messages, tools):
+            del messages, tools
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "schedule-leap-day",
+                        "transfer.schedule",
+                        '{"recipient_name":"小林","amount_minor":2000,'
+                        '"scheduled_at":"2025-02-28T00:00:00+00:00"}',
+                    ),
+                ),
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        ScheduledTransferProvider(), "openai-compatible"
+    )
+    try:
+        response = client.post(
+            "/api/v1/agent/tasks",
+            json={
+                "request_text": "下个闰年日期给小林定时转账",
+                "conversation_id": str(UUID(int=4)),
+            },
+            headers={"Idempotency-Key": "schedule-after-leap-day"},
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert response.status_code == 200, response.text
+    task = response.json()
+    assert task["status"] == "awaiting_confirmation"
+    assert task["confirmation"]["details"]["scheduled_at"] == "2025-02-28T00:00:00+00:00"
 
 
 def test_aa_split_rounds_minor_units_and_requires_collection_confirmation(banking_api) -> None:

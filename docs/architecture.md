@@ -41,7 +41,7 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 - `apps/api/`：FastAPI 服务、配置、生成 OpenAPI 的脚本和后端测试。
 - `apps/api/alembic/`：唯一数据库迁移历史；业务表不得在应用启动时自动创建。
 - `apps/api/src/finorch_api/application/`：确定性用例、资金事务边界、服务端确认和持久化任务编排。
-- `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、按业务分开的银行卡/账单/订阅/转账/理财 Tool 适配器，以及 Fake 与 OpenAI-compatible Provider；Provider 不获得数据库写权限。
+- `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、按业务分开的转账/理财/现金流适配器、由 `registry.py` 组装的银行卡/账单/订阅工具，以及 Fake 与 OpenAI-compatible Provider；Provider 不获得数据库写权限。
 - `apps/api/src/finorch_api/domain/`：框架无关的业务金额、状态转换和账单提示规则。
 - `apps/api/src/finorch_api/infrastructure/`：共享 SQLAlchemy Base、engine/session、ORM 模型和持久化查询。
 - `apps/api/src/finorch_api/security/`：development/test 专用 DemoActor 上下文。
@@ -62,4 +62,4 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 
 ## 运行时关系
 
-Web 开发服务器将 `/api` 请求代理到本地 FastAPI。界面通过 Agent Task API 调用当前五类业务工具；查询与操作结果由真实 API 返回。所有资金变更和高风险状态修改均经服务端确认流程。健康检查只返回 API 进程状态，不代表数据库或模型服务可用。
+Web 开发服务器将 `/api` 请求代理到本地 FastAPI。界面通过 Agent Task API 调用当前六类业务工具；查询与操作结果由真实 API 返回。所有资金变更和高风险状态修改均经服务端确认流程。健康检查只返回 API 进程状态，不代表数据库或模型服务可用。

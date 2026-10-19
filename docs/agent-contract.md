@@ -105,16 +105,17 @@ Agent 不可跳过其中任一步骤。工具失败、超时和部分完成都�
 
 顶层任务状态已在数据库约束和 Application 转换表实现：`pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`。
 
-| 当前状态                             | 允许的下一状态                                                                |
-| ------------------------------------ | ----------------------------------------------------------------------------- |
-| `pending`                            | `planning`、`cancelled`                                                       |
-| `planning`                           | `awaiting_input`、`awaiting_confirmation`、`running`、`failed`、`cancelled`   |
-| `awaiting_input`                     | `planning`、`cancelled`                                                       |
-| `awaiting_confirmation`              | `running`、`planning`、`cancelled`、`failed`（过期/拒绝按产品策略终结）       |
-| `running`                            | `awaiting_input`、`awaiting_confirmation`、`completed`、`failed`、`cancelled` |
-| `completed` / `failed` / `cancelled` | 终态；重试应创建新尝试或任务                                                  |
+| 当前状态                  | 允许的下一状态                                                                    |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `pending`                 | `planning`、`cancelled`                                                           |
+| `planning`                | `awaiting_input`、`awaiting_confirmation`、`running`、`failed`、`cancelled`       |
+| `awaiting_input`          | `planning`、`cancelled`                                                           |
+| `awaiting_confirmation`   | `running`、`planning`、`cancelled`、`failed`（过期/拒绝按产品策略终结）           |
+| `running`                 | `awaiting_input`、`awaiting_confirmation`、`completed`、`failed`、`cancelled`     |
+| `completed` / `cancelled` | 终态；不能继续或重放                                                              |
+| `failed`                  | 有至少一个成功工具执行时，可通过 `/input` 补充信息后转 `planning`；否则需新建任务 |
 
-服务端校验状态转换并记录版本/事件。前端只能展示状态，不能自行推动状态。
+服务端校验状态转换并记录版本/事件。`failed` 不是无条件可恢复：只有保留了成功工具执行的部分成功任务，才接受补充输入继续运行。前端只能展示状态，不能自行推动状态。
 
 ## 任务、步骤和工具记录
 
