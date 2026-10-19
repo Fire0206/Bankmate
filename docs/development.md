@@ -68,6 +68,10 @@ Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新
 
 本地开发和 CI 按私有仓库流程运行。当前 GitHub 仓库为 Private，但 `main` 尚未启用分支保护或 Ruleset；计划限制、当前状态和人工协作替代流程见[协作流程](collaboration.md)。管理员邀请正式团队成员并分配最小权限。不得将工作复制到未经批准的公共 fork 或公开 CI Artifact。正式提交前依照[仓库公开检查清单](development/public-release-checklist.md)执行。
 
+## 团队 Codex Skill
+
+仓库内提供 `skills/finorch-banking-agent/`，用于让团队成员的 Codex 按统一的产品原则、Agent 契约、六场景后端手册、安全评测和 Demo 规范工作。安装步骤见[skills/INSTALL.md](../skills/INSTALL.md)。安装后重启 Codex 或新建对话；不要在未回写仓库的情况下只改本机 Skill 副本。
+
 ## 常见问题
 
 - 若 `pnpm` 未找到，安装/启用 pnpm 11 并重新打开终端。
