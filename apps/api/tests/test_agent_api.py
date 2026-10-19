@@ -1,9 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy import func, select, update
+
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import (
     AgentProviderError,
@@ -29,8 +33,6 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from sqlalchemy import event as sqlalchemy_event
-from sqlalchemy import func, select, update
 
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")
@@ -758,6 +760,102 @@ def test_unconfigured_real_provider_persists_failure_without_execution(api_conte
     assert task["error_code"] == "provider_not_configured"
     with database.session_factory() as session:
         assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.ACTIVE
+        assert session.scalar(select(func.count()).select_from(ToolExecution)) == 0
+
+
+def test_unexpected_provider_exception_is_persisted_as_failed_task(api_context):
+    client, _actor, database = api_context
+
+    class BrokenProvider(LLMProvider):
+        mode = "openai-compatible"
+
+        def complete(self, messages, tools):
+            del messages, tools
+            raise RuntimeError("provider internals must not be returned to the client")
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        BrokenProvider(), "openai-compatible"
+    )
+    try:
+        response = client.post(
+            "/api/v1/agent/tasks",
+            json={"request_text": "查看我的银行卡", "conversation_id": CONVERSATION_ID},
+            headers={"Idempotency-Key": "unexpected-provider-error"},
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert response.status_code == 200, response.text
+    task = response.json()
+    assert task["status"] == "failed"
+    assert task["error_code"] == "agent_runtime_error"
+    assert task["steps"][0]["status"] == "failed"
+    assert "provider internals" not in task["message"]
+    with database.session_factory() as session:
+        persisted = session.get(AgentTask, UUID(task["id"]))
+        assert persisted is not None and persisted.status == "failed"
+        assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.ACTIVE
+
+
+def test_cancellation_wins_over_a_late_provider_tool_call(api_context):
+    client, _actor, database = api_context
+    provider_started = Event()
+    continue_provider = Event()
+
+    class DelayedWriteProvider(LLMProvider):
+        mode = "openai-compatible"
+
+        def complete(self, messages, tools):
+            del messages, tools
+            provider_started.set()
+            assert continue_provider.wait(timeout=10)
+            return ModelTurn(
+                "", (ModelToolCall("late-freeze", "card.freeze", '{"card_suffix":"1042"}'),)
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        DelayedWriteProvider(), "openai-compatible"
+    )
+    task_key = "cancel-before-late-tool"
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending_request = pool.submit(
+                lambda: client.post(
+                    "/api/v1/agent/tasks",
+                    json={"request_text": "冻结尾号 1042 的卡", "conversation_id": CONVERSATION_ID},
+                    headers={"Idempotency-Key": task_key},
+                )
+            )
+            assert provider_started.wait(timeout=10)
+            recent = client.get(
+                f"/api/v1/agent/tasks/recent?conversation_id={CONVERSATION_ID}"
+            ).json()
+            cancel_response = client.post(
+                f"/api/v1/agent/tasks/{recent['id']}/cancel",
+                headers={"Idempotency-Key": "cancel-in-flight-task"},
+            )
+            assert cancel_response.status_code == 200, cancel_response.text
+            assert cancel_response.json()["status"] == "cancelled"
+            continue_provider.set()
+            late_response = pending_request.result(timeout=10)
+    finally:
+        continue_provider.set()
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert late_response.status_code == 200, late_response.text
+    task = late_response.json()
+    assert task["status"] == "cancelled"
+    assert task["error_code"] is None
+    assert task["message"] == "任务已取消；尚未确认的操作没有执行。"
+    assert task["confirmation"] is None
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None and card.status is CardStatus.ACTIVE and card.version == 1
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
         assert session.scalar(select(func.count()).select_from(ToolExecution)) == 0
 
 

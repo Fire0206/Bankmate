@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.main import app
 from finorch_api.security.demo_identity import (

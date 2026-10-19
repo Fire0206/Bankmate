@@ -3,6 +3,9 @@ from pathlib import Path
 from uuid import UUID
 
 import pytest
+from sqlalchemy import event, func, select
+from sqlalchemy.exc import OperationalError
+
 from finorch_api.application.cards import (
     CardNotFoundError,
     freeze_card,
@@ -14,8 +17,6 @@ from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition
 from finorch_api.infrastructure.models import AuditEvent, Card
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID
-from sqlalchemy import event, func, select
-from sqlalchemy.exc import OperationalError
 
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")
