@@ -2,8 +2,6 @@ import json
 import urllib.error
 from typing import Any
 
-from pydantic import SecretStr
-
 from finorch_api.agent.providers import OpenAICompatibleProvider, select_provider
 from finorch_api.agent.runtime import (
     AgentRuntime,
@@ -16,6 +14,7 @@ from finorch_api.agent.runtime import (
 )
 from finorch_api.agent.tools import CardListOutput, CardSuffixInput, EmptyToolInput
 from finorch_api.config import Settings
+from pydantic import SecretStr
 
 
 def test_fake_provider_is_deterministic_and_does_not_call_network() -> None:

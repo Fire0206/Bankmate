@@ -4,9 +4,6 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event as sqlalchemy_event
-from sqlalchemy import func, select, update
-
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import (
     AgentProviderError,
@@ -32,6 +29,8 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
+from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy import func, select, update
 
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")

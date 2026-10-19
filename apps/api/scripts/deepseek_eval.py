@@ -15,12 +15,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import select
-
 from finorch_api.config import Settings
 from finorch_api.infrastructure.database import get_session_factory
 from finorch_api.infrastructure.models import Subscription
 from finorch_api.reset import reset_demo_data, validate_reset_target
+from sqlalchemy import select
 
 BASE_URL = os.getenv("FINORCH_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 

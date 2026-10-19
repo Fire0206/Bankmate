@@ -2,13 +2,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from alembic.config import Config
-from sqlalchemy.engine import URL, Engine
-from sqlalchemy.orm import Session, sessionmaker
-
 from alembic import command
+from alembic.config import Config
 from finorch_api.infrastructure.database import build_engine
 from finorch_api.seed_data import seed_demo_data
+from sqlalchemy.engine import URL, Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
