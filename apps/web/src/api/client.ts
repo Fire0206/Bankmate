@@ -15,6 +15,25 @@ type IdempotencyTaskResponse =
   paths["/api/v1/agent/tasks/by-idempotency-key/{idempotency_key}"]["get"]["responses"][200]["content"]["application/json"];
 type IdempotencyOperation =
   paths["/api/v1/agent/tasks/by-idempotency-key/{idempotency_key}"]["get"]["parameters"]["query"]["operation"];
+type TransactionsResponse = components["schemas"]["TransactionPageResponse"];
+type BillSummaryResponse = components["schemas"]["BillSummaryResponse"];
+type SubscriptionListResponse =
+  components["schemas"]["SubscriptionListResponse"];
+type AccountListResponse = components["schemas"]["AccountBalanceListResponse"];
+type PayeeListResponse = components["schemas"]["PayeeListResponse"];
+type TransferListResponse = components["schemas"]["TransferListResponse"];
+type SplitListResponse = components["schemas"]["SplitBillListResponse"];
+type ProductListResponse =
+  components["schemas"]["InvestmentProductListResponse"];
+type PortfolioResponse = components["schemas"]["InvestmentPortfolioResponse"];
+type RiskProfileResponse = components["schemas"]["RiskProfileResponse"];
+type OrderListResponse = components["schemas"]["InvestmentOrderListResponse"];
+type RecommendationsResponse =
+  components["schemas"]["FinancialRecommendationsResponse"];
+type PaydayPlanPreviewRequest =
+  paths["/api/v1/cashflow/payday-plan-preview"]["post"]["requestBody"]["content"]["application/json"];
+type PaydayPlanPreviewResponse =
+  components["schemas"]["PaydayPlanPreviewResponse"];
 type TaskInputRequest =
   paths["/api/v1/agent/tasks/{task_id}/input"]["post"]["requestBody"]["content"]["application/json"];
 type ConfirmationRequest =
@@ -76,6 +95,38 @@ export const apiClient = {
   readHealth: () => request<HealthResponse>("/api/v1/health"),
   readSession: () => request<DemoSessionResponse>("/api/v1/demo/session"),
   readCards: () => request<CardListResponse>("/api/v1/cards?limit=100"),
+  readTransactions: (month: string) =>
+    request<TransactionsResponse>(
+      "/api/v1/transactions?month=" + encodeURIComponent(month) + "&limit=100",
+    ),
+  readBillSummary: (month: string) =>
+    request<BillSummaryResponse>(
+      "/api/v1/bills/summary?month=" + encodeURIComponent(month),
+    ),
+  readSubscriptions: () =>
+    request<SubscriptionListResponse>("/api/v1/subscriptions"),
+  readAccounts: () => request<AccountListResponse>("/api/v1/accounts"),
+  readPayees: () => request<PayeeListResponse>("/api/v1/payees"),
+  readTransfers: () =>
+    request<TransferListResponse>("/api/v1/transfers?limit=50"),
+  readSplits: () => request<SplitListResponse>("/api/v1/splits?limit=50"),
+  readProducts: () =>
+    request<ProductListResponse>("/api/v1/investments/products"),
+  readPortfolio: () =>
+    request<PortfolioResponse>("/api/v1/investments/portfolio"),
+  readRiskProfile: () =>
+    request<RiskProfileResponse>("/api/v1/investments/profile"),
+  readOrders: () => request<OrderListResponse>("/api/v1/investments/orders"),
+  readRecommendations: (month: string) =>
+    request<RecommendationsResponse>(
+      "/api/v1/financial-insights/recommendations?month=" +
+        encodeURIComponent(month),
+    ),
+  previewPaydayPlan: (body: PaydayPlanPreviewRequest) =>
+    request<PaydayPlanPreviewResponse>("/api/v1/cashflow/payday-plan-preview", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   readTask: (id: string) =>
     request<AgentTaskResponse>("/api/v1/agent/tasks/" + encodeURIComponent(id)),
   readRecentTask: (conversationId: string) =>
@@ -156,7 +207,23 @@ export const apiClient = {
 export type {
   AgentTaskResponse,
   AuditResponse,
+  AccountListResponse,
+  BillSummaryResponse,
   CardListResponse,
+  CreateTaskRequest,
   DemoSessionResponse,
   HealthResponse,
+  OrderListResponse,
+  PaydayPlanPreviewRequest,
+  PaydayPlanPreviewResponse,
+  PayeeListResponse,
+  PortfolioResponse,
+  ProductListResponse,
+  RecommendationsResponse,
+  RiskProfileResponse,
+  SplitListResponse,
+  SubscriptionListResponse,
+  TaskInputRequest,
+  TransactionsResponse,
+  TransferListResponse,
 };

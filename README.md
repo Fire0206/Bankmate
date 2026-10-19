@@ -2,7 +2,7 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 2B — 后端可靠性收尾与前端能力交接。** 六类模拟业务及跨场景任务已实现；本阶段聚焦后端一致性、Agent/Workflow 可靠性和前端数据契约交接，不增加业务场景。真实认证、真实金融服务和生产部署仍未实现。
+> **项目状态：Phase 2C — 竞赛演示与可靠性加固已完成。** 六类模拟业务及跨场景任务已实现；本阶段补充确定性财务提示、发薪日计划预览和独立 `/showcase` 工作台，并复核服务端安全边界。真实认证、真实金融服务和生产部署仍未实现。
 
 ## 产品规划
 
@@ -23,6 +23,7 @@
 
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
 - **API**：Python、FastAPI、Pydantic、uv、pytest；包括账户、收款人、转账、AA 分账、模拟理财产品/持仓/订单，以及 Agent Task、确认、取消和审计 API。资金变更只经 Agent 服务端确认流程执行。
+- **Phase 2C 扩展**：只读发薪日资金计划预览和按合成流水确定性生成的财务提示；这些接口不创建转账、订单或其他资金副作用。
 - **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；可选 OpenAI-compatible Chat Completions Adapter 需要自行配置服务端密钥。
 - **数据**：SQLAlchemy 2.x、SQLite、Alembic；包括合成账户、银行卡、交易、订阅、收款人、转账、分账、理财产品/持仓/订单、持久化 Agent Workflow、确认挑战和追加式审计。没有真实资金流或外部商户操作。
 - **API 类型**：FastAPI/Pydantic 生成的 OpenAPI Schema 是单一事实来源；Web 类型通过 `openapi-typescript` 生成。
@@ -101,7 +102,7 @@ uv run --project apps/api python -m finorch_api
 pnpm --filter @finorch/web dev
 ```
 
-打开 Vite 显示的本地地址即可在 Fake Provider 模式演示六个场景，包括可疑扣款处置和发薪日资金调度。所有资金或状态变更均先生成服务端确认卡片；跨场景操作按步骤逐项确认，任务刷新后可从服务端恢复。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
+打开 Vite 显示的本地地址即可进入现有 Agent 工作界面；访问 `/showcase` 可打开独立的六场景产品展示工作台。默认 Fake Provider 使用确定性模拟规则，不调用外部模型；页面会读取实际 API 状态、账单、账户和持仓数据。所有资金或状态变更均先生成服务端确认卡片；跨场景操作按步骤逐项确认，任务刷新后可从服务端恢复。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
 
 可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。`FINORCH_LLM_TEMPERATURE` 默认 `0.2`，降低工具选择的随机性。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金、适当性和权限校验及确认均由服务端执行。
 
@@ -147,4 +148,4 @@ Phase 1E 的 DeepSeek 端到端评测脚本见[开发指南](docs/development.md
 - [2026 深圳国际金融科技大赛官网](https://fintechathon.g-ican.com/)
 - [人工智能赛道报名工作台](https://apply.g-ican.com/)
 
-赛事要求及未确认事项按官方公开内容记录在[赛事核对文档](docs/competition-requirements.md)，核对日期为 2026-10-17。
+赛事要求及未确认事项按官方公开内容记录在[赛事核对文档](docs/competition-requirements.md)，并以文档内最近一次核对日期和官方通知为准。
