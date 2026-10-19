@@ -4,7 +4,9 @@
 
 已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面、FastAPI 账户/银行卡/账单/订阅/转账/分账/理财/Agent Task API、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、合成 seed/reset、持久化 Agent Workflow、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。模拟转账会更新账户余额与交易记录；理财操作会更新账户余额、持仓和订单记录。
 
-**Planned**：跨场景联动、真实用户认证、外部银行/支付网络、SSE/WebSocket 事件推送和生产部署。当前 Agent 覆盖五类本地模拟场景；异常提示是确定性规则，不是欺诈检测；产品价格/收益均为模拟信息；Fake Provider 是确定性规则，不代表模型推理。DeepSeek 的真实调用情况以当前分支测试记录为准。Demo Identity 不具备生产级安全性。数据和调用边界见[数据契约](data-contract.md)及[Banking Core 接口说明](development/banking-core.md)。
+当前 Agent 覆盖六类本地模拟场景。跨场景任务支持可疑扣款处置和发薪日资金调度；单个持久化 Task 可跨多个确认点续跑，并保留部分成功记录。取消后尚未确认的操作失效；已执行成功的工具不会因恢复而重放。异常提示是确定性规则，不是欺诈检测；产品价格/收益均为模拟信息；Fake Provider 是确定性规则，不代表模型推理。真实模型评测结果以[开发指南](development.md)的本轮记录为准。
+
+**Planned**：真实用户认证、外部银行/支付网络、SSE/WebSocket 事件推送和生产部署。Demo Identity 不具备生产级安全性。数据和调用边界见[数据契约](data-contract.md)及[Banking Core 接口说明](development/banking-core.md)。
 
 ## 逻辑层职责
 

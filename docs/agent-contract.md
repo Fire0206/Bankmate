@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> Phase 1D 已覆盖五类本地模拟场景：银行卡、账单、订阅、转账和理财。跨场景联动仍为 Planned。Provider Mock、actor 范围任务恢复与幂等重试规则继续适用；真实模型范围以本轮执行记录为准。Banking Core 调用边界见[接口说明](development/banking-core.md)。
+> Phase 1E 覆盖银行卡、账单、订阅、转账、理财及跨场景任务。跨场景主线为可疑扣款处置与发薪日资金调度；真实模型评测范围和结果以[开发指南](development.md)记录为准。Banking Core 调用边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -15,27 +15,29 @@
 - `FakeProvider` 是明确标注的确定性本地演示实现：它按小范围请求文本和可信会话上下文产生预设工具调用，不做模型推理、不访问网络。它不是“假装的 LLM”。
 - `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、Base URL、API Key 和模型名后才启用。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
 - Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
-- Agent Loop 最多处理 4 轮工具调用，累计 `tool_calls` 不超过 4 次，并最多额外请求一轮无工具的最终响应；同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。重复的工具名与规范化参数组合会失败停止；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
+- Agent Loop 每次规划最多执行 8 次工具调用；确认后在同一持久化 Task 中继续规划，最多追加 6 个续跑阶段。若完成态门禁发现明确请求仍缺少成功的写工具记录，服务端最多再请求两次有界重规划，并把缺失工具放入可信上下文；仍未完成则以失败状态返回。同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。已成功的写操作不会重放；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
 - 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。只读结果和写入结果摘要均基于服务端工具数据生成，不将模型文本当作业务执行事实。
-- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。当前未对任何实际模型供应商进行网络连通性、模型行为或付费调用测试。
+- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。DeepSeek 端到端业务评测使用隔离测试库和合成数据；覆盖范围及结果见[开发指南](development.md)。该评测不等同于安全或 Prompt Injection 认证。
 
 当前允许工具：
 
-| Tool                   | 输入/输出                              | 权限 / 风险 / 确认                       | 实际行为                                                 |
-| ---------------------- | -------------------------------------- | ---------------------------------------- | -------------------------------------------------------- |
-| `card.list`            | 空输入 / 当前用户卡片列表              | `read_only` / `low` / `never`            | Application 查询 actor 自己的合成卡片                    |
-| `card.get`             | `card_suffix` / 一张卡的 DTO           | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found   |
-| `card.freeze`          | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态       |
-| `card.unfreeze`        | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态       |
-| `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额    |
-| `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                |
-| `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 仅标记非住房单笔支出达到 ¥1,000 的演示提示，不是欺诈检测 |
-| `subscription.list`    | 空输入 / 订阅、周期费用及下次模拟扣款  | `read_only` / `low` / `never`            | 返回基于周期合成交易识别并入库的订阅                     |
-| `subscription.pause`   | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；不调用真实商户或扣款网络           |
-| `subscription.resume`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 active                  |
-| `subscription.cancel`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 cancelled               |
+| Tool                   | 输入/输出                              | 权限 / 风险 / 确认                       | 实际行为                                                                         |
+| ---------------------- | -------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------- |
+| `card.list`            | 空输入 / 当前用户卡片列表              | `read_only` / `low` / `never`            | Application 查询 actor 自己的合成卡片                                            |
+| `card.get`             | `card_suffix` / 一张卡的 DTO           | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found                           |
+| `card.freeze`          | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态                               |
+| `card.unfreeze`        | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态                               |
+| `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额                            |
+| `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                                        |
+| `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 标记非住房大额支出及同账户/商户/金额/币种/UTC 日重复收费；仅为提示，不是欺诈检测 |
+| `subscription.list`    | 空输入 / 订阅、周期费用及下次模拟扣款  | `read_only` / `low` / `never`            | 返回基于周期合成交易识别并入库的订阅                                             |
+| `subscription.pause`   | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；不调用真实商户或扣款网络                                   |
+| `subscription.resume`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 active                                          |
+| `subscription.cancel`  | 商户名 / 操作提案与挑战                | `reversible_write` / `medium` / `always` | 仅创建服务端确认挑战；目标状态为 cancelled                                       |
 
-Phase 1D 扩展的受控工具：`transfer.accounts`、`transfer.payees`、`transfer.history`、`transfer.create`、`transfer.schedule`、`transfer.cancel_scheduled`、`transfer.simulate_due`、`transfer.splits`、`transfer.split_create`、`transfer.split_collect`；`investment.products`、`investment.compare`、`investment.profile`、`investment.portfolio`、`investment.orders`、`investment.buy`、`investment.redeem`。所有读取按 actor 限定；资金变更工具只创建服务端 challenge，确认时再次校验账户归属、余额/持仓、参数摘要、资源版本、策略版本、有效期及幂等键。定时转账只由开发/测试环境里的显式模拟器执行。
+转账和理财受控工具包括 `transfer.accounts`、`transfer.payees`、`transfer.history`、`transfer.create`、`transfer.schedule`、`transfer.cancel_scheduled`、`transfer.simulate_due`、`transfer.splits`、`transfer.split_create`、`transfer.split_collect`；`investment.products`、`investment.compare`、`investment.profile`、`investment.portfolio`、`investment.orders`、`investment.buy`、`investment.redeem`。`finance.payday_plan` 是只读确定性 Application 用例，按账户余额、月度收支、用户指令和预留金额计算可用资金，不由模型计算余额或资金额度。所有读取按 actor 限定；资金变更工具只创建服务端 challenge，确认时再次校验账户归属、余额/持仓、参数摘要、资源版本、策略版本、有效期及幂等键。定时转账只由开发/测试环境里的显式模拟器执行。
+
+跨场景 Workflow 由受控工具序列组合，不新建业务旁路：可疑扣款主线先读 `bill.anomalies` 和 `subscription.list`，只在重复扣费规则命中且能关联来源卡与活动订阅时提出冻结/暂停操作；发薪日主线读取账户、账单并调用 `finance.payday_plan`，之后才可提出转账与理财操作。发薪日联动缺少转账额或预留额时保持 `awaiting_input`，后续输入会附加到原任务目标。每个写操作各自暂停等待服务端确认；确认后续跑原 Task。Application 在完成态校验明确请求的写操作是否存在成功 ToolExecution；若仍缺少明确操作，最多触发两轮有界重规划，之后模型仍不能只读数据后把未完成写目标标为成功。部分成功保留已提交的账本与审计记录，失败后可由用户重新输入继续；取消只阻止未执行步骤，不回滚已成功步骤。
 
 订阅变更确认与卡片共用 Agent Task 确认 API、幂等机制和通用审计；challenge 绑定 `resource_type/resource_id`、资源版本、工具/参数/策略、actor、幂等键及有效期。订阅状态转换由后端领域规则限制为 `active→paused`、`paused→active`、`active|paused→cancelled`，已取消订阅不可恢复。
 

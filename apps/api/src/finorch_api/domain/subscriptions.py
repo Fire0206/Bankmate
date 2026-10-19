@@ -72,13 +72,20 @@ def detect_recurring_subscriptions(
     for (account_id, merchant_key, amount_minor, currency), charges in grouped.items():
         charges.sort(key=lambda item: item.occurred_at)
         recurring: list[ChargeLike] = []
+        seen_months: set[tuple[int, int]] = set()
         for charge in charges:
+            occurred_at = _utc(charge.occurred_at)
+            month = (occurred_at.year, occurred_at.month)
+            if month in seen_months:
+                continue
             if recurring:
-                interval = _utc(charge.occurred_at) - _utc(recurring[-1].occurred_at)
+                interval = occurred_at - _utc(recurring[-1].occurred_at)
                 if not timedelta(days=25) <= interval <= timedelta(days=35):
                     recurring = [charge]
+                    seen_months = {month}
                     continue
             recurring.append(charge)
+            seen_months.add(month)
         if len(recurring) < minimum_charges:
             continue
         last = _utc(recurring[-1].occurred_at)

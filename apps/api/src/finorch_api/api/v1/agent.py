@@ -19,6 +19,7 @@ from finorch_api.application.agent import (
     AgentTaskNotFoundError,
     AgentTaskStateConflictError,
     cancel_agent_task,
+    continue_confirmed_task,
     create_agent_task,
     get_agent_task,
     get_agent_task_by_idempotency_key,
@@ -208,6 +209,7 @@ def confirm_task_operation(
     request: Request,
     session: DatabaseSession,
     actor: CurrentDemoActor,
+    selection: CurrentProviderSelection,
     idempotency_key: IdempotencyKey,
 ) -> AgentTaskResponse:
     try:
@@ -228,6 +230,14 @@ def confirm_task_operation(
         ) from None
     except AgentTaskStateConflictError:
         raise _conflict("Confirmation is no longer pending.", "confirmation_not_pending") from None
+    if task.status == "running":
+        task = continue_confirmed_task(
+            session,
+            actor_id=actor.user_id,
+            task_id=task_id,
+            request_id=request.state.request_id,
+            selection=selection,
+        )
     if task.error_code == "confirmation_parameters_mismatch":
         raise _conflict(
             "Confirmation details changed; the challenge was invalidated.",

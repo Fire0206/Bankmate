@@ -3551,6 +3551,17 @@
               }
             ],
             "title": "Anomaly Reason"
+          },
+          "source_card_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Card Suffix"
           }
         },
         "additionalProperties": false,
@@ -3565,7 +3576,8 @@
           "category",
           "description",
           "occurred_at",
-          "anomaly_reason"
+          "anomaly_reason",
+          "source_card_suffix"
         ],
         "title": "BillTransactionResponse"
       },

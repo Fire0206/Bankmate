@@ -130,6 +130,7 @@ class Transaction(Base):
         Index(
             "ix_transactions_account_merchant_occurred_at", "account_id", "merchant", "occurred_at"
         ),
+        Index("ix_transactions_card_id", "card_id"),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -137,6 +138,11 @@ class Transaction(Base):
         Uuid(as_uuid=True),
         ForeignKey("accounts.id", name="fk_transactions_account_id_accounts", ondelete="RESTRICT"),
         nullable=False,
+    )
+    card_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("cards.id", name="fk_transactions_card_id_cards", ondelete="RESTRICT"),
+        nullable=True,
     )
     synthetic_ref: Mapped[str] = mapped_column(String(80), nullable=False)
     direction: Mapped[str] = mapped_column(String(8), nullable=False)

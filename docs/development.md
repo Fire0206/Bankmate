@@ -62,7 +62,37 @@ pnpm run format:check
 
 环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；DeepSeek 可通过本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。密钥只在服务端使用，不得提交到仓库。Demo Identity 只在 development/test 启用，不是用户认证系统。
 
-DeepSeek 真实模型测试可在迁移并 Seed 后启动 API，再通过 `apps/api/scripts/deepseek_eval.py` 执行脱敏场景集。该脚本只输出测试编号、工具选择、任务状态和安全错误码，不保存原始请求或模型响应。真实调用需消耗模型额度；自动化 CI 仍使用 Fake Provider 和 Mock HTTP。
+DeepSeek 真实模型测试使用 `apps/api/scripts/deepseek_eval.py` 的 10 个 Phase 1E 用例，检查完整工具序列、多次确认、补充输入、取消、失败恢复和最终 API 状态。报告不包含原始提示词、模型回复或 API Key；只输出用例标签、工具名、任务状态、确认顺序和校验结果。真实调用会消耗模型额度；自动化 CI 仍使用 Fake Provider 和 Mock HTTP。
+
+评测脚本会在每个用例前重置数据库，因此必须用隔离的临时 SQLite 测试库，禁止对默认 Demo 数据库执行。PowerShell 示例（在仓库根目录）：
+
+```powershell
+$phase1eDbPath = Join-Path $env:TEMP 'finorch-test-phase1e.sqlite3'
+$env:FINORCH_ENVIRONMENT = 'test'
+$env:FINORCH_DATABASE_URL = 'sqlite:///' + $phase1eDbPath.Replace('\','/')
+$env:FINORCH_API_PORT = '8011'
+$env:FINORCH_AGENT_PROVIDER = 'openai-compatible'
+uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+uv run --project apps/api python -m finorch_api.seed
+uv run --project apps/api python -m finorch_api
+```
+
+另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8011`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 和 `FINORCH_EVAL_CASES`。完整十项选择名见 `apps/api/scripts/deepseek_eval.py` 中 `cross_` 开头的用例；随后运行：
+
+```powershell
+uv run --project apps/api python apps/api/scripts/deepseek_eval.py
+```
+
+Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+
+### Phase 1E DeepSeek 实测（2026-10-19）
+
+使用 `deepseek-flash` 在隔离临时 SQLite 数据库执行了 10 个跨场景用例。最新完整一轮严格通过 9/10；评测脚本报告工具选择准确率 90%、参数准确率 100%、任务完成准确率 86%。本阶段多轮完整运行的通过数在 7/10 至 9/10 间波动，因此这些数据是观察结果，不代表稳定基准。
+
+- 可疑扣款两步确认、发薪日转账加理财、补充信息后恢复、取消部分成功、过期确认恢复、未知卡片、账单与订阅证据、未知收款人和余额不足等用例，已验证相应的工具顺序或服务端最终状态。
+- 最新一轮唯一未完全通过项：模型在已读取不匹配产品后仍尝试调用 `investment.buy`。后端返回 `risk_mismatch`，未创建确认、订单或持仓，账户余额保持不变；模型工具选择仍需改善。
+- 其他运行中，发薪日任务可能出现额外只读查询（重复读取产品/收款人或提前读取持仓）；验收检查最终账户余额、转账、订单及持仓，而不是把只读重复当作业务成功。
+- 不匹配风险等级、余额不足或无效资源的结果由服务端校验；评测不把模型选择准确率等同于业务安全性，也不构成独立安全审查。
 
 Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新恢复与幂等重试说明见[Agent 可靠性指南](development/agent-reliability.md)。
 

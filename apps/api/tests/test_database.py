@@ -46,7 +46,7 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0004_transfers_and_investments"
+        assert revision == "0005_repeat_charge_evidence"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
 
 
@@ -79,7 +79,13 @@ def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
             session.scalar(select(DemoUser.dataset_version).limit(1)),
         )
 
-    assert second_state == first_state == (2, 3, 3, 0, 30, 3, 3, 3, DATASET_VERSION)
+    assert second_state == first_state == (2, 3, 3, 0, 31, 3, 3, 3, DATASET_VERSION)
+    with seeded_database.session_factory() as session:
+        seeded_bills = list(
+            session.scalars(select(Transaction).where(Transaction.entry_kind == "bill"))
+        )
+        assert len(seeded_bills) == 31
+        assert all(item.card_id is not None for item in seeded_bills)
 
 
 def test_seed_updates_dataset_version_for_existing_demo_users(seeded_database) -> None:
@@ -160,5 +166,72 @@ def test_phase1a_card_audit_data_survives_generic_audit_migration(tmp_path: Path
             assert event.new_status == "frozen"
             assert event.outcome == "succeeded"
             assert event.request_id == "legacy-request"
+    finally:
+        engine.dispose()
+
+
+def test_repeat_charge_migration_backfills_single_card_account_provenance(tmp_path: Path) -> None:
+    path = tmp_path / "repeat-charge-history.sqlite3"
+    url = URL.create("sqlite", database=str(path)).render_as_string(hide_password=False)
+    engine = build_engine(url)
+    config = Config(str(REPOSITORY_ROOT / "apps" / "api" / "alembic.ini"))
+    config.attributes["database_url"] = url
+    user_id = "00000000000040008000000000000001"
+    account_id = "10000000000040008000000000000001"
+    card_id = "20000000000040008000000000000001"
+    transaction_id = "50000000000040008000000000000001"
+    try:
+        command.upgrade(config, "0004_transfers_and_investments")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO demo_users "
+                    "(id, display_name, dataset_version, risk_level, created_at) "
+                    "VALUES (:id, 'Demo User One', 'phase1d-v1', 3, '2026-10-18 00:00:00')"
+                ),
+                {"id": user_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO accounts "
+                    "(id, demo_user_id, label, currency, opening_balance_minor, balance_minor, "
+                    "version, created_at, updated_at) "
+                    "VALUES (:id, :user_id, 'Everyday account', 'CNY', 100000, 100000, 1, "
+                    "'2026-10-18 00:00:00', '2026-10-18 00:00:00')"
+                ),
+                {"id": account_id, "user_id": user_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO cards "
+                    "(id, account_id, label, card_suffix, status, version, created_at, updated_at) "
+                    "VALUES (:id, :account_id, 'Everyday debit', '1042', 'active', 1, "
+                    "'2026-10-18 00:00:00', '2026-10-18 00:00:00')"
+                ),
+                {"id": card_id, "account_id": account_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO transactions "
+                    "(id, account_id, synthetic_ref, direction, entry_kind, amount_minor, "
+                    "currency, "
+                    "merchant, category, description, occurred_at, created_at) "
+                    "VALUES (:id, :account_id, 'legacy-bill', 'expense', 'bill', 3000, 'CNY', "
+                    "'腾讯视频会员', '订阅', '模拟订阅流水', '2026-10-05 02:00:00', "
+                    "'2026-10-18 00:00:00')"
+                ),
+                {"id": transaction_id, "account_id": account_id},
+            )
+
+        command.upgrade(config, "head")
+        with sessionmaker(bind=engine)() as session:
+            transaction = session.get(Transaction, UUID(transaction_id))
+            assert transaction is not None
+            assert transaction.card_id == UUID(card_id)
+            foreign_keys = inspect(engine).get_foreign_keys("transactions")
+            assert any(
+                key["constrained_columns"] == ["card_id"] and key["referred_table"] == "cards"
+                for key in foreign_keys
+            )
     finally:
         engine.dispose()

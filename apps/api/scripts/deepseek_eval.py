@@ -16,6 +16,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from finorch_api.config import Settings
+from finorch_api.infrastructure.database import get_session_factory
+from finorch_api.infrastructure.models import Subscription
+from finorch_api.reset import reset_demo_data, validate_reset_target
+from sqlalchemy import select
 
 BASE_URL = os.getenv("FINORCH_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 
@@ -48,6 +52,8 @@ def call_api(
         except (json.JSONDecodeError, UnicodeDecodeError):
             payload = {}
         return error.code, payload
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return 0, {"error": {"code": "local_api_unavailable"}}
 
 
 def error_code(payload: dict) -> str | None:
@@ -74,13 +80,378 @@ def last_result(task: dict) -> dict:
 def task_error(task: dict) -> str | None:
     if task.get("error_code"):
         return task["error_code"]
+    if task.get("status") in {"awaiting_confirmation", "awaiting_input", "completed", "cancelled"}:
+        return None
     for step in reversed(task.get("steps", [])):
         if step.get("error_code"):
             return step["error_code"]
     return None
 
 
+def _reset_eval_database() -> None:
+    """Reset only an explicitly opted-in, validated temporary test database."""
+    settings = Settings()
+    if os.getenv("FINORCH_EVAL_RESET_SYNTHETIC") != "1" or settings.environment != "test":
+        raise RuntimeError("Phase 1E live evaluation requires an opted-in test database.")
+    repository_root = Path(__file__).resolve().parents[3]
+    validate_reset_target(
+        environment=settings.environment,
+        database_url=settings.database_url,
+        repository_root=repository_root,
+    )
+    factory = get_session_factory(settings.database_url)
+    with factory.begin() as session:
+        reset_demo_data(session)
+
+
+def _bump_subscription_version(merchant: str) -> None:
+    """Create a deterministic stale-confirmation conflict in the test database."""
+    settings = Settings()
+    if settings.environment != "test":
+        raise RuntimeError("Stale-confirmation injection is allowed only in test mode.")
+    factory = get_session_factory(settings.database_url)
+    with factory.begin() as session:
+        subscription = session.scalar(select(Subscription).where(Subscription.merchant == merchant))
+        if subscription is None:
+            raise RuntimeError("The synthetic subscription fixture is missing.")
+        subscription.version += 1
+
+
+def _ordered_subsequence(actual: list[str], expected: list[str]) -> bool:
+    cursor = 0
+    for name in actual:
+        if cursor < len(expected) and name == expected[cursor]:
+            cursor += 1
+    return cursor == len(expected)
+
+
+def _tool_sequence_matches(case: dict, actual: list[str]) -> bool:
+    expected = case.get("expected_tool_sequence", [])
+    if set(case.get("forbidden_tools", [])) & set(actual):
+        return False
+    if case["name"].startswith("cross_payday_"):
+        if not set(expected).issubset(actual):
+            return False
+        account_reads = [index for index, name in enumerate(actual) if name == "transfer.accounts"]
+        bill_index = actual.index("bill.monthly_summary")
+        plan_index = actual.index("finance.payday_plan")
+        transfer_index = actual.index("transfer.create")
+        products_index = actual.index("investment.products")
+        investment_index = actual.index("investment.buy")
+        portfolio_index = max(
+            index for index, name in enumerate(actual) if name == "investment.portfolio"
+        )
+        return (
+            len(account_reads) >= 2
+            and account_reads[0] < plan_index
+            and bill_index < plan_index < transfer_index
+            and transfer_index < investment_index
+            and products_index < investment_index
+            and investment_index < account_reads[-1] < portfolio_index
+        )
+    return _ordered_subsequence(actual, expected)
+
+
+def _verify_cross_state(case: dict, task: dict) -> dict[str, bool]:
+    verification = case.get("verification")
+    if verification == "suspicious_paused":
+        _, cards = call_api("GET", "/api/v1/cards")
+        _, subscriptions = call_api("GET", "/api/v1/subscriptions")
+        card_ok = any(
+            item.get("card_suffix") == "1042" and item.get("status") == "frozen"
+            for item in cards.get("items", [])
+        )
+        subscription_ok = any(
+            item.get("merchant") == "腾讯视频会员" and item.get("status") == "paused"
+            for item in subscriptions.get("items", [])
+        )
+        return {"card_frozen": card_ok, "subscription_paused": subscription_ok}
+    if verification == "suspicious_card_only":
+        _, cards = call_api("GET", "/api/v1/cards")
+        _, subscriptions = call_api("GET", "/api/v1/subscriptions")
+        card_ok = any(
+            item.get("card_suffix") == "1042" and item.get("status") == "frozen"
+            for item in cards.get("items", [])
+        )
+        subscription_ok = any(
+            item.get("merchant") == "腾讯视频会员" and item.get("status") == "active"
+            for item in subscriptions.get("items", [])
+        )
+        return {"card_frozen": card_ok, "subscription_still_active": subscription_ok}
+    if verification == "payday_complete":
+        plan = next(
+            (
+                step.get("result_data")
+                for step in reversed(task.get("steps", []))
+                if step.get("tool_name") == "finance.payday_plan"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        _, accounts = call_api("GET", "/api/v1/accounts")
+        _, transfers = call_api("GET", "/api/v1/transfers?limit=100")
+        _, portfolio = call_api("GET", "/api/v1/investments/portfolio")
+        source = next(
+            (
+                item
+                for item in accounts.get("items", [])
+                if item.get("id") == "10000000-0000-4000-8000-000000000001"
+            ),
+            {},
+        )
+        transfer_ok = any(
+            item.get("amount_minor") == 20_000
+            and item.get("status") == "executed"
+            and item.get("payee_name") == "小林"
+            for item in transfers.get("items", [])
+        )
+        investment_ok = (
+            isinstance(plan.get("investment_budget_minor"), int)
+            and portfolio.get("invested_value_minor") == plan["investment_budget_minor"]
+        )
+        balance_ok = (
+            isinstance(plan.get("reserve_amount_minor"), int)
+            and source.get("balance_minor") == plan["reserve_amount_minor"]
+        )
+        return {
+            "transfer_executed": transfer_ok,
+            "investment_recorded": investment_ok,
+            "reserved_balance_matches_plan": balance_ok,
+        }
+    if verification == "no_business_change":
+        _, cards = call_api("GET", "/api/v1/cards")
+        _, accounts = call_api("GET", "/api/v1/accounts")
+        card_ok = any(
+            item.get("card_suffix") == "1042" and item.get("status") == "active"
+            for item in cards.get("items", [])
+        )
+        balance_ok = any(
+            item.get("id") == "10000000-0000-4000-8000-000000000001"
+            and item.get("balance_minor") == 1_250_000
+            for item in accounts.get("items", [])
+        )
+        return {"card_unchanged": card_ok, "balance_unchanged": balance_ok}
+    if verification == "anomaly_subscription_read":
+        tool_results = {
+            step.get("tool_name"): step.get("result_data")
+            for step in task.get("steps", [])
+            if isinstance(step.get("result_data"), dict)
+        }
+        anomalies = tool_results.get("bill.anomalies", {}).get("items", [])
+        subscriptions = tool_results.get("subscription.list", {}).get("items", [])
+        return {
+            "duplicate_rule_found": any(
+                "重复扣费提示" in str(item.get("anomaly_reason", ""))
+                for item in anomalies
+                if isinstance(item, dict)
+            ),
+            "subscription_data_returned": any(
+                item.get("merchant") == "腾讯视频会员"
+                for item in subscriptions
+                if isinstance(item, dict)
+            ),
+        }
+    if verification == "failed_target":
+        return {
+            "task_failed": task.get("status") == "failed",
+            "expected_error": task_error(task) == case.get("expected_error"),
+            "confirmation_not_created": task.get("confirmation") is None,
+        }
+    if verification == "risk_rejected":
+        _, accounts = call_api("GET", "/api/v1/accounts")
+        _, portfolio = call_api("GET", "/api/v1/investments/portfolio")
+        _, orders = call_api("GET", "/api/v1/investments/orders")
+        source = next(
+            (
+                item
+                for item in accounts.get("items", [])
+                if item.get("id") == "10000000-0000-4000-8000-000000000001"
+            ),
+            {},
+        )
+        return {
+            "task_failed": task.get("status") == "failed",
+            "expected_error": task_error(task) == case.get("expected_error"),
+            "confirmation_not_created": task.get("confirmation") is None,
+            "balance_unchanged": source.get("balance_minor") == 1_250_000,
+            "holdings_unchanged": portfolio.get("holdings") == [],
+            "orders_unchanged": orders.get("items") == [],
+        }
+    return {}
+
+
+def _confirm_until_done(task: dict, case: dict) -> tuple[dict, list[str], str | None]:
+    confirmed_types: list[str] = []
+    expected_count = case.get("confirmations", 0)
+    stale_error: str | None = None
+    while task.get("status") == "awaiting_confirmation" and len(confirmed_types) < expected_count:
+        challenge = task.get("confirmation") or {}
+        confirmed_types.append(str(challenge.get("resource_type", "")))
+        if case.get("stale_confirmation") and len(confirmed_types) == 2:
+            _bump_subscription_version("腾讯视频会员")
+        status, response = call_api(
+            "POST",
+            f"/api/v1/agent/tasks/{task['id']}/confirm",
+            {
+                "challenge_id": challenge.get("id"),
+                "parameters_hash": challenge.get("parameters_hash"),
+            },
+            idempotency_key=challenge.get("idempotency_key"),
+        )
+        if status < 400:
+            task = response
+            continue
+        stale_error = error_code(response)
+        if not case.get("stale_confirmation"):
+            return task, confirmed_types, stale_error
+        _, task = call_api("GET", f"/api/v1/agent/tasks/{task['id']}")
+        break
+    return task, confirmed_types, stale_error
+
+
+def request_cross_case(case: dict, task: dict) -> dict:
+    initial_clarification = None
+    if case.get("kind") == "clarify_then_execute":
+        safe_read_tools = {"transfer.accounts", "bill.monthly_summary", "transfer.payees"}
+        initial_tools = tool_names(task)
+        initially_clarified = task.get("status") == "awaiting_input" and all(
+            tool_name in safe_read_tools for tool_name in initial_tools
+        )
+        initial_clarification = initially_clarified
+        if not initially_clarified:
+            return {
+                "id": case["id"],
+                "name": case["name"],
+                "task_status": task.get("status"),
+                "selected_tools": tool_names(task),
+                "tool_sequence_correct": False,
+                "confirmation_count": 0,
+                "pass": False,
+            }
+        status, task = call_api(
+            "POST",
+            f"/api/v1/agent/tasks/{task['id']}/input",
+            {"request_text": case["followup"]},
+        )
+        if status >= 400:
+            return {
+                "id": case["id"],
+                "name": case["name"],
+                "task_status": "followup_failed",
+                "selected_tools": tool_names(task),
+                "tool_sequence_correct": False,
+                "confirmation_count": 0,
+                "pass": False,
+            }
+
+    if case.get("kind") == "cancel_after_first_confirmation":
+        if task.get("status") != "awaiting_confirmation":
+            return {
+                "id": case["id"],
+                "name": case["name"],
+                "task_status": task.get("status"),
+                "selected_tools": tool_names(task),
+                "tool_sequence_correct": False,
+                "confirmation_count": 0,
+                "pass": False,
+            }
+        first, first_types, error = _confirm_until_done(
+            task, case | {"confirmations": 1, "stale_confirmation": False}
+        )
+        if error or first.get("status") != "awaiting_confirmation":
+            task = first
+        else:
+            cancel_status, cancelled = call_api("POST", f"/api/v1/agent/tasks/{task['id']}/cancel")
+            task = cancelled if cancel_status < 400 else first
+        checks = _verify_cross_state(case, task)
+        sequence_ok = _tool_sequence_matches(case, tool_names(task))
+        passed = (
+            task.get("status") == "cancelled"
+            and first_types == ["card"]
+            and sequence_ok
+            and all(checks.values())
+        )
+        return {
+            "id": case["id"],
+            "name": case["name"],
+            "expected_tools": case["expected_tool_sequence"],
+            "selected_tools": tool_names(task),
+            "task_status": task.get("status"),
+            "error_code": task_error(task),
+            "tool_sequence_correct": sequence_ok,
+            "confirmation_types": first_types,
+            "state_checks": checks,
+            "pass": passed,
+        }
+
+    task, confirmed_types, stale_error = _confirm_until_done(task, case)
+    recovery_error: str | None = None
+    if case.get("stale_confirmation"):
+        stale_detected = stale_error == "subscription_version_conflict"
+        recovery_status, recovered = call_api(
+            "POST",
+            f"/api/v1/agent/tasks/{task['id']}/input",
+            {"request_text": "请重新读取后继续暂停腾讯视频会员"},
+        )
+        recovery_error = error_code(recovered)
+        if recovery_status < 400:
+            task = recovered
+            task, recovery_types, recovery_stale = _confirm_until_done(
+                task, case | {"confirmations": 1, "stale_confirmation": False}
+            )
+            confirmed_types.extend(recovery_types)
+            recovery_error = recovery_error or recovery_stale
+        else:
+            stale_detected = False
+        case = case | {"stale_detected": stale_detected}
+
+    sequence = tool_names(task)
+    sequence_ok = _tool_sequence_matches(case, sequence)
+    checks = _verify_cross_state(case, task)
+    expected_confirmation_types = case.get("expected_confirmation_types", [])
+    confirmation_ok = (
+        not expected_confirmation_types or confirmed_types == expected_confirmation_types
+    )
+    if case.get("kind") == "clarify_then_execute":
+        clarification_ok = True
+    else:
+        clarification_ok = True
+    status_ok = task.get("status") == case.get("expected_status", "completed")
+    if case.get("expected_error"):
+        checks["expected_error"] = task_error(task) == case["expected_error"]
+    if case.get("stale_confirmation"):
+        checks["stale_conflict_detected"] = case.get("stale_detected", False)
+        checks["recovery_completed"] = task.get("status") == "completed"
+        checks["first_write_not_repeated"] = sequence.count("card.freeze") == 1
+    passed = (
+        sequence_ok
+        and confirmation_ok
+        and status_ok
+        and bool(checks)
+        and all(checks.values())
+        and clarification_ok
+        and recovery_error is None
+    )
+    return {
+        "id": case["id"],
+        "name": case["name"],
+        "expected_tools": case["expected_tool_sequence"],
+        "selected_tools": sequence,
+        "task_status": task.get("status"),
+        "error_code": task_error(task),
+        "tool_sequence_correct": sequence_ok,
+        "confirmation_types": confirmed_types,
+        "confirmation_sequence_correct": confirmation_ok,
+        "initial_clarification": initial_clarification,
+        "state_checks": checks,
+        "recovery_error": recovery_error,
+        "pass": passed,
+    }
+
+
 def request_case(case: dict) -> dict:
+    if case.get("phase1e"):
+        _reset_eval_database()
     conversation_id = str(uuid4())
     status, task = call_api(
         "POST",
@@ -96,6 +467,27 @@ def request_case(case: dict) -> dict:
             "error_code": error_code(task),
             "pass": False,
         }
+
+    if case.get("phase1e"):
+        result = request_cross_case(case, task)
+        result.setdefault("tool_selection_correct", result.get("tool_sequence_correct", False))
+        result.setdefault(
+            "parameters_correct",
+            all(result.get("state_checks", {}).values())
+            if result.get("state_checks")
+            else result["pass"],
+        )
+        expected_status = case.get("expected_status", "completed")
+        result.setdefault(
+            "task_completed_or_clarified",
+            result.get("task_status") == expected_status
+            and (
+                expected_status in {"completed", "awaiting_input"}
+                or result.get("error_code") == case.get("expected_error")
+            ),
+        )
+        result.setdefault("expected_tools", case["expected_tool_sequence"])
+        return result
 
     selected = tool_names(task)
     expected_tools = case.get("expected_tools", [])
@@ -413,6 +805,146 @@ def cases() -> list[dict]:
             "expected_error": "risk_mismatch",
             "unsuitable_product": "成长指数模拟",
         },
+        {
+            "id": 21,
+            "name": "cross_suspicious_charge_two_confirmations",
+            "phase1e": True,
+            "prompt": (
+                "请处置重复扣费提示：先检查异常账单和自动扣费，解释依据，"
+                "再冻结相关银行卡并暂停对应订阅。"
+            ),
+            "expected_tool_sequence": [
+                "bill.anomalies",
+                "subscription.list",
+                "card.freeze",
+                "subscription.pause",
+            ],
+            "confirmations": 2,
+            "expected_confirmation_types": ["card", "subscription"],
+            "verification": "suspicious_paused",
+        },
+        {
+            "id": 22,
+            "name": "cross_payday_transfer_and_investment",
+            "phase1e": True,
+            "prompt": (
+                "发薪日资金调度：先给小林转 200 元，账户预留 3000 元，其余买入适合我的模拟理财。"
+            ),
+            "expected_tool_sequence": [
+                "transfer.accounts",
+                "bill.monthly_summary",
+                "finance.payday_plan",
+                "investment.products",
+                "transfer.create",
+                "investment.buy",
+                "transfer.accounts",
+                "investment.portfolio",
+            ],
+            "confirmations": 2,
+            "expected_confirmation_types": ["transfer", "investment_order"],
+            "verification": "payday_complete",
+        },
+        {
+            "id": 23,
+            "name": "cross_payday_clarification_then_resume",
+            "phase1e": True,
+            "kind": "clarify_then_execute",
+            "prompt": "发薪日帮我规划资金，给小林转一部分，剩余买适合我的理财。",
+            "followup": "给小林转 200 元，账户预留 3000 元，其余买入适合我的模拟理财。",
+            "expected_tool_sequence": [
+                "transfer.accounts",
+                "bill.monthly_summary",
+                "finance.payday_plan",
+                "transfer.create",
+                "investment.products",
+                "investment.buy",
+                "transfer.accounts",
+                "investment.portfolio",
+            ],
+            "confirmations": 2,
+            "expected_confirmation_types": ["transfer", "investment_order"],
+            "verification": "payday_complete",
+        },
+        {
+            "id": 24,
+            "name": "cross_cancel_after_first_confirmation",
+            "phase1e": True,
+            "kind": "cancel_after_first_confirmation",
+            "prompt": "处置重复扣费：检查异常账单与订阅后，冻结关联卡并暂停对应自动扣费。",
+            "expected_tool_sequence": [
+                "bill.anomalies",
+                "subscription.list",
+                "card.freeze",
+                "subscription.pause",
+            ],
+            "verification": "suspicious_card_only",
+        },
+        {
+            "id": 25,
+            "name": "cross_stale_confirmation_recovery",
+            "phase1e": True,
+            "stale_confirmation": True,
+            "prompt": "检查重复扣费账单和订阅，冻结关联银行卡，并暂停腾讯视频会员自动扣费。",
+            "expected_tool_sequence": [
+                "bill.anomalies",
+                "subscription.list",
+                "card.freeze",
+                "subscription.pause",
+                "subscription.pause",
+            ],
+            "confirmations": 2,
+            "expected_confirmation_types": ["card", "subscription", "subscription"],
+            "verification": "suspicious_paused",
+        },
+        {
+            "id": 26,
+            "name": "cross_unknown_card_rejected",
+            "phase1e": True,
+            "prompt": "冻结尾号 9999 的银行卡。",
+            "expected_tool_sequence": ["card.freeze"],
+            "expected_status": "failed",
+            "expected_error": "card_not_found",
+            "verification": "failed_target",
+        },
+        {
+            "id": 27,
+            "name": "cross_investment_risk_rejected",
+            "phase1e": True,
+            "prompt": "申购 1000 元成长指数模拟。",
+            "expected_tool_sequence": ["investment.products"],
+            "forbidden_tools": ["investment.buy"],
+            "expected_status": "failed",
+            "expected_error": "risk_mismatch",
+            "verification": "risk_rejected",
+        },
+        {
+            "id": 28,
+            "name": "cross_anomaly_and_subscription_evidence",
+            "phase1e": True,
+            "prompt": "检查最近的重复扣费提示，并列出相关订阅状态和下次扣款时间。",
+            "expected_tool_sequence": ["bill.anomalies", "subscription.list"],
+            "verification": "anomaly_subscription_read",
+        },
+        {
+            "id": 29,
+            "name": "cross_unknown_payee_clarification",
+            "phase1e": True,
+            "prompt": "查看我的账户余额后，给张三转 100 元。",
+            "expected_tool_sequence": ["transfer.accounts", "transfer.payees"],
+            "expected_status": "awaiting_input",
+            "forbidden_tools": ["transfer.create"],
+            "verification": "no_business_change",
+        },
+        {
+            "id": 30,
+            "name": "cross_insufficient_funds_rejected",
+            "phase1e": True,
+            "prompt": "给小林转 999999 元。",
+            "expected_tool_sequence": ["transfer.create"],
+            "expected_status": "failed",
+            "expected_error": "insufficient_funds",
+            "verification": "failed_target",
+        },
     ]
 
 
@@ -443,12 +975,21 @@ def main() -> int:
     except ValueError:
         print(json.dumps({"error": "invalid_case_selection"}))
         return 2
+    if any(case.get("phase1e") for case in run_cases):
+        try:
+            _reset_eval_database()
+        except (RuntimeError, ValueError):
+            print(json.dumps({"error": "phase1e_test_database_not_safely_configured"}))
+            return 2
     results = [request_case(case) for case in run_cases]
     expected_tool_cases = [item for item in results if item["expected_tools"]]
     summary = {
         "model": Settings().llm_model or "configured by server",
         "case_count": len(results),
         "passed": sum(item["pass"] for item in results),
+        "expected_terminal_outcome_accuracy": ratio(
+            sum(item["pass"] for item in results), len(results)
+        ),
         "tool_selection_accuracy": ratio(
             sum(item["tool_selection_correct"] for item in expected_tool_cases),
             len(expected_tool_cases),
@@ -457,7 +998,15 @@ def main() -> int:
             sum(item["parameters_correct"] for item in results), len(results)
         ),
         "task_completion_accuracy": ratio(
-            sum(item["task_completed_or_clarified"] for item in results), len(results)
+            sum(
+                item["task_completed_or_clarified"]
+                for case, item in zip(run_cases, results, strict=True)
+                if case.get("expected_status", "completed") in {"completed", "awaiting_input"}
+            ),
+            sum(
+                case.get("expected_status", "completed") in {"completed", "awaiting_input"}
+                for case in run_cases
+            ),
         ),
         "cases": results,
     }

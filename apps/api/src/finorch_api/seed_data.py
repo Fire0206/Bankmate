@@ -18,7 +18,7 @@ from finorch_api.infrastructure.models import (
 )
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 
-DATASET_VERSION = "phase1d-v1"
+DATASET_VERSION = "phase1e-v1"
 _SYNTHETIC_NAMESPACE = UUID("a0000000-0000-4000-8000-000000000001")
 
 _USERS = (
@@ -213,6 +213,14 @@ def _monthly_transaction_fixtures() -> tuple[tuple[object, ...], ...]:
             "数码",
             datetime(2026, 10, 17, 6, tzinfo=UTC),
         ),
+        (
+            "video-duplicate-oct",
+            "expense",
+            3_000,
+            "腾讯视频会员",
+            "订阅",
+            datetime(2026, 10, 5, 2, 10, tzinfo=UTC),
+        ),
         ("food-sep", "expense", 4_260, "小满面馆", "餐饮", datetime(2026, 9, 8, 4, tzinfo=UTC)),
         ("transport-sep", "expense", 720, "深圳地铁", "交通", datetime(2026, 9, 12, 3, tzinfo=UTC)),
     )
@@ -332,11 +340,13 @@ def seed_demo_data(session: Session) -> None:
         occurred_at,
     ) in _TRANSACTIONS:
         transaction_id = uuid5(_SYNTHETIC_NAMESPACE, str(reference))
+        card_id = next((item[0] for item in _CARDS if item[1] == account_id), None)
         _add_missing(
             session,
             Transaction,
             transaction_id,
             account_id=account_id,
+            card_id=card_id,
             synthetic_ref=str(reference),
             direction=direction,
             amount_minor=amount_minor,

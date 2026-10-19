@@ -18,6 +18,7 @@ class BillTransactionResponse(BaseModel):
     description: str
     occurred_at: datetime
     anomaly_reason: str | None
+    source_card_suffix: str | None
 
 
 class TransactionPageResponse(BaseModel):

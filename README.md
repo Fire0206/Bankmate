@@ -2,18 +2,18 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 1D — 五场景模拟闭环。** 银行卡管理、账单分析、订阅代扣、智能转账与理财操作均可通过 Agent 工具调用。资金或状态变更需经过服务端确认，并写入 SQLite、交易/持仓记录及审计事件。Fake Provider 适合无网络演示；OpenAI-compatible Provider 可配置 DeepSeek。跨场景联动、生产认证和真实金融服务仍未实现。
+> **项目状态：Phase 1E — 六场景模拟闭环。** 银行卡、账单、订阅、转账、理财及跨场景联动均由受控 Agent 工具调用。跨场景任务可在多个服务端确认点暂停、恢复、取消，并保留部分成功结果。Fake Provider 用于无网络演示；OpenAI-compatible Provider 可配置 DeepSeek。真实认证、真实金融服务和生产部署仍未实现。
 
 ## 产品规划
 
-六大场景是 FinOrch 的产品规划，不代表都已有可演示的业务闭环：
+六大场景均有合成数据支撑的基础业务闭环：
 
 1. 智能转账（已实现模拟余额、收款人、确认后转账、定时转账、AA 分账和转账记录）
 2. 账单分析（已实现基础月度汇总、分类/趋势、交易筛选和规则提示）
 3. 理财操作（已实现模拟产品查询/比较、风险匹配、确认后申购/赎回、持仓与操作记录）
 4. 卡片管理（已实现模拟卡片查询、确认后冻结/解冻、任务进度和审计展示；真实认证、生产安全和其他扩展仍为 Planned）
 5. 订阅与代扣管理（已实现基于合成流水的月度订阅识别、列表和经确认的暂停/恢复/取消）
-6. 跨场景联动
+6. 跨场景联动（已实现可疑扣款处置、发薪日资金调度；均支持逐步确认和任务恢复）
 
 官方赛题强制场景、最低覆盖范围和提交要求仍需按本届官方工作台核实；六大场景目前仅作为 FinOrch 产品规划。详见[需求说明](docs/requirements.md)和[赛事要求核对记录](docs/competition-requirements.md)。
 
@@ -36,7 +36,7 @@
 ```text
 apps/
   api/                 FastAPI 服务、配置、API 测试和 Alembic 迁移
-  web/                 React/Vite 占位前端及生成的 API 类型
+  web/                 React/Vite Agent 工作台及生成的 API 类型
 docs/
   decisions/           架构决策记录（ADR）
   development/         开发和发布前检查说明
@@ -84,7 +84,7 @@ uv run --project apps/api python -m finorch_api
 pnpm --filter @finorch/web dev
 ```
 
-打开 Vite 显示的本地地址即可在 Fake Provider 模式演示五个场景。转账、AA 分账、理财申购/赎回，以及银行卡和订阅状态变更均先生成服务端确认卡片，确认后前端显示服务端结果。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
+打开 Vite 显示的本地地址即可在 Fake Provider 模式演示六个场景，包括可疑扣款处置和发薪日资金调度。所有资金或状态变更均先生成服务端确认卡片；跨场景操作按步骤逐项确认，任务刷新后可从服务端恢复。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
 
 可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金和权限校验及确认均由服务端执行。
 
@@ -114,6 +114,8 @@ pnpm run api:types
 ```
 
 API Schema 或接口实现变更后，应重新生成并提交 `apps/web/openapi.json` 和 `apps/web/src/generated/api.d.ts`。不要手工编辑生成文件。
+
+Phase 1E 的 DeepSeek 端到端评测脚本见[开发指南](docs/development.md)。评测仅使用隔离的临时测试数据库和合成数据；脚本默认不打印原始提示词、模型响应或密钥。
 
 ## 协作与开源
 

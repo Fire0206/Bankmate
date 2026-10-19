@@ -10,11 +10,13 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.cashflow_tools import cashflow_tool_specs
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.agent.investment_tools import investment_tool_specs
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import (
     AgentProviderError,
+    AgentRunResult,
     AgentRuntime,
     ModelToolCall,
     ToolDispatchResult,
@@ -41,6 +43,14 @@ from finorch_api.agent.tools import (
     SubscriptionToolItem,
 )
 from finorch_api.agent.transfer_tools import transfer_tool_specs
+from finorch_api.application.agent_workflow import (
+    has_completed_tool_execution,
+    missing_payday_parameters_message,
+    missing_requested_write_tools,
+    task_progress_context,
+    unknown_requested_transfer_payee_message,
+    unsuitable_requested_investment_message,
+)
 from finorch_api.application.bills import (
     get_month_anomalies,
     get_monthly_summary,
@@ -101,7 +111,7 @@ _TASK_TRANSITIONS: dict[str, set[str]] = {
     "awaiting_confirmation": {"running", "planning", "cancelled", "failed"},
     "running": {"awaiting_input", "awaiting_confirmation", "completed", "failed", "cancelled"},
     "completed": set(),
-    "failed": set(),
+    "failed": {"planning", "awaiting_input"},
     "cancelled": set(),
 }
 
@@ -394,6 +404,7 @@ def _bill_transaction_output(value: Any) -> dict[str, Any]:
         "category": value.category,
         "occurred_at": value.occurred_at,
         "anomaly_reason": value.anomaly_reason,
+        "source_card_suffix": value.source_card_suffix,
     }
 
 
@@ -634,6 +645,7 @@ def _build_registry() -> ToolRegistry:
             ),
             *transfer_tool_specs(),
             *investment_tool_specs(),
+            *cashflow_tool_specs(),
         )
     )
 
@@ -722,7 +734,7 @@ def _dispatch_tool(
 ) -> ToolDispatchResult:
     with write_transaction(session, immediate=True):
         task = _owned_task(session, actor_id=actor_id, task_id=task_id)
-        if task.status in {"cancelled", "completed", "failed"}:
+        if task.status not in {"planning", "running"}:
             return ToolDispatchResult(
                 "failed",
                 {"status": "cancelled", "error_code": "task_not_running"},
@@ -730,11 +742,48 @@ def _dispatch_tool(
                 "task_not_running",
             )
 
-        sequence = _next_sequence(session, task.id)
         tool_name = call.name[:80]
         raw_args = call.arguments[:2000]
         normalized_input = parsed.model_dump(mode="json") if parsed is not None else raw_args
         input_hash = _hash(normalized_input)
+        if (
+            spec is not None
+            and parsed is not None
+            and validation_error is None
+            and spec.permission_level != "read_only"
+        ):
+            prior_success = session.scalar(
+                select(ToolExecution)
+                .join(TaskStep, TaskStep.id == ToolExecution.step_id)
+                .where(
+                    ToolExecution.task_id == task.id,
+                    ToolExecution.tool_name == spec.name,
+                    (TaskStep.input_hash == input_hash) | (ToolExecution.input_hash == input_hash),
+                    ToolExecution.status == "succeeded",
+                )
+                .order_by(ToolExecution.created_at.desc(), ToolExecution.id.desc())
+                .limit(1)
+            )
+            if prior_success is not None:
+                _audit(
+                    session,
+                    actor_id=actor_id,
+                    event_type="agent.duplicate_write_suppressed",
+                    resource_type="task",
+                    resource_id=task.id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=prior_success.id,
+                    outcome="succeeded",
+                    after_state={"tool_name": spec.name, "duplicate_suppressed": True},
+                )
+                return ToolDispatchResult(
+                    "succeeded",
+                    prior_success.result_data or {"status": "succeeded"},
+                    prior_success.result_summary,
+                )
+
+        sequence = _next_sequence(session, task.id)
         idempotency_key = f"tool:{task.id}:{sequence}"
         step = TaskStep(
             task_id=task.id,
@@ -743,6 +792,7 @@ def _dispatch_tool(
             status="running",
             summary=f"Validating and running {tool_name}.",
             tool_name=tool_name,
+            input_hash=input_hash,
         )
         session.add(step)
         session.flush()
@@ -1194,7 +1244,14 @@ def _finalize_run(
     with write_transaction(session):
         task = _owned_task(session, actor_id=actor_id, task_id=task_id)
         before = task.status
-        if task.status not in {"awaiting_confirmation", "completed", "failed", "cancelled"}:
+        recovered_payee_clarification = (
+            task.status == "failed"
+            and status == "awaiting_input"
+            and task.error_code == "payee_not_found"
+        )
+        if task.status not in {"awaiting_confirmation", "completed", "failed", "cancelled"} or (
+            recovered_payee_clarification
+        ):
             target = status
             if target == "completed" and task.status == "planning":
                 target = "awaiting_input"
@@ -1237,6 +1294,7 @@ def _run_task(
     conversation_id: UUID,
     request_id: str,
     selection: ProviderSelection,
+    continuation: bool = False,
 ) -> AgentTaskView:
     if selection.error is not None or selection.provider is None:
         error = selection.error or AgentProviderError(
@@ -1257,6 +1315,7 @@ def _run_task(
     trusted_context = _next_recent_card_context(
         session, actor_id=actor_id, conversation_id=conversation_id
     )
+    trusted_context.update(task_progress_context(session, actor_id=actor_id, task_id=task_id))
     registry = _build_registry()
 
     def dispatch(
@@ -1279,12 +1338,32 @@ def _run_task(
         )
 
     try:
-        result = AgentRuntime(selection.provider, max_steps=4).run(
-            request_text=request_text,
-            trusted_context=trusted_context,
-            registry=registry,
-            dispatch=dispatch,
+        result = AgentRunResult(
+            status="running",
+            message="正在处理任务。",
+            error_code=None,
+            executed_tools=0,
         )
+        for replan_count in range(3):
+            result = AgentRuntime(selection.provider, max_steps=8).run(
+                request_text=request_text,
+                trusted_context=trusted_context,
+                registry=registry,
+                dispatch=dispatch,
+                continuation=continuation or replan_count > 0,
+            )
+            if result.status != "completed":
+                break
+            current_progress = task_progress_context(
+                session, actor_id=actor_id, task_id=task_id
+            ).get("task_progress", {})
+            missing_tools = missing_requested_write_tools(request_text, current_progress)
+            if not missing_tools or replan_count == 2:
+                break
+            trusted_context["task_progress"] = {
+                **current_progress,
+                "required_next_tools": list(missing_tools),
+            }
     except AgentProviderError as exc:
         _finalize_run(
             session,
@@ -1296,6 +1375,44 @@ def _run_task(
             error_code=exc.code,
         )
         return _task_view(session, actor_id=actor_id, task_id=task_id)
+
+    task_progress = task_progress_context(session, actor_id=actor_id, task_id=task_id).get(
+        "task_progress", {}
+    )
+    payday_clarification = missing_payday_parameters_message(request_text)
+    if payday_clarification and result.status in {"completed", "awaiting_input"}:
+        result = AgentRunResult(
+            status="awaiting_input",
+            message=payday_clarification,
+            error_code=None,
+            executed_tools=result.executed_tools,
+        )
+    clarification = unknown_requested_transfer_payee_message(request_text, task_progress)
+    if not payday_clarification and clarification and result.status in {"completed", "failed"}:
+        result = AgentRunResult(
+            status="awaiting_input",
+            message=clarification,
+            error_code=None,
+            executed_tools=result.executed_tools,
+        )
+    elif result.status == "completed":
+        unsuitable_investment = unsuitable_requested_investment_message(request_text, task_progress)
+        if unsuitable_investment:
+            result = AgentRunResult(
+                status="failed",
+                message=unsuitable_investment,
+                error_code="risk_mismatch",
+                executed_tools=result.executed_tools,
+            )
+        else:
+            missing_tools = missing_requested_write_tools(request_text, task_progress)
+            if missing_tools:
+                result = AgentRunResult(
+                    status="failed",
+                    message="请求中的操作步骤尚未由业务工具完成，因此任务未标记为完成。",
+                    error_code="agent_workflow_incomplete",
+                    executed_tools=result.executed_tools,
+                )
 
     _finalize_run(
         session,
@@ -1351,6 +1468,81 @@ def create_agent_task(
         conversation_id=conversation_id,
         request_id=request_id,
         selection=selection,
+    )
+
+
+def continue_confirmed_task(
+    session: Session,
+    *,
+    actor_id: UUID,
+    task_id: UUID,
+    request_id: str,
+    selection: ProviderSelection,
+) -> AgentTaskView:
+    with write_transaction(session, immediate=True):
+        task = _owned_task(session, actor_id=actor_id, task_id=task_id)
+        if task.status != "running":
+            return _task_view(session, actor_id=actor_id, task_id=task_id)
+        latest_planner = session.scalar(
+            select(TaskStep)
+            .where(TaskStep.task_id == task.id, TaskStep.step_type == "planner")
+            .order_by(TaskStep.sequence.desc())
+            .limit(1)
+        )
+        if latest_planner is not None and latest_planner.status == "running":
+            return _task_view(session, actor_id=actor_id, task_id=task_id)
+        planner_count = (
+            session.scalar(
+                select(func.count())
+                .select_from(TaskStep)
+                .where(
+                    TaskStep.task_id == task.id,
+                    TaskStep.step_type == "planner",
+                )
+            )
+            or 0
+        )
+        if planner_count >= 6:
+            _transition(task, "failed")
+            task.error_code = "agent_continuation_limit_exceeded"
+            task.message = "任務已達到續跑上限，已完成的操作保留，未完成的操作沒有執行。"
+            return _task_view(session, actor_id=actor_id, task_id=task_id)
+        task.message = "正在继续处理原任务。"
+        task.error_code = None
+        session.add(
+            TaskStep(
+                task_id=task.id,
+                sequence=_next_sequence(session, task.id),
+                step_type="planner",
+                status="running",
+                summary=f"Continuing with {selection.mode} provider.",
+            )
+        )
+        _audit(
+            session,
+            actor_id=actor_id,
+            event_type="agent.workflow_continued",
+            resource_type="task",
+            resource_id=task.id,
+            request_id=request_id,
+            task_id=task.id,
+            outcome="succeeded",
+            before_state={"status": task.status},
+            after_state={"status": "running", "planner_count": planner_count + 1},
+        )
+        request_text = task.request_text
+        conversation_id = task.conversation_id
+        session.flush()
+
+    return _run_task(
+        session,
+        actor_id=actor_id,
+        task_id=task_id,
+        request_text=request_text,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        selection=selection,
+        continuation=True,
     )
 
 
@@ -1660,8 +1852,19 @@ def submit_task_input(
             if prior_input.input_hash != input_hash:
                 raise AgentIdempotencyConflictError
             return _task_view(session, actor_id=actor_id, task_id=task_id)
-        if task.status not in {"awaiting_input", "awaiting_confirmation"}:
+        resumable_partial_task = task.status in {"failed", "awaiting_input"} and (
+            has_completed_tool_execution(session, task_id=task.id)
+        )
+        if (
+            task.status not in {"awaiting_input", "awaiting_confirmation"}
+            and not resumable_partial_task
+        ):
             raise AgentTaskStateConflictError
+        if resumable_partial_task or task.status in {"awaiting_input", "awaiting_confirmation"}:
+            continued_request = f"{task.request_text}\n\n用户补充：{request_text}"
+            if len(continued_request) > 1000:
+                raise AgentTaskStateConflictError
+            request_text = continued_request
         _invalidate_pending_challenges(session, task=task, actor_id=actor_id, request_id=request_id)
         before = task.status
         _transition(task, "planning")
@@ -1703,6 +1906,9 @@ def submit_task_input(
             after_state={"status": task.status},
         )
         conversation_id = task.conversation_id
+        continuation = resumable_partial_task or has_completed_tool_execution(
+            session, task_id=task.id
+        )
         session.flush()
 
     return _run_task(
@@ -1713,6 +1919,7 @@ def submit_task_input(
         conversation_id=conversation_id,
         request_id=request_id,
         selection=selection,
+        continuation=continuation,
     )
 
 
@@ -1825,7 +2032,6 @@ def _complete_confirmed_resource(
         step.status = "succeeded"
         step.summary = result_summary
         step.completed_at = utc_now()
-    _transition(task, "completed")
     task.message = user_message
     task.error_code = None
     _audit(
@@ -1992,7 +2198,6 @@ def confirm_task_operation(
                     step.status = "succeeded"
                     step.summary = execution.result_summary
                     step.completed_at = utc_now()
-                _transition(task, "completed")
                 action = {"paused": "已暂停", "active": "已恢复", "cancelled": "已取消"}[
                     changed.status
                 ]
@@ -2464,7 +2669,6 @@ def confirm_task_operation(
                 step.status = "succeeded"
                 step.summary = execution.result_summary
                 step.completed_at = utc_now()
-            _transition(task, "completed")
             action = "冻结" if changed.status is CardStatus.FROZEN else "解冻"
             task.message = f"尾号 {changed.card_suffix} 的卡片已{action}。"
             task.error_code = None
@@ -2584,6 +2788,7 @@ __all__ = [
     "AgentTaskView",
     "AuditSummaryView",
     "cancel_agent_task",
+    "continue_confirmed_task",
     "confirm_card_change",
     "confirm_task_operation",
     "create_agent_task",
