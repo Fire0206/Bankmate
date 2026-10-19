@@ -13,6 +13,7 @@ from finorch_api.infrastructure.models import (
     Card,
     ConfirmationChallenge,
     InvestmentHolding,
+    InvestmentOrder,
     Subscription,
     ToolExecution,
 )
@@ -126,6 +127,53 @@ class _UnknownPayeeWriteAttemptProvider:
                 ),
             ),
         )
+
+
+class _InvestmentBuyProvider:
+    mode = "openai-compatible"
+
+    def __init__(self, *, lookup_first: bool) -> None:
+        self.lookup_first = lookup_first
+        self.calls = 0
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del messages, tools
+        self.calls += 1
+        if self.lookup_first and self.calls == 1:
+            return ModelTurn(None, (ModelToolCall("products", "investment.products", "{}"),))
+        return ModelTurn(
+            None,
+            (
+                ModelToolCall(
+                    "buy",
+                    "investment.buy",
+                    '{"product_name":"成长指数模拟","amount_minor":100000}',
+                ),
+            ),
+        )
+
+
+class _InvalidPaydayPlanProvider:
+    mode = "openai-compatible"
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del messages, tools
+        return ModelTurn(
+            None,
+            (ModelToolCall("plan", "finance.payday_plan", "{}"),),
+        )
+
+
+class _CountingNoopProvider:
+    mode = "openai-compatible"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del messages, tools
+        self.calls += 1
+        return ModelTurn("No tool call.")
 
 
 def tool_names(task: dict) -> list[str]:
@@ -344,6 +392,107 @@ def test_unknown_payee_write_attempt_is_rejected_and_requests_clarification(
             )
     finally:
         app.dependency_overrides[get_provider_selection] = previous_override
+
+
+@pytest.mark.parametrize(
+    ("lookup_first", "expected_error"),
+    [
+        (False, "investment_suitability_not_verified"),
+        (True, "risk_mismatch"),
+    ],
+)
+def test_investment_buy_requires_a_server_checked_suitable_product(
+    workflow_context, lookup_first: bool, expected_error: str
+) -> None:
+    client, database = workflow_context
+    previous_override = app.dependency_overrides[get_provider_selection]
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        _InvestmentBuyProvider(lookup_first=lookup_first), "openai-compatible"
+    )
+    try:
+        task = submit(client, "申购 1000 元成长指数模拟", f"investment-risk-{lookup_first}")
+    finally:
+        app.dependency_overrides[get_provider_selection] = previous_override
+
+    assert task["status"] == "failed"
+    assert task["error_code"] == expected_error
+    assert task["confirmation"] is None
+    assert "investment.buy" in tool_names(task)
+
+    with database.session_factory() as session:
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+        assert session.scalar(select(func.count()).select_from(InvestmentHolding)) == 0
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ConfirmationChallenge)
+                .where(ConfirmationChallenge.task_id == UUID(task["id"]))
+            )
+            == 0
+        )
+
+
+def test_invalid_plan_arguments_request_user_input_without_marking_task_failed(
+    workflow_context,
+) -> None:
+    client, database = workflow_context
+    previous_override = app.dependency_overrides[get_provider_selection]
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        _InvalidPaydayPlanProvider(), "openai-compatible"
+    )
+    try:
+        task = submit(
+            client,
+            "发薪日资金调度，给小林转 200 元，预留 3000 元，其余买入模拟理财。",
+            "invalid-plan-needs-input",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = previous_override
+
+    assert task["status"] == "awaiting_input"
+    assert task["error_code"] is None
+    assert task["confirmation"] is None
+    assert "收款人" in task["message"]
+    assert tool_names(task) == ["finance.payday_plan"]
+
+    with database.session_factory() as session:
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+        assert session.scalar(select(func.count()).select_from(InvestmentHolding)) == 0
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+
+
+def test_incomplete_payday_parameters_clarify_before_any_tool_or_confirmation(
+    workflow_context,
+) -> None:
+    client, database = workflow_context
+    provider = _CountingNoopProvider()
+    previous_override = app.dependency_overrides[get_provider_selection]
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        provider, "openai-compatible"
+    )
+    try:
+        task = submit(
+            client,
+            "工资到账后给小林转 200 元，余下帮我安排成合适的模拟理财。",
+            "incomplete-payday-clarification",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = previous_override
+
+    assert task["status"] == "awaiting_input"
+    assert task["confirmation"] is None
+    assert task["error_code"] is None
+    assert tool_names(task) == []
+    assert provider.calls == 0
+
+    with database.session_factory() as session:
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+        assert session.scalar(select(func.count()).select_from(InvestmentHolding)) == 0
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
 
 
 def test_cancel_between_confirmations_keeps_completed_step_and_invalidates_next(

@@ -17,7 +17,7 @@
 - Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
 - Agent Loop 每次规划最多执行 8 次工具调用；确认后在同一持久化 Task 中继续规划，最多追加 6 个续跑阶段。若完成态门禁发现明确请求仍缺少成功的写工具记录，服务端最多再请求两次有界重规划，并把缺失工具放入可信上下文；仍未完成则以失败状态返回。同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。已成功的写操作不会重放；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
 - 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。只读结果和写入结果摘要均基于服务端工具数据生成，不将模型文本当作业务执行事实。
-- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。DeepSeek 端到端业务评测使用隔离测试库和合成数据；覆盖范围及结果见[开发指南](development.md)。该评测不等同于安全或 Prompt Injection 认证。
+- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、低温度设置、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。理财申购还要求同一任务已返回该产品的服务端适当性结果；DeepSeek 端到端评测使用隔离测试库和合成数据，覆盖范围及结果见[开发指南](development.md)。该评测不等同于独立安全或 Prompt Injection 认证。
 
 当前允许工具：
 

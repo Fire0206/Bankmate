@@ -257,6 +257,41 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
 
     def buy_handler(arguments: BaseModel, context: ToolCallContext) -> InvestmentProposalOutput:
         values = InvestmentPurchaseInput.model_validate(arguments)
+        product_check = context.session.scalar(
+            select(ToolExecution)
+            .where(
+                ToolExecution.task_id == context.task.id,
+                ToolExecution.actor_id == context.actor_id,
+                ToolExecution.tool_name == "investment.products",
+                ToolExecution.status == "succeeded",
+            )
+            .order_by(ToolExecution.created_at.desc(), ToolExecution.id.desc())
+            .limit(1)
+        )
+        matched_product = (
+            next(
+                (
+                    item
+                    for item in (product_check.result_data or {}).get("items", [])
+                    if isinstance(item, dict)
+                    and isinstance(item.get("name"), str)
+                    and item["name"].casefold() == values.product_name.strip().casefold()
+                ),
+                None,
+            )
+            if product_check is not None
+            else None
+        )
+        if matched_product is None:
+            raise BankingRuleError(
+                "investment_suitability_not_verified",
+                "请先查询当前任务中的产品风险匹配结果，再提交申购。",
+            )
+        if matched_product.get("suitable") is not True:
+            raise BankingRuleError(
+                "risk_mismatch",
+                "该模拟产品超出当前用户风险等级范围，未创建申购。",
+            )
         payday_plan = context.session.scalar(
             select(ToolExecution)
             .where(
@@ -302,7 +337,9 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
     return (
         ToolSpec(
             "investment.products",
-            "List synthetic products and check them against the server-held risk profile.",
+            "List synthetic products and check them against the server-held risk profile. "
+            "The structured suitable field is authoritative; only products marked true may be "
+            "proposed for purchase.",
             "1.0",
             ProductQueryInput,
             ProductsOutput,
@@ -358,8 +395,10 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             "investment.buy",
-            "Propose a simulated purchase only when the user names a product and purchase amount. "
-            "The server checks risk suitability and balance. Always require confirmation.",
+            "Propose a simulated purchase only after investment.products has returned the exact "
+            "product with suitable=true in this task. Do not call this tool in the same model turn "
+            "as the product lookup. The server rechecks risk suitability and balance. Always "
+            "require confirmation.",
             "1.0",
             InvestmentPurchaseInput,
             InvestmentProposalOutput,

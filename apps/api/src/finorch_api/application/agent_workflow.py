@@ -50,6 +50,32 @@ def has_completed_tool_execution(session: Session, *, task_id: UUID) -> bool:
     )
 
 
+def invalid_tool_input_name(task_progress: dict[str, Any]) -> str | None:
+    for item in reversed(task_progress.get("tools", [])):
+        if (
+            isinstance(item, dict)
+            and item.get("status") == "failed"
+            and item.get("error_code") == "tool_input_invalid"
+            and isinstance(item.get("tool_name"), str)
+        ):
+            return item["tool_name"]
+    return None
+
+
+def tool_input_clarification_message(tool_name: str) -> str:
+    if tool_name == "finance.payday_plan":
+        return "请补充或核对收款人、转账金额和账户预留金额。"
+    if tool_name in {"transfer.create", "transfer.schedule"}:
+        return "请补充或核对收款人、转账金额和转出账户。"
+    if tool_name == "investment.buy":
+        return "请补充或核对理财产品名称和申购金额。"
+    if tool_name in {"investment.redeem", "card.freeze", "card.unfreeze"}:
+        return "请补充或核对要操作的产品或银行卡信息。"
+    if tool_name.startswith("subscription."):
+        return "请补充或核对要操作的订阅名称。"
+    return "操作信息不完整或格式不正确，请补充后再继续。"
+
+
 def missing_requested_write_tools(
     request_text: str, task_progress: dict[str, Any]
 ) -> tuple[str, ...]:
@@ -102,7 +128,9 @@ def missing_requested_write_tools(
                 if has_matching_subscription and "subscription.pause" not in succeeded:
                     required.append("subscription.pause")
 
-    payday = not advisory_question and any(phrase in request for phrase in ("发薪日", "资金调度"))
+    payday = not advisory_question and any(
+        phrase in request for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度")
+    )
     transfer_intent = has_amount and (
         re.search(r"转给\s*[\u4e00-\u9fffA-Za-z0-9]{1,12}", request) is not None
         or re.search(r"给[\u4e00-\u9fffA-Za-z0-9]{1,12}转(?:账)?", request) is not None
@@ -185,7 +213,7 @@ def missing_payday_parameters_message(request_text: str) -> str | None:
     ):
         return None
     if not (
-        ("发薪日" in request or "资金调度" in request)
+        any(phrase in request for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度"))
         and "转" in request
         and any(phrase in request for phrase in ("理财", "投资", "申购", "买入", "购买"))
     ):
@@ -207,7 +235,7 @@ def unknown_requested_transfer_payee_message(
     if re.search(r"\d+(?:\.\d{1,2})?\s*(?:元|块|块钱)", request) is None:
         return None
     match = re.search(
-        r"(?:转给\s*(?P<to_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*(?=\d|转)|"
+        r"(?:转给\s*(?P<to_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*(?=\d|转|[，。！？；：,.!?;:\s]|$)|"
         r"给\s*(?P<from_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*转(?:账)?)",
         request,
     )

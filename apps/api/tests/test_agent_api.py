@@ -717,8 +717,9 @@ def test_invalid_tool_schema_is_rejected_before_handler(api_context):
             FakeProvider(), "fake"
         )
 
-    assert task["status"] == "failed"
-    assert task["error_code"] == "tool_input_invalid"
+    assert task["status"] == "awaiting_input"
+    assert task["error_code"] is None
+    assert task["steps"][-1]["error_code"] == "tool_input_invalid"
     with database.session_factory() as session:
         assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.ACTIVE
         assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0

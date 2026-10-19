@@ -24,7 +24,8 @@ class Settings(BaseSettings):
     llm_base_url: str | None = None
     llm_api_key: SecretStr | None = None
     llm_model: str | None = None
-    llm_timeout_seconds: float = Field(default=20.0, gt=0, le=120)
+    llm_timeout_seconds: float = Field(default=60.0, gt=0, le=120)
+    llm_temperature: float = Field(default=0.2, ge=0, le=2)
 
 
 @lru_cache

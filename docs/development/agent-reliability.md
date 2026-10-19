@@ -1,6 +1,6 @@
 # Agent Provider 与任务恢复
 
-> 本文保留 Phase 1B.5 的 Provider Mock 与任务恢复验证，并记录 Phase 1D 的 DeepSeek 真实模型结果。当前 Agent 复用同一 Runtime/Registry/Workflow，覆盖五个模拟业务场景。
+> 本文保留 Phase 1B.5 的 Provider Mock 与任务恢复验证，并记录 Phase 1D 历史基线及 Phase 2A 的当前 DeepSeek 结果。当前 Agent 复用同一 Runtime/Registry/Workflow，覆盖六个模拟业务场景。
 
 ## Provider 验证范围
 
@@ -10,11 +10,17 @@ pytest 使用 Mock HTTP 响应覆盖请求结构、多工具多轮、无工具�
 
 ## Phase 1D DeepSeek 真实端到端验证
 
-2026-10-19 使用本地 `.env` 配置的 DeepSeek `deepseek-flash`，通过真实 FastAPI API 和独立模拟 SQLite 数据库执行 `apps/api/scripts/deepseek_eval.py`：20/20 场景通过，工具选择、参数检查和任务完成率均为 100%。场景覆盖账户与收款人查询、转账/定时转账、AA 分账、产品筛选与比较、持仓/订单、账单汇总/异常提示、订阅、银行卡查询、申购确认、模糊请求澄清和风险不匹配。写操作逐项提交服务端确认，随后按 API 读取业务结果验证状态。
+2026-10-19 使用本地 `.env` 配置的 DeepSeek `deepseek-flash`，通过真实 FastAPI API 和独立模拟 SQLite 数据库执行 `apps/api/scripts/deepseek_eval.py`：20/20 场景通过，工具选择、参数检查和任务完成率均为 100%。场景覆盖账户与收款人查询、转账/定时转账、AA 分账、产品筛选与比较、持仓/订单、账单汇总/异常提示、订阅、银行卡查询、申购确认、模糊请求澄清和风险不匹配。写操作逐项提交服务端确认，随后按 API 读取业务结果验证状态。此为 Phase 1D 单次历史基线，不作为当前可靠性指标。
 
 评测脚本仅保存测试编号、场景名、工具名、结构化检查结果、状态和错误码；不保存密钥、原始用户请求或模型文本。该 20 项是一次本地演示基线，不代表所有自然语言表达都稳定，也不运行于 CI；API Key 和 DeepSeek 额度由使用者本地管理。
 
 本轮发现并修复：DeepSeek 对函数名字符有约束，内部 dotted Tool Name 现在映射为 provider-safe alias；AA 分账及投资持仓的嵌套 DTO 显式转换为 Tool Schema；澄清请求与有完整参数的转账/申购请求补充了明确路由规则；评测校验适配分账金额字段和多步风险检查。Tool 执行和业务副作用仍由服务端校验、挑战确认与数据库事务决定。
+
+## Phase 2A DeepSeek 可靠性与小样本结果
+
+2026-10-19 在隔离的 `test` SQLite 数据库上，用 DeepSeek `deepseek-flash` 连续执行同一组 15 个跨场景样本三轮。每轮通过 14/15；工具选择准确率 93%、参数正确率 100%、目标任务完成/澄清率 91%。两条主要 Demo（含不同措辞）各自 3/3 轮通过。风险样本每轮 2/2 由服务端阻止危险申购，三轮 6/6；`cross_investment_risk_rejected` 仍是工具选择失败，因为模型在 `suitable=false` 后继续提出申购，但服务端无确认、无订单/持仓/余额变更。详细数字和局限见[开发指南](../development.md)。
+
+本轮改进包括：模型温度默认降至 0.2、默认超时增至 60 秒；提示词明确将结构化工具结果视为权威业务数据，且要求依赖步骤等待查询结果；`investment.buy` 要求同一任务先查询准确产品并由服务端重新核验适当性；发薪日目标缺少转账或预留金额时在调用模型/工具前澄清；自然语言未知收款人解析覆盖常见标点。Fake Provider 补充先查询产品再提申购的顺序。自动化回归及作者检查不能替代独立安全审查。
 
 ## 可选真实模型 Smoke Test
 
@@ -27,7 +33,8 @@ FINORCH_AGENT_PROVIDER=openai-compatible
 FINORCH_LLM_BASE_URL=https://provider.example/v1
 FINORCH_LLM_API_KEY=<local secret>
 FINORCH_LLM_MODEL=<tool-calling model name>
-FINORCH_LLM_TIMEOUT_SECONDS=20
+FINORCH_LLM_TIMEOUT_SECONDS=60
+FINORCH_LLM_TEMPERATURE=0.2
 ```
 
 Base URL 填到兼容 API 的版本根路径，适配器会追加 `/chat/completions`。准备并启动 API/Web 的命令见[开发指南](../development.md)。真实 Smoke Test 只用 seed 合成数据，按顺序验证：

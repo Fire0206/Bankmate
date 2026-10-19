@@ -1,10 +1,11 @@
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
 from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
+from finorch_api.agent.runtime import FakeProvider, ModelToolCall, ModelTurn
 from finorch_api.api.v1.agent import get_provider_selection
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.infrastructure.models import (
@@ -312,6 +313,45 @@ def test_risk_mismatch_never_creates_an_investment_order(banking_api) -> None:
     task = submit(client, "申购成长指数模拟 1000 元", "investment-risk-mismatch")
     assert task["status"] == "failed"
     assert task["error_code"] == "risk_mismatch"
+    assert balances(database) == before
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+
+
+def test_investment_purchase_without_task_suitability_result_is_rejected(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+
+    class DirectBuyProvider(FakeProvider):
+        def complete(self, messages, tools):
+            del messages, tools
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "direct-buy-without-check",
+                        "investment.buy",
+                        json.dumps(
+                            {"product_name": "安稳现金管理", "amount_minor": 10_000},
+                            ensure_ascii=False,
+                        ),
+                    ),
+                ),
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        DirectBuyProvider(), "fake"
+    )
+    try:
+        task = submit(client, "申购安稳现金管理 100 元", "investment-without-risk-check")
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert task["status"] == "failed"
+    assert task["error_code"] == "investment_suitability_not_verified"
+    assert task["confirmation"] is None
     assert balances(database) == before
     with database.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
