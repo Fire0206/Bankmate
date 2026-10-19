@@ -34,6 +34,36 @@ def test_fake_provider_is_deterministic_and_does_not_call_network() -> None:
     assert json.loads(first.tool_calls[0].arguments) == {"card_suffix": "1042"}
 
 
+def test_fake_provider_summarizes_recorded_successful_write() -> None:
+    provider = FakeProvider()
+    messages = [
+        {
+            "role": "system",
+            "content": "Trusted demo context: "
+            + json.dumps(
+                {
+                    "task_progress": {
+                        "status": "running",
+                        "tools": [
+                            {
+                                "tool_name": "card.freeze",
+                                "status": "succeeded",
+                                "result_data": {"status": "frozen"},
+                            }
+                        ],
+                    }
+                }
+            ),
+        },
+        {"role": "user", "content": "冻结尾号 1042 的卡"},
+    ]
+
+    turn = provider.complete(messages, [])
+
+    assert turn.status == "completed"
+    assert turn.content == "银行卡已冻结。"
+
+
 def test_tool_registry_generates_closed_openai_function_schema() -> None:
     registry = ToolRegistry(
         (
