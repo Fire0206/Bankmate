@@ -25,7 +25,7 @@ Commands and results:
 
 - [ ] No secrets, personal data, or real financial data added
 - [ ] Authorization, confirmation, idempotency, and audit boundaries reviewed if affected
-- [ ] Independent security review completed (required before merge when this changes funds, permissions, confirmation, idempotency, audit, or security contracts)
+- [ ] Independent security review completed, or explicit single-maintainer exception recorded per `docs/collaboration.md`
 
 ## Reviewer notes
 
