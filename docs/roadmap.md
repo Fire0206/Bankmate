@@ -37,14 +37,14 @@
 
 ## Phase 1C — 账单分析与订阅代扣
 
-状态：**当前开发分支实现中，等待 CI/PR 验证**
+状态：**已实现并合并（PR #9；CI 通过）**
 
 - [x] 合成交易流水、按月/类别/商户筛选、收支/类别/六个月趋势汇总。
 - [x] 基于固定金额规则的异常提示；明确不代表欺诈检测。
 - [x] 由重复周期交易识别并持久化月度订阅，展示费用、状态和下次模拟扣款。
 - [x] `subscription.pause/resume/cancel` 经服务端确认、幂等、资源版本检查、事务与审计后更新模拟状态。
 - [x] Fake Provider 与 OpenAI-compatible Tool Registry 覆盖三类场景；前端展示流水、汇总、订阅及确认结果。
-- [x] 新增 Alembic migration、`phase1c-v1` Seed/Reset 和集成测试；PR 验证结果待本轮完成后记录。
+- [x] 新增 Alembic migration、`phase1c-v1` Seed/Reset 和集成测试；PR #9 的 CI 已通过并合并至 `main`。
 
 ## 后续业务场景（Planned）
 
