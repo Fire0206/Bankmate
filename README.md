@@ -2,7 +2,7 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 1E — 六场景模拟闭环。** 银行卡、账单、订阅、转账、理财及跨场景联动均由受控 Agent 工具调用。跨场景任务可在多个服务端确认点暂停、恢复、取消，并保留部分成功结果。Fake Provider 用于无网络演示；OpenAI-compatible Provider 可配置 DeepSeek。真实认证、真实金融服务和生产部署仍未实现。
+> **项目状态：Phase 2A — 六场景 Demo 可靠性收尾。** 六类模拟业务及跨场景任务已实现；本阶段聚焦 DeepSeek 工具选择、风险结果、澄清续跑和可复现 Demo 数据。真实认证、真实金融服务和生产部署仍未实现。
 
 ## 产品规划
 
@@ -72,6 +72,21 @@ uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 uv run --project apps/api python -m finorch_api.seed
 ```
 
+Windows 可使用仓库脚本固定 Demo 数据库和启动参数。脚本只操作仓库 `.data/finorch.db`，默认使用无需联网的 Fake Provider：
+
+```powershell
+.\scripts\demo.ps1 -Mode reset
+```
+
+终端一启动 API，终端二启动 Web：
+
+```powershell
+.\scripts\demo.ps1 -Mode api
+.\scripts\demo.ps1 -Mode web
+```
+
+如需演示 DeepSeek，在本地忽略文件 `.env` 配置兼容服务地址、模型和 API Key，然后以 `-Provider openai-compatible` 启动 API。不要在网页端配置密钥。
+
 终端一，启动 API：
 
 ```powershell
@@ -86,7 +101,7 @@ pnpm --filter @finorch/web dev
 
 打开 Vite 显示的本地地址即可在 Fake Provider 模式演示六个场景，包括可疑扣款处置和发薪日资金调度。所有资金或状态变更均先生成服务端确认卡片；跨场景操作按步骤逐项确认，任务刷新后可从服务端恢复。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
 
-可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金和权限校验及确认均由服务端执行。
+可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。`FINORCH_LLM_TEMPERATURE` 默认 `0.2`，降低工具选择的随机性。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金、适当性和权限校验及确认均由服务端执行。
 
 ## 测试与检查
 

@@ -156,6 +156,7 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
     assert captured["authorization"] == "Bearer unit-test-key"
     assert captured["body"]["model"] == "mock-card-model"
     assert captured["body"]["tool_choice"] == "auto"
+    assert captured["body"]["temperature"] == 0.2
     assert captured["timeout"] == 3.5
     assert provider.mode == "openai-compatible"
     assert turn.tool_calls[0].name == "card.freeze"
@@ -191,6 +192,7 @@ def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypat
 
     assert captured["body"]["thinking"] == {"type": "disabled"}
     assert captured["body"]["tool_choice"] == "auto"
+    assert captured["body"]["temperature"] == 0.2
     assert turn.tool_calls == ()
 
 

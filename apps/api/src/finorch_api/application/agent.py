@@ -45,9 +45,11 @@ from finorch_api.agent.tools import (
 from finorch_api.agent.transfer_tools import transfer_tool_specs
 from finorch_api.application.agent_workflow import (
     has_completed_tool_execution,
+    invalid_tool_input_name,
     missing_payday_parameters_message,
     missing_requested_write_tools,
     task_progress_context,
+    tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
 )
@@ -700,9 +702,10 @@ def _record_tool_failure(
     execution.result_data = {"status": "failed", "error_code": code}
     execution.completed_at = utc_now()
     before = task.status
-    if task.status not in {"failed", "cancelled", "completed"}:
+    needs_user_input = code == "tool_input_invalid"
+    if not needs_user_input and task.status not in {"failed", "cancelled", "completed"}:
         _transition(task, "failed")
-    task.error_code = code
+    task.error_code = None if needs_user_input else code
     task.message = message
     _audit(
         session,
@@ -715,7 +718,11 @@ def _record_tool_failure(
         tool_execution_id=execution.id,
         outcome="failed",
         before_state={"status": before},
-        after_state={"status": task.status, "error_code": code},
+        after_state={
+            "status": task.status,
+            "error_code": task.error_code,
+            "tool_error_code": code,
+        },
     )
     return ToolDispatchResult("failed", execution.result_data, message, code)
 
@@ -1296,6 +1303,19 @@ def _run_task(
     selection: ProviderSelection,
     continuation: bool = False,
 ) -> AgentTaskView:
+    payday_clarification = missing_payday_parameters_message(request_text)
+    if payday_clarification:
+        _finalize_run(
+            session,
+            actor_id=actor_id,
+            task_id=task_id,
+            request_id=request_id,
+            status="awaiting_input",
+            message=payday_clarification,
+            error_code=None,
+        )
+        return _task_view(session, actor_id=actor_id, task_id=task_id)
+
     if selection.error is not None or selection.provider is None:
         error = selection.error or AgentProviderError(
             "provider_not_configured", "The selected provider is not configured."
@@ -1379,6 +1399,14 @@ def _run_task(
     task_progress = task_progress_context(session, actor_id=actor_id, task_id=task_id).get(
         "task_progress", {}
     )
+    invalid_tool_name = invalid_tool_input_name(task_progress)
+    if result.error_code == "tool_input_invalid" and invalid_tool_name:
+        result = AgentRunResult(
+            status="awaiting_input",
+            message=tool_input_clarification_message(invalid_tool_name),
+            error_code=None,
+            executed_tools=result.executed_tools,
+        )
     payday_clarification = missing_payday_parameters_message(request_text)
     if payday_clarification and result.status in {"completed", "awaiting_input"}:
         result = AgentRunResult(

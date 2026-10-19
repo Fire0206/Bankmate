@@ -50,6 +50,7 @@ def select_provider(settings: Settings) -> ProviderSelection:
             api_key=settings.llm_api_key,
             model=settings.llm_model,
             timeout_seconds=settings.llm_timeout_seconds,
+            temperature=settings.llm_temperature,
         ),
         mode="openai-compatible",
     )
@@ -67,11 +68,13 @@ class OpenAICompatibleProvider(LLMProvider):
         api_key: SecretStr,
         model: str,
         timeout_seconds: float = 20.0,
+        temperature: float = 0.2,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key.get_secret_value()
         self.model = model
         self.timeout_seconds = timeout_seconds
+        self.temperature = temperature
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
         endpoint = (
@@ -84,6 +87,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
+            "temperature": self.temperature,
         }
         # DeepSeek's reasoning mode uses a separate reasoning_content field in
         # multi-turn tool calls. The current common adapter intentionally does

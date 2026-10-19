@@ -1,6 +1,8 @@
 from finorch_api.application.agent_workflow import (
+    invalid_tool_input_name,
     missing_payday_parameters_message,
     missing_requested_write_tools,
+    tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
 )
@@ -83,6 +85,28 @@ def test_incomplete_payday_goal_stays_open_until_amounts_are_supplied() -> None:
         is None
     )
     assert missing_payday_parameters_message("发薪日理财怎么规划？") is None
+    assert missing_payday_parameters_message("工资到账后给小林转 200 元，余下安排模拟理财。") == (
+        "请补充转账金额和希望保留在账户中的金额，再继续安排剩余资金。"
+    )
+
+
+def test_invalid_required_tool_input_maps_to_a_user_clarification() -> None:
+    progress = {
+        "tools": [
+            {
+                "tool_name": "finance.payday_plan",
+                "status": "failed",
+                "error_code": "tool_input_invalid",
+            }
+        ]
+    }
+
+    tool_name = invalid_tool_input_name(progress)
+
+    assert tool_name == "finance.payday_plan"
+    assert tool_input_clarification_message(tool_name) == (
+        "请补充或核对收款人、转账金额和账户预留金额。"
+    )
 
 
 def test_advisory_and_history_queries_do_not_require_writes() -> None:
@@ -113,6 +137,10 @@ def test_unknown_recipient_after_payee_lookup_returns_clarification() -> None:
             context,
         )
         is None
+    )
+    assert "张三" in unknown_requested_transfer_payee_message(
+        "把 100 元转给张三；如果不是已保存的收款人，请先问我。",
+        context,
     )
 
 
