@@ -4,8 +4,8 @@
 
 ## 项目与目录
 
-- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前 Phase 1D 已覆盖银行卡、账单、订阅、转账和理财五类模拟业务；跨场景联动、生产认证及真实金融服务仍为 Planned。所有金额、产品与账户数据均为合成数据。
-- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态。
+- FinOrch 目标是模拟银行场景的 AI Banking Agent。当前 Phase 1E 覆盖银行卡、账单、订阅、转账、理财和跨场景联动；跨场景示例为可疑扣款处置、发薪日资金调度。生产认证、真实金融服务及生产部署仍为 Planned。所有金额、产品与账户数据均为合成数据。
+- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、多确认续跑、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态。
 - `docs/` 是架构、产品、API、Agent、Workflow、安全、开发和协作契约入口；`docs/decisions/` 保存 ADR。
 - 逻辑分层：Web UI；API 验证和响应；Application 流程；Domain 规则；Infrastructure 存储/外部适配；Agent 意图/规划/工具编排；Security 授权/确认/策略/审计。按需落地，不为逻辑分层制造空模块。
 

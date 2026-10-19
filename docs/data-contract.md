@@ -1,6 +1,6 @@
 # 数据契约与建模规则
 
-> Phase 1A–1D 已实现 SQLite/SQLAlchemy/Alembic、合成账户/卡片/交易/订阅/转账/分账/理财数据，以及持久化 Agent Workflow、通用确认挑战和追加审计。以下规则适用于当前实现和后续扩展。
+> Phase 1A–1E 已实现 SQLite/SQLAlchemy/Alembic、合成账户/卡片/交易/订阅/转账/分账/理财数据，以及支持续跑的持久化 Agent Workflow、通用确认挑战和追加审计。以下规则适用于当前实现和后续扩展。
 
 ## 数据边界
 
@@ -34,10 +34,10 @@
 - `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；转账/收款执行由 Application 用例在事务内更新余额与关联流水。
 - `investment_products`、`investment_holdings`、`investment_orders`：确定性模拟产品和价格、风险等级、用户持仓及申购/赎回订单；不代表真实理财产品或收益。
 - `confirmation_challenges`：一次性绑定 actor、单一目标资源（银行卡、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
-- `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。
+- `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。可选 `card_id` 将来源卡与交易关联，以支持可解释的重复扣费证据。
 - `audit_events`：通用 actor、event type、resource、request/task/tool execution ID、outcome、可选前后状态摘要和 UTC 时间；兼容既有卡片状态语义。正常业务路径只追加，不覆盖或删除历史。不得在审计事件中存密钥、原始敏感数据或完整 Prompt。
 
-`seed` 会按固定 UUID 幂等插入合成样例。当前数据集版本为 `phase1d-v1`，包含两位模拟用户、账户、卡片、收款人、理财产品、合成流水和订阅。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
+`seed` 会按固定 UUID 幂等插入合成样例。当前数据集版本为 `phase1e-v1`，包含两位模拟用户、账户、卡片、收款人、理财产品、合成流水和订阅，并含一组同日重复收费记录用于验证规则提示。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
 
 下表为后续场景实体草图，不代表已实现：
 
@@ -48,7 +48,7 @@
 | `transactions`                       | 多对 1 `accounts`；可作为订阅检测来源              | 已实现合成账单及 transfer/investment 记账条目；账单统计仅查询 `bill` 类型 |
 | `transfers`                          | 多对 1 source/destination `accounts` 和 `payees`   | 已实现普通/定时模拟转账，需服务端确认后执行                               |
 | `split_bills` / `split_participants` | 分账归属 account/actor；参与者按金额顺序关联       | 已实现模拟 AA 拆分及受控的模拟收款                                        |
-| `cards`                              | 多对 1 `accounts`                                  | 已实现 active/frozen 与假卡号后四位；扩展场景仍为 Planned                 |
+| `cards`                              | 多对 1 `accounts`                                  | 已实现 active/frozen 与假卡号后四位；不存完整卡号                         |
 | `subscriptions`                      | 多对 1 `accounts`；记录来源交易 ID                 | 已实现周期候选持久化、月费/下次模拟扣款和经确认的状态管理；不操作真实商户 |
 | `investment_products`                | 1 对多 `investment_holdings` / `investment_orders` | 已实现确定性模拟价格、风险等级和参考收益                                  |
 | `investment_holdings`                | 多对 1 `accounts` 和 `investment_products`         | 已实现模拟持仓及余额变化                                                  |

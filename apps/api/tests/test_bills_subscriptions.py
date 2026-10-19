@@ -4,6 +4,8 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
+
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import FakeProvider
 from finorch_api.api.v1.agent import get_provider_selection
@@ -24,7 +26,6 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from sqlalchemy import func, select, update
 
 CONVERSATION_ID = "30000000-0000-4000-8000-000000000001"
 
@@ -83,8 +84,8 @@ def test_monthly_summary_and_category_totals_are_calculated_from_owned_rows(bill
     assert summary_response.status_code == 200
     summary = summary_response.json()
     assert summary["income_minor"] == 650_000
-    assert summary["expense_minor"] == 2_000_500
-    assert summary["net_minor"] == -1_350_500
+    assert summary["expense_minor"] == 2_003_500
+    assert summary["net_minor"] == -1_353_500
     assert summary["selected_category_expense_minor"] is None
     assert summary["anomalies"][0]["merchant"] == "星河数码"
 
@@ -162,7 +163,7 @@ def test_seed_detects_monthly_subscriptions_from_recurring_expenses(bill_agent_c
 @pytest.mark.parametrize(
     ("request_text", "tool_name", "expected"),
     (
-        ("我这个月花了多少钱", "bill.monthly_summary", 2_000_500),
+        ("我这个月花了多少钱", "bill.monthly_summary", 2_003_500),
         ("餐饮支出多少", "bill.monthly_summary", 11_440),
     ),
 )
@@ -183,8 +184,15 @@ def test_fake_agent_detects_anomaly_and_lists_subscriptions(bill_agent_context):
     client, _actor, _database = bill_agent_context
     anomaly_task = submit(client, "最近有没有异常消费", "bill-anomaly-query")
     anomalies = tool_result(anomaly_task, "bill.anomalies")
-    assert [item["merchant"] for item in anomalies["items"]] == ["星河数码"]
-    assert anomalies["items"][0]["anomaly_reason"]
+    assert {item["merchant"] for item in anomalies["items"]} == {
+        "星河数码",
+        "腾讯视频会员",
+    }
+    duplicate_charges = [item for item in anomalies["items"] if item["merchant"] == "腾讯视频会员"]
+    assert len(duplicate_charges) == 2
+    assert all("重复扣费提示" in item["anomaly_reason"] for item in duplicate_charges)
+    assert all(item["source_card_suffix"] == "1042" for item in duplicate_charges)
+    assert all("不代表欺诈" in item["anomaly_reason"] for item in duplicate_charges)
 
     subscription_task = submit(client, "我有哪些自动扣费", "subscription-list-query")
     subscriptions = tool_result(subscription_task, "subscription.list")
@@ -220,7 +228,7 @@ def test_subscription_cancel_requires_confirmation_and_is_idempotent(bill_agent_
     second = confirm(client, task)
     assert first.status_code == second.status_code == 200
     assert first.json()["status"] == "completed"
-    assert first.json()["steps"][-1]["result_data"]["subscription"]["status"] == "cancelled"
+    assert tool_result(first.json(), "subscription.cancel")["subscription"]["status"] == "cancelled"
     with database.session_factory() as session:
         subscription = session.scalar(
             select(Subscription).where(Subscription.merchant == "腾讯视频会员")

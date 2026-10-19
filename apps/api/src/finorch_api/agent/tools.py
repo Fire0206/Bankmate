@@ -106,6 +106,7 @@ class BillTransactionOutput(BaseModel):
     category: str
     occurred_at: datetime
     anomaly_reason: str | None
+    source_card_suffix: str | None
 
 
 class BillSummaryOutput(BaseModel):

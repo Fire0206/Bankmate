@@ -5,8 +5,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from finorch_api.domain.bills import detect_anomaly
-from finorch_api.infrastructure.models import Account, Transaction
+from finorch_api.domain.bills import detect_anomaly_reasons
+from finorch_api.infrastructure.models import Account, Card, Transaction
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class TransactionView:
     description: str
     occurred_at: datetime
     anomaly_reason: str | None
+    source_card_suffix: str | None
 
 
 @dataclass(frozen=True)
@@ -88,7 +89,19 @@ def _previous_month(value: date) -> date:
     return date(value.year, value.month - 1, 1)
 
 
-def _view(transaction: Transaction) -> TransactionView:
+def _view(
+    session: Session,
+    transaction: Transaction,
+    anomaly_reason: str | None = None,
+) -> TransactionView:
+    source_card_suffix = None
+    if transaction.card_id is not None:
+        source_card_suffix = session.scalar(
+            select(Card.card_suffix).where(
+                Card.id == transaction.card_id,
+                Card.account_id == transaction.account_id,
+            )
+        )
     return TransactionView(
         id=transaction.id,
         account_id=transaction.account_id,
@@ -99,7 +112,8 @@ def _view(transaction: Transaction) -> TransactionView:
         category=transaction.category,
         description=transaction.description,
         occurred_at=_utc(transaction.occurred_at),
-        anomaly_reason=detect_anomaly(transaction),
+        anomaly_reason=anomaly_reason,
+        source_card_suffix=source_card_suffix,
     )
 
 
@@ -156,9 +170,10 @@ def list_transactions(
         direction=direction,
     )
     page = rows[offset : offset + limit]
+    anomaly_reasons = detect_anomaly_reasons(rows)
     next_offset = offset + limit if offset + limit < len(rows) else None
     return TransactionPage(
-        items=tuple(_view(row) for row in page),
+        items=tuple(_view(session, row, anomaly_reasons.get(row.id)) for row in page),
         total=len(rows),
         offset=offset,
         limit=limit,
@@ -178,6 +193,7 @@ def get_monthly_summary(
     start = datetime.combine(selected_month, time.min, tzinfo=UTC)
     end = datetime.combine(_next_month(selected_month), time.min, tzinfo=UTC)
     rows = _owned_transactions(session, actor_id=actor_id, start=start, end=end)
+    anomaly_reasons = detect_anomaly_reasons(rows)
     income = sum(item.amount_minor for item in rows if item.direction == "income")
     expense = sum(item.amount_minor for item in rows if item.direction == "expense")
     category_totals: dict[str, list[int]] = {}
@@ -230,7 +246,11 @@ def get_monthly_summary(
         selected_category_expense_minor=selected_total,
         categories=categories,
         trends=trends,
-        anomalies=tuple(_view(item) for item in rows if detect_anomaly(item)),
+        anomalies=tuple(
+            _view(session, item, anomaly_reasons[item.id])
+            for item in rows
+            if item.id in anomaly_reasons
+        ),
     )
 
 
@@ -244,4 +264,9 @@ def get_month_anomalies(
         start=datetime.combine(selected_month, time.min, tzinfo=UTC),
         end=datetime.combine(_next_month(selected_month), time.min, tzinfo=UTC),
     )
-    return tuple(_view(item) for item in rows if detect_anomaly(item))
+    anomaly_reasons = detect_anomaly_reasons(rows)
+    return tuple(
+        _view(session, item, anomaly_reasons[item.id])
+        for item in rows
+        if item.id in anomaly_reasons
+    )

@@ -375,6 +375,8 @@ def transfer_tool_specs() -> tuple[ToolSpec, ...]:
         ToolSpec(
             "transfer.create",
             "Propose a synthetic account transfer when recipient and CNY amount are known. "
+            "Use the exact saved recipient_name. amount_minor is integer fen; convert yuan to "
+            "fen by multiplying by 100, and provide no extra fields. "
             "If the user does not choose a source account, omit it so the server uses their "
             "default owned account. Always require confirmation.",
             "1.0",

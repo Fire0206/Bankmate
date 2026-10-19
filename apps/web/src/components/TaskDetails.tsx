@@ -100,6 +100,7 @@ function stepLabel(step: Task["steps"][number]): string {
     "investment.orders": "查询理财记录",
     "investment.buy": "申购模拟理财",
     "investment.redeem": "赎回模拟理财",
+    "finance.payday_plan": "计算发薪日资金安排",
   };
   return labels[key] ?? key;
 }
@@ -176,7 +177,9 @@ export function TaskOverview({
 }) {
   const cancellable =
     task !== null &&
-    ["pending", "planning", "awaiting_input"].includes(task.status);
+    ["pending", "planning", "awaiting_input", "awaiting_confirmation"].includes(
+      task.status,
+    );
 
   return (
     <section aria-labelledby="task-overview-title" className="context-section">

@@ -18,6 +18,7 @@ class ModelToolCall:
 class ModelTurn:
     content: str | None
     tool_calls: tuple[ModelToolCall, ...] = ()
+    status: str | None = None
 
 
 class AgentProviderError(RuntimeError):
@@ -119,6 +120,7 @@ class AgentRuntime:
             [ToolSpec | None, BaseModel | None, ModelToolCall, int, Exception | None],
             ToolDispatchResult,
         ],
+        continuation: bool = False,
     ) -> AgentRunResult:
         messages: list[dict[str, Any]] = [
             {
@@ -131,7 +133,14 @@ class AgentRuntime:
                     "execution; every write needs server-side user confirmation. Ask a short "
                     "clarifying question when the target or required write parameters are unclear; "
                     "do not call tools until the user supplies them. Use only tools directly "
-                    "relevant to the request, and stop after the requested result is available. "
+                    "relevant to the request, and finish every requested goal clause. For a "
+                    "cross-scenario request, use persisted successful tool results, perform each "
+                    "remaining step in order, and stop at each confirmation proposal. After the "
+                    "server confirms an action, continue this same task without repeating any "
+                    "successful side effect. If one step fails, preserve completed results and "
+                    "do not claim the rest succeeded. If trusted task_progress includes a "
+                    "required_next_tools list, call those registered tools in order before "
+                    "finishing; use only their results and never repeat successful writes. "
                     "For an AA split request with an event title, total CNY amount, and named "
                     "participants, call transfer.split_create; convert yuan to integer fen for "
                     "amount_minor (1 yuan = 100 fen; 120 yuan = 12000 fen) and list only the "
@@ -140,11 +149,38 @@ class AgentRuntime:
                     "For investment buy requests, require both a named product and an amount; "
                     "if either is missing, ask which product or amount the user wants and do not "
                     "call product or profile tools as a substitute for clarification. "
-                    "For a transfer with a named recipient and amount, create the transfer "
-                    "proposal; "
+                    "When a product and amount are present, call investment.products first and "
+                    "proceed only when the exact product is returned with suitable=true. If the "
+                    "product is unsuitable, explain the server's risk result and do not call "
+                    "investment.buy. "
+                    "Before proposing a transfer, read transfer.payees and match the requested "
+                    "recipient to an exact saved recipient; if transfer.payees does not contain "
+                    "an exact display_name match, stop and ask which listed recipient to use; "
+                    "never call transfer.create with a missing or approximate recipient. For a "
+                    "transfer with a known recipient and explicit amount, create the transfer "
+                    "proposal even when the amount may exceed the balance; the server must return "
+                    "the authoritative insufficient-funds result rather than silently dropping "
+                    "the requested step. "
                     "do not stop after reading accounts or payees. Omit source_account_label when "
                     "the user did not choose an account; the server selects their default account. "
                     "Never propose a write for an unknown recipient or an unsuitable product. "
+                    "Money amounts sent to transfer tools use integer fen; convert each yuan by "
+                    "multiplying by 100 (999999 yuan is 99999900 fen). For transfer.create use "
+                    "the exact recipient_name and amount_minor fields, with no extra fields. "
+                    "For an explicit suspicious-charge request that asks to freeze a card and "
+                    "pause the matching subscription, read bill.anomalies and subscription.list. "
+                    "When a repeated-charge result provides a source card suffix and an active "
+                    "subscription for that merchant, propose card.freeze for that suffix, stop at "
+                    "its confirmation, then propose subscription.pause after the first write is "
+                    "confirmed. If the evidence does not identify both resources, explain the gap "
+                    "and do not guess. For an explicit payday request to transfer, reserve funds, "
+                    "and invest the remainder, read transfer.accounts and bill.monthly_summary, "
+                    "then call finance.payday_plan with the user's named recipient, transfer "
+                    "amount, and reserve amount. Use only its returned investment budget and "
+                    "suitable products; propose the transfer, wait for confirmation, then propose "
+                    "the investment and wait for its confirmation. Finish by rereading accounts "
+                    "and the portfolio. Do not stop after planning or after only one requested "
+                    "write; do not recompute the budget yourself. "
                     "Do not infer identity."
                 ),
             },
@@ -155,6 +191,20 @@ class AgentRuntime:
             },
             {"role": "user", "content": request_text},
         ]
+        if continuation:
+            messages.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "This is a continuation of the same persisted task after a confirmed or "
+                        "recovered step. The trusted task_progress contains server-recorded "
+                        "results. Continue the original request from the first unfinished step; "
+                        "never repeat a successful write. If the original request is complete, "
+                        "return a concise summary based only on recorded tool results."
+                    ),
+                },
+            )
         executed = 0
         seen_tool_calls: set[tuple[str, str]] = set()
         seen_call_ids: set[str] = set()
@@ -162,6 +212,13 @@ class AgentRuntime:
         for step_number in range(1, self.max_steps + 2):
             turn = self.provider.complete(messages, registry.definitions())
             if not turn.tool_calls:
+                if turn.status in {"completed", "awaiting_input"}:
+                    return AgentRunResult(
+                        status=turn.status,
+                        message=(turn.content or "任务结果已更新。")[:1200],
+                        error_code=None,
+                        executed_tools=executed,
+                    )
                 if executed:
                     return AgentRunResult(
                         status="completed",
@@ -170,6 +227,13 @@ class AgentRuntime:
                         executed_tools=executed,
                     )
                 if self.provider.mode != "fake":
+                    if continuation:
+                        return AgentRunResult(
+                            status="completed",
+                            message=(turn.content or "已根据服务端记录完成本次任务。")[:1200],
+                            error_code=None,
+                            executed_tools=0,
+                        )
                     return AgentRunResult(
                         status="awaiting_input",
                         message="没有调用已注册的业务工具，没有执行操作。请补充查询或操作目标。",
@@ -306,6 +370,32 @@ def _trusted_context(messages: list[dict[str, Any]]) -> dict[str, Any]:
     return {}
 
 
+def _tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    call_names: dict[str, str] = {}
+    history: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") == "assistant":
+            for call in message.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if isinstance(function, dict) and isinstance(function.get("name"), str):
+                    call_names[str(call.get("id", ""))] = function["name"]
+        elif message.get("role") == "tool":
+            try:
+                result = json.loads(str(message.get("content", "{}")))
+            except json.JSONDecodeError:
+                result = {}
+            history.append(
+                {
+                    "tool_name": call_names.get(str(message.get("tool_call_id", "")), ""),
+                    "status": "succeeded",
+                    "result_data": result if isinstance(result, dict) else {},
+                }
+            )
+    return history
+
+
 class FakeProvider(LLMProvider):
     """Deterministic local demo provider; this performs no LLM inference or network call."""
 
@@ -313,12 +403,59 @@ class FakeProvider(LLMProvider):
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
         del tools
-        if any(message.get("role") == "tool" for message in messages):
-            return ModelTurn("已读取模拟数据，具体结果请查看任务内容。")
-
-        request = _last_user_text(messages).strip()
+        full_request = _last_user_text(messages).strip()
+        has_followup = "用户补充：" in full_request
+        request = full_request.rsplit("用户补充：", 1)[-1].strip() if has_followup else full_request
         lowered = request.casefold()
         context = _trusted_context(messages)
+        persisted_tools = context.get("task_progress", {}).get("tools", [])
+        history = (
+            [item for item in persisted_tools if isinstance(item, dict)]
+            if isinstance(persisted_tools, list)
+            else []
+        )
+        next_sequence = (
+            max(
+                (
+                    item.get("sequence", -1)
+                    for item in history
+                    if isinstance(item.get("sequence"), int)
+                ),
+                default=-1,
+            )
+            + 1
+        )
+        current_history = _tool_history(messages)
+        for index, item in enumerate(current_history):
+            item["sequence"] = next_sequence + index
+        history.extend(current_history)
+        succeeded = {
+            item.get("tool_name")
+            for item in history
+            if item.get("status") == "succeeded" and isinstance(item.get("tool_name"), str)
+        }
+
+        def result_for(name: str) -> dict[str, Any]:
+            return next(
+                (
+                    item.get("result_data")
+                    for item in reversed(history)
+                    if item.get("tool_name") == name
+                    and item.get("status") == "succeeded"
+                    and isinstance(item.get("result_data"), dict)
+                ),
+                {},
+            )
+
+        def sequence_for(name: str) -> int:
+            return max(
+                (
+                    item.get("sequence", index)
+                    for index, item in enumerate(history)
+                    if item.get("tool_name") == name and item.get("status") == "succeeded"
+                ),
+                default=-1,
+            )
 
         month_match = re.search(r"(?<!\d)(20\d{2})[-年](\d{1,2})(?:月)?", request)
         month = (
@@ -345,6 +482,215 @@ class FakeProvider(LLMProvider):
                         json.dumps(arguments, ensure_ascii=False),
                     ),
                 ),
+            )
+
+        suspicious_intent = any(
+            phrase in full_request
+            for phrase in ("可疑扣款", "重复扣费", "处理异常扣款", "处置可疑消费")
+        )
+        if suspicious_intent:
+            if "bill.anomalies" not in succeeded:
+                return call("bill.anomalies", {"month": month})
+            if "subscription.list" not in succeeded:
+                return call("subscription.list", {})
+            anomaly_items = result_for("bill.anomalies").get("items", [])
+            repeated_charge = (
+                next(
+                    (
+                        item
+                        for item in anomaly_items
+                        if isinstance(item, dict)
+                        and "同一账户同一商户" in str(item.get("anomaly_reason", ""))
+                        and isinstance(item.get("source_card_suffix"), str)
+                    ),
+                    None,
+                )
+                if isinstance(anomaly_items, list)
+                else None
+            )
+            if repeated_charge is None:
+                return ModelTurn(
+                    "账单中没有可定位到银行卡的重复扣费规则提示，因此没有提出冻结或暂停操作。",
+                    status="completed",
+                )
+            card_suffix = repeated_charge["source_card_suffix"]
+            if "card.freeze" not in succeeded:
+                return call("card.freeze", {"card_suffix": card_suffix})
+            subscription_items = result_for("subscription.list").get("items", [])
+            merchant = repeated_charge.get("merchant")
+            matched_subscription = (
+                next(
+                    (
+                        item
+                        for item in subscription_items
+                        if isinstance(item, dict)
+                        and item.get("merchant") == merchant
+                        and item.get("status") == "active"
+                    ),
+                    None,
+                )
+                if isinstance(subscription_items, list)
+                else None
+            )
+            if matched_subscription and "subscription.pause" not in succeeded:
+                return call(
+                    "subscription.pause", {"merchant_name": matched_subscription["merchant"]}
+                )
+            if "card.freeze" in succeeded and (
+                matched_subscription is None or "subscription.pause" in succeeded
+            ):
+                pause_result = result_for("subscription.pause")
+                paused = pause_result.get("subscription", {})
+                return ModelTurn(
+                    f"已按重复扣费规则提示处理：尾号 {card_suffix} 的银行卡已冻结。"
+                    + (
+                        f"{merchant} 自动扣费已暂停。"
+                        if isinstance(paused, dict) and paused.get("status") == "paused"
+                        else "没有找到可暂停的对应自动扣费。"
+                    ),
+                    status="completed",
+                )
+            return ModelTurn("已读取账单和订阅信息，请检查任务步骤。", status="completed")
+
+        payday_intent = "资金调度" in full_request or (
+            "发薪日" in full_request
+            and any(phrase in full_request for phrase in ("规划", "安排", "调度", "资金"))
+        )
+        if payday_intent:
+            from decimal import Decimal
+
+            payee_match = re.search(
+                r"(?:给|转给)\s*(小林|储蓄账户)\s*(?:转账?|转)?\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
+                request,
+            )
+            reserve_match = re.search(
+                r"(?:预留|保留|留出|留下|留)\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
+                request,
+            )
+            recipient_name = payee_match.group(1) if payee_match else None
+            transfer_amount_minor = (
+                int(Decimal(payee_match.group(2)) * 100) if payee_match else None
+            )
+            reserve_amount_minor = (
+                int(Decimal(reserve_match.group(1)) * 100) if reserve_match else None
+            )
+            product_names = ("安稳现金管理", "稳健短债组合", "成长指数模拟")
+            requested_product = next((name for name in product_names if name in request), None)
+            investment_amount_match = re.search(
+                r"(?:投资|申购|购买|买入)\s*(\d{1,10}(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
+                request,
+            )
+            if (
+                recipient_name is None
+                or transfer_amount_minor is None
+                or reserve_amount_minor is None
+            ):
+                return ModelTurn(
+                    "请补充已保存的收款人、转账金额和希望保留的金额，再生成资金安排。",
+                    status="awaiting_input",
+                )
+            if "transfer.accounts" not in succeeded:
+                return call("transfer.accounts", {})
+            if "bill.monthly_summary" not in succeeded:
+                return call("bill.monthly_summary", {"month": month})
+            if "finance.payday_plan" not in succeeded:
+                return call(
+                    "finance.payday_plan",
+                    {
+                        "recipient_name": recipient_name,
+                        "transfer_amount_minor": transfer_amount_minor,
+                        "reserve_amount_minor": reserve_amount_minor,
+                    },
+                )
+            plan = result_for("finance.payday_plan")
+            budget = plan.get("investment_budget_minor")
+            if not isinstance(budget, int) or plan.get("reserve_shortfall_minor", 0) > 0:
+                return ModelTurn(
+                    "当前余额不足以完成转账并保留指定金额；没有提出资金变更。",
+                    status="awaiting_input",
+                )
+            if "transfer.create" not in succeeded:
+                return call(
+                    "transfer.create",
+                    {
+                        "recipient_name": recipient_name,
+                        "amount_minor": transfer_amount_minor,
+                    },
+                )
+            products_result = result_for("investment.products")
+            if "investment.products" not in succeeded:
+                return call("investment.products", {"category": None})
+            product_items = products_result.get("items", [])
+            suitable_products = (
+                [
+                    item
+                    for item in product_items
+                    if isinstance(item, dict)
+                    and item.get("suitable") is True
+                    and isinstance(item.get("minimum_amount_minor"), int)
+                    and item["minimum_amount_minor"] <= budget
+                ]
+                if isinstance(product_items, list)
+                else []
+            )
+            product = next(
+                (item for item in suitable_products if item.get("name") == requested_product),
+                suitable_products[0] if suitable_products else None,
+            )
+            if product is None:
+                return ModelTurn(
+                    "扣除转账和预留金额后，没有符合起购金额与当前模拟风险等级的产品；未申购。",
+                    status="completed",
+                )
+            investment_amount = (
+                int(Decimal(investment_amount_match.group(1)) * 100)
+                if investment_amount_match
+                else budget
+            )
+            if investment_amount > budget:
+                return ModelTurn(
+                    "申购金额超过按余额和预留金额计算的可投资额度，请补充较低金额。",
+                    status="awaiting_input",
+                )
+            if "investment.buy" not in succeeded:
+                return call(
+                    "investment.buy",
+                    {"product_name": product["name"], "amount_minor": investment_amount},
+                )
+            balance_change_sequence = max(
+                sequence_for(name)
+                for name in ("transfer.create", "investment.buy", "investment.redeem")
+            )
+            if sequence_for("transfer.accounts") < balance_change_sequence:
+                return call("transfer.accounts", {})
+            if sequence_for("investment.portfolio") < sequence_for("investment.buy"):
+                return call("investment.portfolio", {})
+            portfolio = result_for("investment.portfolio")
+            accounts = result_for("transfer.accounts").get("items", [])
+            final_balance = (
+                next(
+                    (
+                        item.get("balance_minor")
+                        for item in accounts
+                        if isinstance(item, dict) and item.get("label") == plan.get("account_label")
+                    ),
+                    None,
+                )
+                if isinstance(accounts, list)
+                else None
+            )
+            return ModelTurn(
+                "资金安排已完成。账户余额 "
+                f"{final_balance if isinstance(final_balance, int) else '已更新'} 分，"
+                f"模拟持仓 {portfolio.get('invested_value_minor', '已更新')} 分。"
+                "金额单位为人民币分，明细以任务记录为准。",
+                status="completed",
+            )
+
+        if not has_followup and succeeded:
+            return ModelTurn(
+                "已读取模拟数据，结果以任务步骤中的服务端返回为准。",
+                status="completed",
             )
 
         amount_match = re.search(
@@ -618,5 +964,6 @@ class FakeProvider(LLMProvider):
             )
 
         return ModelTurn(
-            "我可以查询银行卡、账单和订阅，也可以办理模拟转账与理财操作。请说说你要办理的事项。"
+            "我可以查询银行卡、账单和订阅，也可以办理模拟转账与理财操作。请说说你要办理的事项。",
+            status="awaiting_input",
         )

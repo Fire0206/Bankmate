@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
 
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.agent.runtime import ToolSpec
@@ -15,6 +16,7 @@ from finorch_api.application.investments import (
     propose_purchase,
     propose_redemption,
 )
+from finorch_api.infrastructure.models import ToolExecution
 
 
 class InvestmentEmptyInput(BaseModel):
@@ -255,6 +257,26 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
 
     def buy_handler(arguments: BaseModel, context: ToolCallContext) -> InvestmentProposalOutput:
         values = InvestmentPurchaseInput.model_validate(arguments)
+        payday_plan = context.session.scalar(
+            select(ToolExecution)
+            .where(
+                ToolExecution.task_id == context.task.id,
+                ToolExecution.tool_name == "finance.payday_plan",
+                ToolExecution.status == "succeeded",
+            )
+            .order_by(ToolExecution.created_at.desc(), ToolExecution.id.desc())
+            .limit(1)
+        )
+        planned_budget = (
+            payday_plan.result_data.get("investment_budget_minor")
+            if payday_plan and payday_plan.result_data
+            else None
+        )
+        if isinstance(planned_budget, int) and values.amount_minor > planned_budget:
+            raise BankingRuleError(
+                "investment_budget_exceeded",
+                "申购金额超过当前任务按账户余额和预留金额计算的可投资额度。",
+            )
         return InvestmentProposalOutput.model_validate(
             propose_purchase(
                 context.session,

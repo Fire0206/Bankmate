@@ -3,6 +3,8 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import FakeProvider
 from finorch_api.api.v1.agent import get_provider_selection
@@ -26,7 +28,6 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from sqlalchemy import func, select
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
 ALICE_SAVINGS_ACCOUNT = UUID("10000000-0000-4000-8000-000000000002")

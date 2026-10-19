@@ -99,7 +99,7 @@ function BillSummary({ data }: { data: JsonObject }) {
       ) : null}
       {anomalies.length ? (
         <p className="task-result-notice">
-          有 {anomalies.length} 笔支出符合金额提示规则，可查看交易明细。
+          有 {anomalies.length} 笔交易符合演示提示规则；这不是欺诈结论。
         </p>
       ) : null}
     </section>
@@ -121,7 +121,7 @@ function TransactionList({
       className="task-result"
     >
       <div className="task-result-heading">
-        <strong>{anomaliesOnly ? "金额提示" : `${month} 交易明细`}</strong>
+        <strong>{anomaliesOnly ? "异常提示" : `${month} 交易明细`}</strong>
         <span>{items.length} 笔</span>
       </div>
       {items.length ? (
@@ -136,6 +136,11 @@ function TransactionList({
                 <small>
                   {stringValue(item.category)} · {dateLabel(item.occurred_at)}
                 </small>
+                {anomaliesOnly && item.source_card_suffix ? (
+                  <small>
+                    银行卡尾号 {stringValue(item.source_card_suffix)}
+                  </small>
+                ) : null}
                 {anomaliesOnly && item.anomaly_reason ? (
                   <small className="task-result-warning">
                     {stringValue(item.anomaly_reason)}
@@ -549,22 +554,47 @@ function InvestmentResult({ data }: { data: JsonObject }) {
   );
 }
 
-export function TaskResult({ task }: { task: Task }) {
-  const completedTool = [...task.steps]
-    .reverse()
-    .find(
-      (step) =>
-        step.status === "succeeded" && step.tool_name && step.result_data,
-    );
-  if (
-    !completedTool ||
-    !completedTool.tool_name ||
-    !isObject(completedTool.result_data)
-  )
-    return null;
+function PaydayPlan({ data }: { data: JsonObject }) {
+  return (
+    <section aria-label="发薪日资金安排" className="task-result">
+      <div className="task-result-heading">
+        <strong>发薪日资金安排</strong>
+        <span>{stringValue(data.account_label)}</span>
+      </div>
+      <div className="task-result-list">
+        <div className="task-result-row">
+          <span>当前余额</span>
+          <strong>{formatAmount(data.account_balance_minor)}</strong>
+        </div>
+        <div className="task-result-row">
+          <span>{stringValue(data.month)} 收入 / 支出</span>
+          <strong>
+            {formatAmount(data.monthly_income_minor)} /{" "}
+            {formatAmount(data.monthly_expense_minor)}
+          </strong>
+        </div>
+        <div className="task-result-row">
+          <span>转给{stringValue(data.recipient_name)}</span>
+          <strong>{formatAmount(data.transfer_amount_minor)}</strong>
+        </div>
+        <div className="task-result-row">
+          <span>保留金额</span>
+          <strong>{formatAmount(data.reserve_amount_minor)}</strong>
+        </div>
+        <div className="task-result-row">
+          <span>可投资额度</span>
+          <strong>{formatAmount(data.investment_budget_minor)}</strong>
+        </div>
+      </div>
+      <p className="task-result-notice">
+        这是基于模拟数据计算的安排，资金操作仍需逐项确认。
+      </p>
+    </section>
+  );
+}
 
-  const data = completedTool.result_data;
-  switch (completedTool.tool_name) {
+function resultForTool(toolName: string, data: JsonObject) {
+  switch (toolName) {
     case "transfer.accounts":
       return <AccountBalances data={data} />;
     case "transfer.payees":
@@ -592,6 +622,8 @@ export function TaskResult({ task }: { task: Task }) {
     case "investment.buy":
     case "investment.redeem":
       return <InvestmentResult data={data} />;
+    case "finance.payday_plan":
+      return <PaydayPlan data={data} />;
     case "bill.monthly_summary":
       return <BillSummary data={data} />;
     case "bill.transactions":
@@ -607,4 +639,32 @@ export function TaskResult({ task }: { task: Task }) {
     default:
       return null;
   }
+}
+
+export function TaskResult({ task }: { task: Task }) {
+  const latestByTool = new Map<string, Task["steps"][number]>();
+  for (const step of task.steps) {
+    if (
+      step.status === "succeeded" &&
+      step.tool_name &&
+      isObject(step.result_data)
+    )
+      latestByTool.set(step.tool_name, step);
+  }
+  const results = [...latestByTool.values()].sort(
+    (a, b) => a.sequence - b.sequence,
+  );
+  if (!results.length) return null;
+
+  return (
+    <div className="task-result-stack">
+      {results.map((step) => (
+        <div key={step.id}>
+          {step.tool_name && isObject(step.result_data)
+            ? resultForTool(step.tool_name, step.result_data)
+            : null}
+        </div>
+      ))}
+    </div>
+  );
 }

@@ -670,14 +670,32 @@ export default function App() {
       const task = await executeWrite(write);
       applyTask(task);
       storePendingWrite(null);
-      if (task.status === "completed") await refreshCards();
+      if (
+        task.status === "completed" ||
+        (write.kind === "confirm" &&
+          task.steps.some(
+            (step) =>
+              step.tool_name?.startsWith("card.") &&
+              step.status === "succeeded",
+          ))
+      )
+        await refreshCards();
     } catch (error) {
       try {
         const recovered = await lookupPendingWrite(write);
         if (recovered.task) applyTask(recovered.task);
         if (recovered.resolved) {
           storePendingWrite(null);
-          if (recovered.task?.status === "completed") await refreshCards();
+          if (
+            recovered.task?.status === "completed" ||
+            (write.kind === "confirm" &&
+              recovered.task?.steps.some(
+                (step) =>
+                  step.tool_name?.startsWith("card.") &&
+                  step.status === "succeeded",
+              ))
+          )
+            await refreshCards();
           return;
         }
       } catch {
@@ -776,9 +794,17 @@ export default function App() {
       { id: crypto.randomUUID(), role: "user", text: requestText },
     ]);
     const key = crypto.randomUUID();
+    const hasCompletedStep = activeTask?.steps.some(
+      (step) => step.step_type === "tool" && step.status === "succeeded",
+    );
+    const canContinueFailedTask =
+      activeTask?.status === "failed" && hasCompletedStep;
     const write: PendingWrite =
       activeTask &&
-      ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status)
+      (["awaiting_input", "awaiting_confirmation"].includes(
+        activeTask.status,
+      ) ||
+        canContinueFailedTask)
         ? {
             kind: "input",
             key,
@@ -919,7 +945,7 @@ export default function App() {
               <div className="assistant-header">
                 <div>
                   <h2 id="assistant-title">对话</h2>
-                  <p>账户、银行卡、账单、转账、分账与理财</p>
+                  <p>银行卡、账单、订阅、转账与理财</p>
                 </div>
               </div>
 
@@ -1034,6 +1060,14 @@ export default function App() {
                 ) : activeTask?.status === "awaiting_confirmation" ? (
                   <p className="composer-hint">
                     修改请求会取消当前确认，并重新核对操作内容。
+                  </p>
+                ) : activeTask?.status === "failed" &&
+                  activeTask.steps.some(
+                    (step) =>
+                      step.step_type === "tool" && step.status === "succeeded",
+                  ) ? (
+                  <p className="composer-hint">
+                    部分步骤已完成；补充要求可继续当前任务，已完成操作不会重做。
                   </p>
                 ) : null}
                 <label className="visually-hidden" htmlFor="agent-request">

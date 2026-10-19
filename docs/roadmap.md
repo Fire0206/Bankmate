@@ -58,19 +58,32 @@
 - [x] DeepSeek `deepseek-flash` 本地端到端 20 项：工具选择、参数和任务完成均为 100%；结果和局限见[Agent 可靠性指南](development/agent-reliability.md)。
 - [x] 新增 Alembic migration、可重复的 `phase1d-v1` Seed/Reset、集成测试；PR 状态以当前 GitHub 记录为准。
 
-## 后续场景与扩展（Planned）
+## Phase 1E — 跨场景 Agent 与完整任务闭环
 
-- 在五个场景基础上实现用户授权的跨场景联动和部分成功恢复。
-- 扩展各业务场景的演示体验，不连接真实银行、支付网络或商户。
-- 五条工作流建议：A Banking Core & Database；B Banking Business APIs；C Agent & Tool Orchestration；D Frontend & UX；E Security, Testing & Integration。Phase 1A 完成共享 Banking Core 最小底座，详细职责见[Phase 1 实施计划](research/phase1-implementation-plan.md)。
-- 开工前选定负责人并将跨模块契约拆成可 Review 的任务；共享 API/Data/Tool 文件先协调所有权。
+状态：**六场景模拟闭环已实现；2026-10-19 最新一轮 DeepSeek 评测 9/10，详情见[开发指南](development.md)**
+
+- [x] 为合成交易增加来源卡关联和同日同商户同金额的可解释重复收费规则；提示不等同于欺诈检测。
+- [x] 实现服务端资金计划工具 `finance.payday_plan`，按模拟余额、月度收支、转账及预留金额计算可投资额度。
+- [x] 完成可疑扣款处置：读账单证据和订阅，逐个确认冻结卡和暂停自动扣费。
+- [x] 完成发薪日资金调度：读账户和账单，服务端计算计划，逐步确认模拟转账和理财申购。
+- [x] 确认后续跑同一持久化 Task；支持多个确认、刷新恢复、取消、部分成功、失败后继续，并阻止已成功写操作重放。
+- [x] 完成状态门禁：明确请求的写操作必须有成功服务端工具记录后才能把任务标为完成；陌生收款人和不匹配风险等级均保持安全失败/追问。
+- [x] Web 展示跨场景进度、真实工具结果、确认和最终账户/持仓状态；类型由 OpenAPI 重新生成。
+- [x] 增加临时 SQLite 集成测试和 10 项 DeepSeek 跨场景、澄清、取消、失败与恢复评测；评测结果与模型偏差见开发指南。
 
 ## Phase 2 — Agent 可靠性与安全增强（Planned）
 
-- 在本地 DeepSeek 20 场景基线之上持续扩展模型兼容性和回归评测，不将模型输出视为权威结果。
-- 对多步部分成功、超时、崩溃恢复、长时间运行取消、异步状态推送和跨场景幂等进行设计与验证。
+- 在 Phase 1D/1E 的真实模型基线之上持续扩展回归评测，不将模型输出视为权威结果。
+- 验证进程崩溃后的任务续跑、长时间运行取消、并发跨任务幂等和工具/provider 中断恢复。
+- 评估 REST 轮询之外的任务事件推送；如考虑 SSE/WebSocket，先审查认证和隐私边界。
 - 建立越权、Prompt Injection、重试、失败和可靠性评测；只据实报告测量结果。
 - 若考虑 LangGraph、MCP 或其他编排框架，先记录 ADR 并对比简单自研状态机的复杂度、恢复和可观测性。
+
+## 后续扩展（Planned）
+
+- 丰富六个模拟场景的数据与演示，但不连接真实银行、支付网络或商户。
+- 五人工作流建议：A Banking Core & Database；B Banking Business APIs；C Agent & Tool Orchestration；D Frontend & UX；E Security, Testing & Integration。Phase 1A 完成共享 Banking Core 最小底座，详细职责见[Phase 1 实施计划](research/phase1-implementation-plan.md)。
+- 跨模块任务开始前协调负责人和文件所有权；共享 API/Data/Tool 文件先锁定接口，再并行实现。
 
 ## 后续里程碑（待赛事和团队确认）
 

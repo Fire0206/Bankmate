@@ -690,6 +690,8 @@ export interface components {
             occurred_at: string;
             /** Anomaly Reason */
             anomaly_reason: string | null;
+            /** Source Card Suffix */
+            source_card_suffix: string | null;
         };
         /** BillTrendResponse */
         BillTrendResponse: {
