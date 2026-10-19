@@ -62,6 +62,8 @@ pnpm run format:check
 
 环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；可选择在本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible` 及 `FINORCH_LLM_BASE_URL`、`FINORCH_LLM_API_KEY`、`FINORCH_LLM_MODEL`。Provider Adapter 仅通过 Mock HTTP 验证，真实模型服务未测试。不要将本地服务绑定公网地址；Demo Identity 只在 development/test 启用，不是用户认证系统。
 
+Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新恢复与幂等重试说明见[Agent 可靠性指南](development/agent-reliability.md)。
+
 ## 分支与私有仓库
 
 本地开发和 CI 按私有仓库流程运行。当前 GitHub 仓库为 Private，但 `main` 尚未启用分支保护或 Ruleset；计划限制、当前状态和人工协作替代流程见[协作流程](collaboration.md)。管理员邀请正式团队成员并分配最小权限。不得将工作复制到未经批准的公共 fork 或公开 CI Artifact。正式提交前依照[仓库公开检查清单](development/public-release-checklist.md)执行。

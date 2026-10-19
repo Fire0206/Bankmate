@@ -109,21 +109,40 @@ class OpenAICompatibleProvider(LLMProvider):
             ) from exc
 
         try:
-            message = payload["choices"][0]["message"]
+            choices = payload["choices"]
+            if not isinstance(choices, list) or not choices:
+                raise ValueError("The provider returned no choices.")
+            message = choices[0]["message"]
+            if not isinstance(message, dict):
+                raise ValueError("The provider returned an invalid message.")
             content = message.get("content")
-            calls = tuple(
-                ModelToolCall(
-                    id=str(item["id"]),
-                    name=str(item["function"]["name"]),
-                    arguments=(
-                        item["function"]["arguments"]
-                        if isinstance(item["function"]["arguments"], str)
-                        else json.dumps(item["function"]["arguments"])
-                    ),
+            if content is not None and not isinstance(content, str):
+                raise ValueError("The provider returned invalid message content.")
+            raw_calls = message.get("tool_calls") or []
+            if not isinstance(raw_calls, list):
+                raise ValueError("The provider returned invalid tool calls.")
+            calls_list: list[ModelToolCall] = []
+            call_ids: set[str] = set()
+            for item in raw_calls:
+                if not isinstance(item, dict) or item.get("type", "function") != "function":
+                    raise ValueError("The provider returned an unsupported tool call.")
+                call_id = item.get("id")
+                function = item.get("function")
+                if not isinstance(call_id, str) or not call_id.strip() or call_id in call_ids:
+                    raise ValueError("The provider returned a missing or duplicate tool call ID.")
+                if not isinstance(function, dict):
+                    raise ValueError("The provider returned an invalid tool function.")
+                name = function.get("name")
+                if not isinstance(name, str) or not name.strip():
+                    raise ValueError("The provider returned an invalid tool name.")
+                arguments = function.get("arguments")
+                encoded_arguments = (
+                    arguments if isinstance(arguments, str) else json.dumps(arguments)
                 )
-                for item in message.get("tool_calls", [])
-            )
-        except (KeyError, IndexError, TypeError) as exc:
+                call_ids.add(call_id)
+                calls_list.append(ModelToolCall(id=call_id, name=name, arguments=encoded_arguments))
+            calls = tuple(calls_list)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise AgentProviderError(
                 "llm_provider_invalid_response",
                 "The configured model provider returned an invalid turn.",

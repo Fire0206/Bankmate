@@ -49,7 +49,7 @@ with session_factory() as session:
 - `application.agent.confirm_card_change` 是唯一的卡片确认写路径。它在单一 Unit of Work 内复核 actor、card、tool/version、参数摘要、策略版本、卡片版本、有效期和幂等键，消费 challenge，调用 `freeze_card` / `unfreeze_card` 并写执行/审计状态。
 - Web 只消费 API DTO 和 OpenAPI 生成类型，不读取数据库，不根据模型文本推断执行结果。
 
-`/api/v1/agent/tasks` 及其 `/input`、`/confirm`、`/cancel`、`/audit` 子路径的 DTO 与行为以 [API 契约](../api-contract.md)和 FastAPI OpenAPI 为准。当前 Demo actor 仅用于 development/test，不构成真实认证。
+`/api/v1/agent/tasks` 及其 `/recent`、`/by-idempotency-key/{key}`、`/{task_id}`、`/input`、`/confirm`、`/cancel`、`/audit` 路径的 DTO 与行为以 [API 契约](../api-contract.md)和 FastAPI OpenAPI 为准。任务恢复查询按服务端 actor、会话和操作类型过滤；读取过期确认时会惰性结算 Workflow 与审计，但不改变卡片。当前 Demo actor 仅用于 development/test，不构成真实认证。
 
 ## Seed 与 Reset
 

@@ -4,6 +4,7 @@ dist/
 coverage/
 .vite/
 .data/
+.playwright-cli/
 
 # Python
 __pycache__/

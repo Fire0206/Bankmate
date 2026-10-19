@@ -35,6 +35,7 @@ from sqlalchemy import func, select, update
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")
 BOB_CARD_ID = UUID("20000000-0000-4000-8000-000000000003")
+CONVERSATION_ID = "30000000-0000-4000-8000-000000000001"
 
 
 @pytest.fixture
@@ -59,10 +60,15 @@ def api_context(seeded_database):
         app.dependency_overrides.pop(get_provider_selection, None)
 
 
-def submit(client: TestClient, text: str, key: str = "task-create-001") -> dict:
+def submit(
+    client: TestClient,
+    text: str,
+    key: str = "task-create-001",
+    conversation_id: str = CONVERSATION_ID,
+) -> dict:
     response = client.post(
         "/api/v1/agent/tasks",
-        json={"request_text": text, "conversation_id": "30000000-0000-4000-8000-000000000001"},
+        json={"request_text": text, "conversation_id": conversation_id},
         headers={"Idempotency-Key": key},
     )
     assert response.status_code == 200, response.text
@@ -399,6 +405,191 @@ def test_task_resource_is_scoped_to_current_actor(api_context) -> None:
     response = client.get(f"/api/v1/agent/tasks/{task['id']}")
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "not_found"
+
+
+def test_recent_task_restores_latest_actor_owned_task_including_completed(api_context) -> None:
+    client, _actor, _database = api_context
+    completed = submit(
+        client,
+        "查看我的银行卡",
+        key="restore-completed",
+        conversation_id="30000000-0000-4000-8000-000000000002",
+    )
+    pending = submit(client, "冻结尾号 1042 的卡", key="restore-pending")
+    newer_completed = submit(
+        client,
+        "查看我的银行卡",
+        key="restore-newer-completed",
+        conversation_id=CONVERSATION_ID,
+    )
+
+    pending_response = client.get(
+        "/api/v1/agent/tasks/recent",
+        params={"conversation_id": pending["conversation_id"]},
+    )
+
+    assert pending_response.status_code == 200
+    assert newer_completed["created_at"] > pending["created_at"]
+    assert pending_response.json()["id"] == pending["id"]
+    assert pending_response.json()["status"] == "awaiting_confirmation"
+    assert pending_response.json()["steps"]
+    assert pending_response.json()["confirmation"]["id"] == pending["confirmation"]["id"]
+
+    completed_response = client.get(
+        "/api/v1/agent/tasks/recent",
+        params={"conversation_id": completed["conversation_id"]},
+    )
+    assert completed_response.status_code == 200
+    assert completed_response.json()["id"] == completed["id"]
+    assert completed_response.json()["status"] == "completed"
+
+
+def test_recent_and_idempotency_lookups_do_not_disclose_other_actors_tasks(api_context) -> None:
+    client, actor, _database = api_context
+    task = submit(client, "查看我的银行卡", key="private-lookup")
+    actor[0] = DEMO_USER_TWO_ID
+
+    recent = client.get(
+        "/api/v1/agent/tasks/recent",
+        params={"conversation_id": task["conversation_id"]},
+    )
+    by_key = client.get(
+        "/api/v1/agent/tasks/by-idempotency-key/private-lookup",
+        params={
+            "conversation_id": task["conversation_id"],
+            "operation": "create",
+        },
+    )
+
+    assert recent.status_code == 200 and recent.json() is None
+    assert by_key.status_code == 200 and by_key.json() is None
+
+
+def test_idempotency_lookup_is_scoped_to_operation_and_task(api_context) -> None:
+    client, _actor, _database = api_context
+    created = submit(client, "查看我的银行卡", key="shared-scope-key")
+    waiting = submit(client, "冻结我的卡", key="input-task-key")
+    input_response = client.post(
+        f"/api/v1/agent/tasks/{waiting['id']}/input",
+        json={"request_text": "冻结尾号 1042 的卡"},
+        headers={"Idempotency-Key": "shared-scope-key"},
+    )
+    assert input_response.status_code == 200
+
+    create_lookup = client.get(
+        "/api/v1/agent/tasks/by-idempotency-key/shared-scope-key",
+        params={
+            "conversation_id": created["conversation_id"],
+            "operation": "create",
+        },
+    )
+    input_lookup = client.get(
+        "/api/v1/agent/tasks/by-idempotency-key/shared-scope-key",
+        params={
+            "conversation_id": waiting["conversation_id"],
+            "operation": "input",
+            "task_id": waiting["id"],
+        },
+    )
+
+    assert create_lookup.status_code == 200
+    assert create_lookup.json()["id"] == created["id"]
+    assert input_lookup.status_code == 200
+    assert input_lookup.json()["id"] == waiting["id"]
+    assert input_lookup.json()["status"] == "awaiting_confirmation"
+
+
+def test_idempotency_lookup_recovers_lost_confirmation_response_without_duplicate_effect(
+    api_context,
+) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "冻结尾号 1042 的卡", key="lost-confirm-submit")
+    challenge = task["confirmation"]
+
+    class DropFirstConfirmationResponse:
+        def __init__(self, wrapped_app) -> None:
+            self.wrapped_app = wrapped_app
+            self.drop_next_confirmation = True
+
+        async def __call__(self, scope, receive, send) -> None:
+            async def drop_confirmation_response(message) -> None:
+                if (
+                    self.drop_next_confirmation
+                    and scope.get("type") == "http"
+                    and scope.get("path", "").endswith("/confirm")
+                    and message.get("type") == "http.response.start"
+                ):
+                    self.drop_next_confirmation = False
+                    raise ConnectionError("simulated response loss after commit")
+                await send(message)
+
+            await self.wrapped_app(scope, receive, drop_confirmation_response)
+
+    with TestClient(
+        DropFirstConfirmationResponse(app), raise_server_exceptions=False
+    ) as lossy_client:
+        first_response = confirm(lossy_client, task)
+        assert first_response.status_code == 500
+
+        lookup = lossy_client.get(
+            "/api/v1/agent/tasks/by-idempotency-key/" + challenge["idempotency_key"],
+            params={
+                "conversation_id": task["conversation_id"],
+                "operation": "confirm",
+                "task_id": task["id"],
+            },
+        )
+        retry = confirm(lossy_client, task)
+
+        assert lookup.status_code == 200
+        assert lookup.json()["status"] == "completed"
+        assert retry.status_code == 200
+        assert retry.json()["id"] == task["id"]
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None and card.status is CardStatus.FROZEN and card.version == 2
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(AuditEvent.event_type == "card.status_changed")
+            )
+            == 1
+        )
+
+
+def test_refreshing_task_after_confirmation_expiry_returns_persisted_failed_state(
+    api_context,
+) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "冻结尾号 1042 的卡", key="expired-restore")
+    challenge_id = UUID(task["confirmation"]["id"])
+    with database.session_factory.begin() as session:
+        challenge = session.get(ConfirmationChallenge, challenge_id)
+        assert challenge is not None
+        challenge.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+
+    restored = client.get(f"/api/v1/agent/tasks/{task['id']}")
+
+    assert restored.status_code == 200
+    assert restored.json()["status"] == "failed"
+    assert restored.json()["error_code"] == "confirmation_expired"
+    assert restored.json()["confirmation"] is None
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        challenge = session.get(ConfirmationChallenge, challenge_id)
+        task_row = session.get(AgentTask, UUID(task["id"]))
+        assert card is not None and card.status is CardStatus.ACTIVE and card.version == 1
+        assert challenge is not None and challenge.status == "expired"
+        assert task_row is not None and task_row.status == "failed"
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(AuditEvent.event_type == "card.confirmation_expired")
+            )
+            == 1
+        )
 
 
 def test_concurrent_confirmation_has_one_business_effect(api_context) -> None:

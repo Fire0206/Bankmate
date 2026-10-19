@@ -99,10 +99,14 @@ function eventSummary(event: AuditEvent): string {
 export function TaskOverview({
   task,
   busy,
+  refreshing,
+  onRefresh,
   onCancel,
 }: {
   task: Task | null;
   busy: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
   onCancel: () => void;
 }) {
   const cancellable =
@@ -130,16 +134,26 @@ export function TaskOverview({
               更新于 {dateTimeLabel(task.updated_at)}
             </time>
           </div>
-          {cancellable ? (
+          <div className="task-overview-actions">
             <button
-              className="text-button cancel-task-button"
-              disabled={busy}
-              onClick={onCancel}
+              className="text-button"
+              disabled={refreshing}
+              onClick={onRefresh}
               type="button"
             >
-              取消任务
+              {refreshing ? "正在读取…" : "刷新进度"}
             </button>
-          ) : null}
+            {cancellable ? (
+              <button
+                className="text-button cancel-task-button"
+                disabled={busy}
+                onClick={onCancel}
+                type="button"
+              >
+                取消任务
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : (
         <p className="inline-empty">发送请求后，这里会显示真实处理状态。</p>

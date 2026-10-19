@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from finorch_api.agent.providers import ProviderSelection
@@ -891,8 +891,190 @@ def create_agent_task(
     )
 
 
-def get_agent_task(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskView:
+def _expire_pending_confirmation(
+    session: Session,
+    *,
+    actor_id: UUID,
+    task_id: UUID,
+    request_id: str,
+) -> None:
+    task = _owned_task(session, actor_id=actor_id, task_id=task_id)
+    challenge = session.scalar(
+        select(ConfirmationChallenge).where(
+            ConfirmationChallenge.task_id == task_id,
+            ConfirmationChallenge.actor_id == actor_id,
+            ConfirmationChallenge.status == "pending",
+        )
+    )
+    if (
+        task.status != "awaiting_confirmation"
+        or challenge is None
+        or _utc(challenge.expires_at) > utc_now()
+    ):
+        return
+
+    with write_transaction(session, immediate=True):
+        task = _owned_task(session, actor_id=actor_id, task_id=task_id)
+        challenge = session.scalar(
+            select(ConfirmationChallenge).where(
+                ConfirmationChallenge.id == challenge.id,
+                ConfirmationChallenge.actor_id == actor_id,
+                ConfirmationChallenge.status == "pending",
+            )
+        )
+        if (
+            task.status != "awaiting_confirmation"
+            or challenge is None
+            or _utc(challenge.expires_at) > utc_now()
+        ):
+            return
+
+        execution = session.get(ToolExecution, challenge.tool_execution_id)
+        if execution is None:
+            raise AgentTaskNotFoundError
+        step = session.get(TaskStep, execution.step_id)
+        challenge.status = "expired"
+        execution.status = "failed"
+        execution.error_code = "confirmation_expired"
+        execution.completed_at = utc_now()
+        if step is not None:
+            step.status = "failed"
+            step.error_code = "confirmation_expired"
+            step.summary = "The confirmation expired; no card change was made."
+            step.completed_at = utc_now()
+        _transition(task, "failed")
+        task.error_code = "confirmation_expired"
+        task.message = "确认已过期，银行卡状态没有改变。"
+        _audit(
+            session,
+            actor_id=actor_id,
+            event_type="card.confirmation_expired",
+            resource_type="card",
+            resource_id=challenge.card_id,
+            card_id=challenge.card_id,
+            request_id=request_id,
+            task_id=task.id,
+            tool_execution_id=execution.id,
+            outcome="expired",
+            before_state={"task_status": "awaiting_confirmation", "confirmation": "pending"},
+            after_state={"task_status": "failed", "confirmation": "expired"},
+        )
+
+
+def get_agent_task(
+    session: Session,
+    *,
+    actor_id: UUID,
+    task_id: UUID,
+    request_id: str,
+) -> AgentTaskView:
+    _expire_pending_confirmation(session, actor_id=actor_id, task_id=task_id, request_id=request_id)
     return _task_view(session, actor_id=actor_id, task_id=task_id)
+
+
+def get_recent_agent_task(
+    session: Session,
+    *,
+    actor_id: UUID,
+    conversation_id: UUID,
+    request_id: str,
+) -> AgentTaskView | None:
+    task_id = session.scalar(
+        select(AgentTask.id)
+        .where(
+            AgentTask.actor_id == actor_id,
+            AgentTask.conversation_id == conversation_id,
+        )
+        .order_by(
+            case(
+                (
+                    AgentTask.status.in_(
+                        {
+                            "pending",
+                            "planning",
+                            "awaiting_input",
+                            "awaiting_confirmation",
+                            "running",
+                        }
+                    ),
+                    0,
+                ),
+                else_=1,
+            ),
+            AgentTask.created_at.desc(),
+            AgentTask.id.desc(),
+        )
+        .limit(1)
+    )
+    if task_id is None:
+        return None
+    return get_agent_task(session, actor_id=actor_id, task_id=task_id, request_id=request_id)
+
+
+def get_agent_task_by_idempotency_key(
+    session: Session,
+    *,
+    actor_id: UUID,
+    conversation_id: UUID,
+    idempotency_key: str,
+    operation: str,
+    task_id: UUID | None,
+    request_id: str,
+) -> AgentTaskView | None:
+    if operation == "create":
+        statement = select(AgentTask.id).where(
+            AgentTask.actor_id == actor_id,
+            AgentTask.conversation_id == conversation_id,
+            AgentTask.idempotency_key == idempotency_key,
+        )
+    elif task_id is None:
+        return None
+    elif operation == "input":
+        statement = (
+            select(AgentTask.id)
+            .join(TaskStep, TaskStep.task_id == AgentTask.id)
+            .where(
+                AgentTask.id == task_id,
+                AgentTask.actor_id == actor_id,
+                AgentTask.conversation_id == conversation_id,
+                TaskStep.step_type == "user_input",
+                TaskStep.idempotency_key == idempotency_key,
+            )
+        )
+    elif operation == "confirm":
+        statement = (
+            select(AgentTask.id)
+            .join(ConfirmationChallenge, ConfirmationChallenge.task_id == AgentTask.id)
+            .where(
+                AgentTask.id == task_id,
+                AgentTask.actor_id == actor_id,
+                AgentTask.conversation_id == conversation_id,
+                ConfirmationChallenge.actor_id == actor_id,
+                ConfirmationChallenge.idempotency_key == idempotency_key,
+            )
+        )
+    elif operation == "cancel":
+        cancel_key = f"cancel:{_hash({'key': idempotency_key})}"
+        statement = (
+            select(AgentTask.id)
+            .join(TaskStep, TaskStep.task_id == AgentTask.id)
+            .where(
+                AgentTask.id == task_id,
+                AgentTask.actor_id == actor_id,
+                AgentTask.conversation_id == conversation_id,
+                TaskStep.step_type == "cancellation",
+                TaskStep.idempotency_key == cancel_key,
+            )
+        )
+    else:
+        return None
+
+    matched_task_id = session.scalar(statement.limit(1))
+    if matched_task_id is None:
+        return None
+    return get_agent_task(
+        session, actor_id=actor_id, task_id=matched_task_id, request_id=request_id
+    )
 
 
 def _invalidate_pending_challenges(
@@ -1359,6 +1541,8 @@ __all__ = [
     "confirm_card_change",
     "create_agent_task",
     "get_agent_task",
+    "get_agent_task_by_idempotency_key",
+    "get_recent_agent_task",
     "get_task_audit",
     "submit_task_input",
 ]

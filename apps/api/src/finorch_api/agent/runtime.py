@@ -131,8 +131,10 @@ class AgentRuntime:
             {"role": "user", "content": request_text},
         ]
         executed = 0
+        seen_tool_calls: set[tuple[str, str]] = set()
+        seen_call_ids: set[str] = set()
 
-        for step_number in range(1, self.max_steps + 1):
+        for step_number in range(1, self.max_steps + 2):
             turn = self.provider.complete(messages, registry.definitions())
             if not turn.tool_calls:
                 if executed:
@@ -156,6 +158,25 @@ class AgentRuntime:
                     executed_tools=executed,
                 )
 
+            turn_ids = [call.id for call in turn.tool_calls]
+            if (
+                any(not isinstance(call_id, str) or not call_id.strip() for call_id in turn_ids)
+                or len(turn_ids) != len(set(turn_ids))
+                or any(call_id in seen_call_ids for call_id in turn_ids)
+            ):
+                raise AgentProviderError(
+                    "llm_provider_invalid_response",
+                    "The configured model provider returned invalid tool call IDs.",
+                )
+            if step_number > self.max_steps or executed + len(turn.tool_calls) > self.max_steps:
+                return AgentRunResult(
+                    status="failed",
+                    message="任务达到工具调用步数上限，未继续执行。",
+                    error_code="agent_step_limit_exceeded",
+                    executed_tools=executed,
+                )
+
+            seen_call_ids.update(turn_ids)
             assistant_calls = [
                 {
                     "id": call.id,
@@ -182,6 +203,21 @@ class AgentRuntime:
                             "tool_input_invalid", "Tool arguments did not match its input schema."
                         )
                         error.__cause__ = exc
+
+                normalized_arguments = (
+                    json.dumps(
+                        parsed.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+                    )
+                    if parsed is not None
+                    else call.arguments
+                )
+                repeat_key = (call.name, normalized_arguments)
+                if repeat_key in seen_tool_calls:
+                    error = ToolExecutionError(
+                        "repeated_tool_call", "The same tool request was already processed."
+                    )
+                else:
+                    seen_tool_calls.add(repeat_key)
 
                 result = dispatch(spec, parsed, call, step_number * 10 + call_index, error)
                 if result.status == "failed":

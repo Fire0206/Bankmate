@@ -1,6 +1,6 @@
 # Agent、Tool 与 Workflow 契约
 
-> Phase 1B 已交付本地卡片切片：有界单 Agent、Typed Tool Registry、持久化 Task/Step/ToolExecution/ConfirmationChallenge、确认后卡片冻结/解冻及 REST 任务读取。其余银行工具与场景仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
+> Phase 1B 已交付本地卡片切片：有界单 Agent、Typed Tool Registry、持久化 Task/Step/ToolExecution/ConfirmationChallenge、确认后卡片冻结/解冻及 REST 任务读取。Phase 1B.5 增加 Provider Mock 验证、actor 范围任务恢复与安全同键重试；真实模型服务仍未验证。其余银行工具与场景仍为 Planned。Banking Core 调用边界见[接口说明](development/banking-core.md)。
 
 ## Agent 边界
 
@@ -15,9 +15,9 @@
 - `FakeProvider` 是明确标注的确定性本地演示实现：它按小范围请求文本和可信会话上下文产生预设工具调用，不做模型推理、不访问网络。它不是“假装的 LLM”。
 - `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、Base URL、API Key 和模型名后才启用。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
 - Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
-- Agent Loop 最多处理 4 轮。每个工具名必须在注册表中，输入和输出均通过 Pydantic Schema 验证；未知工具、非法参数、Provider 错误和步数上限都持久化为失败状态。工具执行结果来自服务端 handler。
+- Agent Loop 最多处理 4 轮工具调用，累计 `tool_calls` 不超过 4 次，并最多额外请求一轮无工具的最终响应；同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。重复的工具名与规范化参数组合会失败停止；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
 - 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。完成只读工具后也由服务端生成“已查询、未改变卡片状态”的消息。
-- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 请求/响应结构测试。当前未对任何实际模型供应商进行网络连通性、模型行为或付费调用测试。
+- Fake Provider 的流程由 pytest 验证；真实 Adapter 通过 Mock HTTP 验证 Chat Completions 请求、`tools`/`tool_choice`、多工具及多轮 `tool_call_id` 配对、无工具响应、错误响应、超时和连接中断。当前未对任何实际模型供应商进行网络连通性、模型行为或付费调用测试。
 
 当前允许工具：
 
@@ -114,9 +114,11 @@ Agent 不可跳过其中任一步骤。工具失败、超时和部分完成都�
 
 - 任何资金移动、不可逆操作、权限提升或高风险隐私变更必须服务端确认。确认展示实际收款对象、金额/币种、影响和有效期。
 - 当前实现的取消仅允许尚未完成的本地任务；它取消待确认 challenge 和未完成 TaskStep，不会撤销已提交业务状态。取消请求使用 `Idempotency-Key`，相同键重试返回已保存任务结果。未来如增加可长时间运行工具，需另行设计运行中取消与补偿，不可假设当前支持。
-- 失败恢复仅重试幂等、可证明尚未生效或可查询的步骤；未知结果先查询执行状态，不直接重放。
+- `GET /api/v1/agent/tasks/recent?conversation_id=...` 按服务端 actor 和会话关联 ID 优先返回最近的活动任务；没有活动任务时返回最近终态任务。`GET /api/v1/agent/tasks/by-idempotency-key/{key}` 还要求操作类型、会话 ID 和非创建操作的 task ID。二者不接受客户端身份或角色。
+- 任务读取会由服务端惰性结算已过期的待确认挑战：将 Task/Step/ToolExecution 标记为失败、追加过期审计，并保持卡片不变。过期确认不会显示为仍可执行的挑战。
+- 失败恢复仅重试幂等、可证明尚未生效或可查询的步骤；未知结果先按 actor、会话、操作类型和幂等键查询，再显示状态或使用原始参数/同一幂等键安全重试。不得直接生成新键重放写请求。
 - 多步任务部分成功时保留已完成事实，标记后续失败/取消步骤，向用户披露已发生和未发生的变化；不宣称原子事务。
 
 ## 前端进度订阅
 
-当前前端使用 REST 查询 Task 快照与 Task Audit；没有实现 SSE 或 WebSocket。未来可以评估认证保护的 SSE；具体传输方式需在实现前 ADR 评估。Demo Identity 仅用于本机 development/test，不能用作远程部署的认证机制。
+当前前端使用 REST 查询 Task 快照与 Task Audit；刷新时通过服务端恢复最近任务，不恢复未由服务端记录的聊天历史。`sessionStorage` 仅保存会话关联 ID 和待核实写请求的重试信息，绝不作为身份或授权凭证。没有实现 SSE 或 WebSocket。未来可以评估认证保护的 SSE；具体传输方式需在实现前 ADR 评估。Demo Identity 仅用于本机 development/test，不能用作远程部署的认证机制。
