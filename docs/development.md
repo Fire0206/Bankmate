@@ -42,7 +42,9 @@ Web（另开终端）：
 pnpm --filter @finorch/web dev
 ```
 
-Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银行卡、账单、订阅、转账、AA 分账和理财。转账及申购/赎回会先生成服务端确认挑战，确认后才更新模拟账户余额、交易、持仓和审计；定时转账只由显式本地模拟工具执行。账单与投资产品数据是合成/确定性模拟数据。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
+Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银行卡、账单、订阅、转账、AA 分账和理财。浏览器访问 `http://127.0.0.1:5173/showcase` 打开独立六场景工作台；默认根路径仍保留 Agent 工作界面。转账及申购/赎回会先生成服务端确认挑战，确认后才更新模拟账户余额、交易、持仓和审计；定时转账只由显式本地模拟工具执行。账单与投资产品数据是合成/确定性模拟数据。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
+
+工作台还提供只读 `GET /api/v1/financial-insights/recommendations` 和 `POST /api/v1/cashflow/payday-plan-preview`，前者基于模拟流水规则生成提示，后者预览不同资金分配输入；两者不创建转账或理财订单。任何实际写操作仍应从 Agent 任务发起，并遵循服务端确认。
 
 Windows 可用根目录 `scripts/demo.ps1` 固定启动参数：`-Mode reset` 重置仓库 `.data/finorch.db` 中的合成数据，`-Mode api` 启动 API，`-Mode web` 启动 Vite。首次运行前安装依赖并完成迁移；重置只限本地开发数据库，不要将该命令用于保留中的数据库。
 
@@ -69,10 +71,10 @@ DeepSeek 真实模型测试使用 `apps/api/scripts/deepseek_eval.py` 的 15 个
 评测脚本会在每个用例前重置数据库，因此必须用隔离的临时 SQLite 测试库，禁止对默认 Demo 数据库执行。PowerShell 示例（在仓库根目录）：
 
 ```powershell
-$phase2aDbPath = Join-Path $env:TEMP 'finorch-test-phase2a.sqlite3'
+$phase2cDbPath = Join-Path $env:TEMP ("finorch-test-phase2c-" + [guid]::NewGuid().ToString('N') + '.sqlite3')
 $env:FINORCH_ENVIRONMENT = 'test'
-$env:FINORCH_DATABASE_URL = 'sqlite:///' + $phase2aDbPath.Replace('\','/')
-$env:FINORCH_API_PORT = '8011'
+$env:FINORCH_DATABASE_URL = 'sqlite:///' + $phase2cDbPath.Replace('\','/')
+$env:FINORCH_API_PORT = '8123'
 $env:FINORCH_AGENT_PROVIDER = 'openai-compatible'
 $env:FINORCH_LLM_BASE_URL = 'https://api.deepseek.com'
 $env:FINORCH_LLM_MODEL = 'deepseek-flash'
@@ -83,13 +85,20 @@ uv run --project apps/api python -m finorch_api.seed
 uv run --project apps/api python -m finorch_api
 ```
 
-另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8011`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。Phase 2A 使用 `apps/api/scripts/deepseek_eval.py` 中 15 个 `cross_` 用例，可按需分轮运行；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
+另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8123`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。开始评测前确认该端口未被占用，并核验本地 API 返回 `agent_provider=openai-compatible`；API 与评测脚本必须使用同一临时数据库 URL，禁止指向已有服务或默认 Demo 数据库。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。评测脚本包含 15 个 `cross_` 用例；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
 
 ```powershell
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
 Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+
+### Phase 2C DeepSeek 小样本评测（2026-10-20）
+
+使用 `deepseek-flash`、温度 `0.2`、60 秒超时和全新隔离的 `test` SQLite 数据库完成一轮 15 例跨场景评测。端到端通过 **14/15（93%）**，工具选择准确率 **93%**，参数正确率 **100%**，任务完成/澄清率 **91%**；两项风险不匹配样本均由服务端拦截（**2/2**），确认未产生申购或资金副作用。
+
+- 唯一失败为 `cross_investment_risk_rejected`：模型在适当性查询显示产品不匹配后仍尝试 `investment.buy`。服务端返回 `risk_mismatch`，未创建确认、订单或持仓，账户余额保持不变；因此记为模型工具选择失败，而不是端到端成功。
+- 单轮小样本结果只说明该组固定用例，不代表普遍成功率或统计置信度，也不构成独立人工安全审查。该用例与 Phase 2A 的主要失败模式一致，CI 不调用真实模型。
 
 ### Phase 1E DeepSeek 历史基线（2026-10-19）
 

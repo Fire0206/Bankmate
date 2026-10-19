@@ -447,6 +447,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/financial-insights/recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read deterministic recommendations from synthetic financial data */
+        get: operations["read_recommendations_api_v1_financial_insights_recommendations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cashflow/payday-plan-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview a synthetic payday allocation without changing balances */
+        post: operations["preview_payday_plan_api_v1_cashflow_payday_plan_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -834,6 +868,43 @@ export interface components {
             /** Field */
             field?: string | null;
         };
+        /** FinancialRecommendationResponse */
+        FinancialRecommendationResponse: {
+            /** Id */
+            id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "bill_review" | "cashflow_review" | "subscription_review";
+            /**
+             * Priority
+             * @enum {string}
+             */
+            priority: "high" | "medium" | "low";
+            /** Title */
+            title: string;
+            /** Explanation */
+            explanation: string;
+            /** Amount Minor */
+            amount_minor: number | null;
+            /** Currency */
+            currency: string;
+            /** Source Transaction Ids */
+            source_transaction_ids: string[];
+        };
+        /** FinancialRecommendationsResponse */
+        FinancialRecommendationsResponse: {
+            /** Month */
+            month: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["FinancialRecommendationResponse"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /**
@@ -970,6 +1041,46 @@ export interface components {
             description: string;
             /** Suitable */
             suitable: boolean;
+        };
+        /** PaydayPlanPreviewRequest */
+        PaydayPlanPreviewRequest: {
+            /** Recipient Name */
+            recipient_name: string;
+            /** Transfer Amount Minor */
+            transfer_amount_minor: number;
+            /** Reserve Amount Minor */
+            reserve_amount_minor: number;
+            /** Source Account Label */
+            source_account_label?: string | null;
+            /** Month */
+            month?: string | null;
+        };
+        /** PaydayPlanPreviewResponse */
+        PaydayPlanPreviewResponse: {
+            /** Account Label */
+            account_label: string;
+            /** Currency */
+            currency: string;
+            /** Month */
+            month: string;
+            /** Account Balance Minor */
+            account_balance_minor: number;
+            /** Monthly Income Minor */
+            monthly_income_minor: number;
+            /** Monthly Expense Minor */
+            monthly_expense_minor: number;
+            /** Recipient Name */
+            recipient_name: string;
+            /** Transfer Amount Minor */
+            transfer_amount_minor: number;
+            /** Reserve Amount Minor */
+            reserve_amount_minor: number;
+            /** Remaining After Transfer Minor */
+            remaining_after_transfer_minor: number;
+            /** Investment Budget Minor */
+            investment_budget_minor: number;
+            /** Reserve Shortfall Minor */
+            reserve_shortfall_minor: number;
         };
         /** PayeeCreateRequest */
         PayeeCreateRequest: {
@@ -3422,6 +3533,178 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DemoSessionResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_recommendations_api_v1_financial_insights_recommendations_get: {
+        parameters: {
+            query?: {
+                month?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FinancialRecommendationsResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_payday_plan_api_v1_cashflow_payday_plan_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaydayPlanPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaydayPlanPreviewResponse"];
                 };
             };
             /** @description Authentication required. */

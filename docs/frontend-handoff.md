@@ -104,6 +104,15 @@
 
 申购/赎回只能由 Agent Tool 提案、确认后更新账户、订单、持仓、流水和审计；没有绕过确认的理财写 API。
 
+### 发薪日预览与财务提示（Phase 2C）
+
+| API                                                            | 请求 / 参数                                                                                                  | 响应与边界                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/cashflow/payday-plan-preview`                    | `{recipient_name, transfer_amount_minor, reserve_amount_minor, source_account_label?, month?}`；金额为整数分 | 返回 `PaydayPlanPreviewResponse`：`account_label`、`currency`、`month`、`account_balance_minor`、`monthly_income_minor`、`monthly_expense_minor`、`recipient_name`、`transfer_amount_minor`、`reserve_amount_minor`、`remaining_after_transfer_minor`、`investment_budget_minor`、`reserve_shortfall_minor`。只读，不创建转账或理财订单。重复提交相同或不同参数均是新的计算请求，不会改变账户状态。 |
+| `GET /api/v1/financial-insights/recommendations?month=YYYY-MM` | `month` 可选                                                                                                 | 返回 `{month, generated_at, items[]}`。每项含 `id`、`category`、`priority`、`title`、`explanation`、可空 `amount_minor`、`currency`、`source_transaction_ids[]`。来源是当前 actor 的合成流水、月度汇总和订阅列表；每次读取即时计算，不持久化建议。                                                                                                                                                  |
+
+当前规则提示包括同一账户、商户、UTC 日期重复金额记录核对提示，月度支出高于收入提示，以及自动续费核对提示。重复扣费只是数据匹配结果，不代表欺诈；订阅接口没有服务使用行为数据，因此不会声称订阅“浪费”。优先级是确定性展示级别，不是风险评分，也不能单独触发冻结、取消或资金操作。前端可以对同一预览 API 提交不同金额来做情景比较，但需要清楚标明每个场景的输入参数。
+
 ### Agent Task、确认和审计
 
 | API                                                                                                                         | 请求 / 参数                                                            | 说明                                                                                                      |

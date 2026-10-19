@@ -2947,6 +2947,217 @@
           }
         }
       }
+    },
+    "/api/v1/financial-insights/recommendations": {
+      "get": {
+        "tags": [
+          "financial insights"
+        ],
+        "summary": "Read deterministic recommendations from synthetic financial data",
+        "operationId": "read_recommendations_api_v1_financial_insights_recommendations_get",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinancialRecommendationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request conflicts with current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo identity is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cashflow/payday-plan-preview": {
+      "post": {
+        "tags": [
+          "financial insights"
+        ],
+        "summary": "Preview a synthetic payday allocation without changing balances",
+        "operationId": "preview_payday_plan_api_v1_cashflow_payday_plan_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaydayPlanPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaydayPlanPreviewResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request conflicts with current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo identity is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3942,6 +4153,104 @@
         ],
         "title": "ErrorDetail"
       },
+      "FinancialRecommendationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "bill_review",
+              "cashflow_review",
+              "subscription_review"
+            ],
+            "title": "Category"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Priority"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "amount_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Minor"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "source_transaction_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Source Transaction Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "priority",
+          "title",
+          "explanation",
+          "amount_minor",
+          "currency",
+          "source_transaction_ids"
+        ],
+        "title": "FinancialRecommendationResponse"
+      },
+      "FinancialRecommendationsResponse": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialRecommendationResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "month",
+          "generated_at",
+          "items"
+        ],
+        "title": "FinancialRecommendationsResponse"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -4275,6 +4584,129 @@
           "suitable"
         ],
         "title": "InvestmentProductResponse"
+      },
+      "PaydayPlanPreviewRequest": {
+        "properties": {
+          "recipient_name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Recipient Name"
+          },
+          "transfer_amount_minor": {
+            "type": "integer",
+            "maximum": 10000000000.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Transfer Amount Minor"
+          },
+          "reserve_amount_minor": {
+            "type": "integer",
+            "maximum": 10000000000.0,
+            "minimum": 0.0,
+            "title": "Reserve Amount Minor"
+          },
+          "source_account_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Account Label"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^20\\d{2}-(0[1-9]|1[0-2])$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recipient_name",
+          "transfer_amount_minor",
+          "reserve_amount_minor"
+        ],
+        "title": "PaydayPlanPreviewRequest"
+      },
+      "PaydayPlanPreviewResponse": {
+        "properties": {
+          "account_label": {
+            "type": "string",
+            "title": "Account Label"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "month": {
+            "type": "string",
+            "title": "Month"
+          },
+          "account_balance_minor": {
+            "type": "integer",
+            "title": "Account Balance Minor"
+          },
+          "monthly_income_minor": {
+            "type": "integer",
+            "title": "Monthly Income Minor"
+          },
+          "monthly_expense_minor": {
+            "type": "integer",
+            "title": "Monthly Expense Minor"
+          },
+          "recipient_name": {
+            "type": "string",
+            "title": "Recipient Name"
+          },
+          "transfer_amount_minor": {
+            "type": "integer",
+            "title": "Transfer Amount Minor"
+          },
+          "reserve_amount_minor": {
+            "type": "integer",
+            "title": "Reserve Amount Minor"
+          },
+          "remaining_after_transfer_minor": {
+            "type": "integer",
+            "title": "Remaining After Transfer Minor"
+          },
+          "investment_budget_minor": {
+            "type": "integer",
+            "title": "Investment Budget Minor"
+          },
+          "reserve_shortfall_minor": {
+            "type": "integer",
+            "title": "Reserve Shortfall Minor"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "account_label",
+          "currency",
+          "month",
+          "account_balance_minor",
+          "monthly_income_minor",
+          "monthly_expense_minor",
+          "recipient_name",
+          "transfer_amount_minor",
+          "reserve_amount_minor",
+          "remaining_after_transfer_minor",
+          "investment_budget_minor",
+          "reserve_shortfall_minor"
+        ],
+        "title": "PaydayPlanPreviewResponse"
       },
       "PayeeCreateRequest": {
         "properties": {
