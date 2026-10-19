@@ -989,6 +989,12 @@ button:disabled {
   gap: 10px;
 }
 
+.task-overview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .task-updated {
   display: inline-flex;
   align-items: center;

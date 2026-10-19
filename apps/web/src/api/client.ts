@@ -9,6 +9,12 @@ type AgentTaskResponse = components["schemas"]["AgentTaskResponse"];
 type AuditResponse = components["schemas"]["AgentAuditResponse"];
 type CreateTaskRequest =
   paths["/api/v1/agent/tasks"]["post"]["requestBody"]["content"]["application/json"];
+type RecentTaskResponse =
+  paths["/api/v1/agent/tasks/recent"]["get"]["responses"][200]["content"]["application/json"];
+type IdempotencyTaskResponse =
+  paths["/api/v1/agent/tasks/by-idempotency-key/{idempotency_key}"]["get"]["responses"][200]["content"]["application/json"];
+type IdempotencyOperation =
+  paths["/api/v1/agent/tasks/by-idempotency-key/{idempotency_key}"]["get"]["parameters"]["query"]["operation"];
 type TaskInputRequest =
   paths["/api/v1/agent/tasks/{task_id}/input"]["post"]["requestBody"]["content"]["application/json"];
 type ConfirmationRequest =
@@ -72,47 +78,77 @@ export const apiClient = {
   readCards: () => request<CardListResponse>("/api/v1/cards?limit=100"),
   readTask: (id: string) =>
     request<AgentTaskResponse>("/api/v1/agent/tasks/" + encodeURIComponent(id)),
+  readRecentTask: (conversationId: string) =>
+    request<RecentTaskResponse>(
+      "/api/v1/agent/tasks/recent?conversation_id=" +
+        encodeURIComponent(conversationId),
+    ),
+  readTaskByIdempotencyKey: (
+    key: string,
+    conversationId: string,
+    operation: IdempotencyOperation,
+    taskId?: string,
+  ) => {
+    const params = new URLSearchParams({
+      conversation_id: conversationId,
+      operation,
+    });
+    if (taskId) params.set("task_id", taskId);
+    return request<IdempotencyTaskResponse>(
+      "/api/v1/agent/tasks/by-idempotency-key/" +
+        encodeURIComponent(key) +
+        "?" +
+        params.toString(),
+    );
+  },
   readAudit: (id: string) =>
     request<AuditResponse>(
       "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/audit",
     ),
-  createTask: (body: CreateTaskRequest) =>
+  createTask: (body: CreateTaskRequest, key = idempotencyKey()) =>
     request<AgentTaskResponse>("/api/v1/agent/tasks", {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey() },
+      headers: { "Idempotency-Key": key },
       body: JSON.stringify(body),
     }),
-  provideTaskInput: (id: string, body: TaskInputRequest) =>
+  provideTaskInput: (
+    id: string,
+    body: TaskInputRequest,
+    key = idempotencyKey(),
+  ) =>
     request<AgentTaskResponse>(
       "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/input",
       {
         method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey() },
+        headers: { "Idempotency-Key": key },
         body: JSON.stringify(body),
       },
     ),
-  confirmTask: (task: AgentTaskResponse) => {
-    const challenge = task.confirmation;
-    if (!challenge) throw new Error("No confirmation is pending.");
+  confirmTask: (
+    taskId: string,
+    challengeId: string,
+    parametersHash: string,
+    key: string,
+  ) => {
     const body: ConfirmationRequest = {
-      challenge_id: challenge.id,
-      parameters_hash: challenge.parameters_hash,
+      challenge_id: challengeId,
+      parameters_hash: parametersHash,
     };
     return request<AgentTaskResponse>(
-      "/api/v1/agent/tasks/" + encodeURIComponent(task.id) + "/confirm",
+      "/api/v1/agent/tasks/" + encodeURIComponent(taskId) + "/confirm",
       {
         method: "POST",
-        headers: { "Idempotency-Key": challenge.idempotency_key },
+        headers: { "Idempotency-Key": key },
         body: JSON.stringify(body),
       },
     );
   },
-  cancelTask: (id: string) =>
+  cancelTask: (id: string, key = idempotencyKey()) =>
     request<AgentTaskResponse>(
       "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/cancel",
       {
         method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey() },
+        headers: { "Idempotency-Key": key },
       },
     ),
 };

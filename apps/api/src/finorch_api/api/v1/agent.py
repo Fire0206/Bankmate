@@ -1,8 +1,8 @@
 from dataclasses import asdict
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, Path, Request
 from sqlalchemy.orm import Session
 
 from finorch_api.agent.providers import ProviderSelection, select_provider
@@ -22,6 +22,8 @@ from finorch_api.application.agent import (
     confirm_card_change,
     create_agent_task,
     get_agent_task,
+    get_agent_task_by_idempotency_key,
+    get_recent_agent_task,
     get_task_audit,
     submit_task_input,
 )
@@ -34,6 +36,7 @@ DatabaseSession = Annotated[Session, Depends(get_db_session)]
 CurrentDemoActor = Annotated[DemoActor, Depends(get_current_demo_actor)]
 CurrentSettings = Annotated[Settings, Depends(get_settings)]
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)]
+RecoveryKey = Annotated[str, Path(min_length=1, max_length=128)]
 
 
 def get_provider_selection(
@@ -83,14 +86,74 @@ def submit_task(
     return _task_response(task)
 
 
+@router.get(
+    "/recent",
+    response_model=AgentTaskResponse | None,
+    summary="Read the latest task for this actor and conversation",
+)
+def read_recent_task(
+    conversation_id: UUID,
+    request: Request,
+    session: DatabaseSession,
+    actor: CurrentDemoActor,
+) -> AgentTaskResponse | None:
+    task = get_recent_agent_task(
+        session,
+        actor_id=actor.user_id,
+        conversation_id=conversation_id,
+        request_id=request.state.request_id,
+    )
+    return _task_response(task) if task is not None else None
+
+
+@router.get(
+    "/by-idempotency-key/{idempotency_key}",
+    response_model=AgentTaskResponse | None,
+    summary="Look up a task by an actor-scoped idempotency key",
+)
+def read_task_by_idempotency_key(
+    idempotency_key: RecoveryKey,
+    conversation_id: UUID,
+    operation: Literal["create", "input", "confirm", "cancel"],
+    request: Request,
+    session: DatabaseSession,
+    actor: CurrentDemoActor,
+    task_id: UUID | None = None,
+) -> AgentTaskResponse | None:
+    if operation != "create" and task_id is None:
+        raise ContractHTTPException(
+            422,
+            "validation_error",
+            "Task ID is required for this idempotency lookup.",
+        )
+    task = get_agent_task_by_idempotency_key(
+        session,
+        actor_id=actor.user_id,
+        conversation_id=conversation_id,
+        idempotency_key=idempotency_key,
+        operation=operation,
+        task_id=task_id,
+        request_id=request.state.request_id,
+    )
+    return _task_response(task) if task is not None else None
+
+
 @router.get("/{task_id}", response_model=AgentTaskResponse, summary="Read task state and steps")
 def read_task(
     task_id: UUID,
+    request: Request,
     session: DatabaseSession,
     actor: CurrentDemoActor,
 ) -> AgentTaskResponse:
     try:
-        return _task_response(get_agent_task(session, actor_id=actor.user_id, task_id=task_id))
+        return _task_response(
+            get_agent_task(
+                session,
+                actor_id=actor.user_id,
+                task_id=task_id,
+                request_id=request.state.request_id,
+            )
+        )
     except AgentTaskNotFoundError:
         raise _not_found() from None
 

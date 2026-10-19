@@ -21,6 +21,7 @@ type Message = {
   task?: AgentTaskResponse;
 };
 type ApiState = "checking" | "connected" | "unavailable";
+type RecoveryAction = "connection" | "task" | "write-lookup" | "write-retry";
 type UiError = {
   title: string;
   message: string;
@@ -29,6 +30,90 @@ type UiError = {
   requestId: string | null;
   fieldDetails: string[];
 };
+type PendingWrite =
+  | {
+      kind: "create";
+      key: string;
+      conversationId: string;
+      requestText: string;
+    }
+  | {
+      kind: "input";
+      key: string;
+      conversationId: string;
+      taskId: string;
+      requestText: string;
+    }
+  | {
+      kind: "confirm";
+      key: string;
+      conversationId: string;
+      taskId: string;
+      challengeId: string;
+      parametersHash: string;
+    }
+  | {
+      kind: "cancel";
+      key: string;
+      conversationId: string;
+      taskId: string;
+    };
+
+const pendingWriteStorageKey = "finorch.demo.pending-write";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readPendingWrite(): PendingWrite | null {
+  try {
+    const parsed: unknown = JSON.parse(
+      sessionStorage.getItem(pendingWriteStorageKey) ?? "null",
+    );
+    if (!isRecord(parsed)) return null;
+    const {
+      kind,
+      key,
+      conversationId,
+      taskId,
+      requestText,
+      challengeId,
+      parametersHash,
+    } = parsed;
+    if (
+      typeof key !== "string" ||
+      typeof conversationId !== "string" ||
+      typeof kind !== "string"
+    )
+      return null;
+    if (kind === "create" && typeof requestText === "string")
+      return { kind, key, conversationId, requestText };
+    if (
+      kind === "input" &&
+      typeof taskId === "string" &&
+      typeof requestText === "string"
+    )
+      return { kind, key, conversationId, taskId, requestText };
+    if (
+      kind === "confirm" &&
+      typeof taskId === "string" &&
+      typeof challengeId === "string" &&
+      typeof parametersHash === "string"
+    )
+      return { kind, key, conversationId, taskId, challengeId, parametersHash };
+    if (kind === "cancel" && typeof taskId === "string")
+      return { kind, key, conversationId, taskId };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("fetch") || message.includes("network");
+}
 
 const apiErrorCopy: Record<string, string> = {
   confirmation_expired: "确认已过期，银行卡没有变更。",
@@ -55,10 +140,7 @@ function toUiError(error: unknown): UiError {
     };
   }
   const detail = error instanceof Error ? error.message : "未知错误，请重试。";
-  const isNetworkError =
-    error instanceof TypeError ||
-    detail.toLowerCase().includes("fetch") ||
-    detail.toLowerCase().includes("network");
+  const isNetworkError = isNetworkFailure(error);
   return {
     title: isNetworkError ? "暂时无法连接服务" : "请求未完成",
     message: isNetworkError
@@ -108,14 +190,37 @@ function initialContextOpen(): boolean {
 function ErrorBanner({
   error,
   onRetry,
+  retryLabel,
+  retryAction,
+  onSecondary,
+  secondaryLabel,
+  secondaryAction,
+  onTertiary,
+  tertiaryLabel,
+  tertiaryAction,
   onDismiss,
-  retrying,
+  busyAction,
 }: {
   error: UiError;
   onRetry: () => void;
+  retryLabel: string;
+  retryAction: RecoveryAction;
+  onSecondary?: () => void;
+  secondaryLabel?: string;
+  secondaryAction?: RecoveryAction;
+  onTertiary?: () => void;
+  tertiaryLabel?: string;
+  tertiaryAction?: RecoveryAction;
   onDismiss: () => void;
-  retrying: boolean;
+  busyAction: RecoveryAction | null;
 }) {
+  const actionLabel: Record<RecoveryAction, string> = {
+    connection: "正在连接…",
+    task: "正在读取…",
+    "write-lookup": "正在查询…",
+    "write-retry": "正在重试…",
+  };
+  const busy = busyAction !== null;
   return (
     <section aria-live="assertive" className="error-banner" role="alert">
       <span aria-hidden="true" className="error-mark">
@@ -139,12 +244,36 @@ function ErrorBanner({
       <div className="error-actions">
         <button
           className="button button-secondary"
-          disabled={retrying}
+          disabled={busy}
           onClick={onRetry}
           type="button"
         >
-          {retrying ? "正在重试…" : "重试"}
+          {busyAction === retryAction ? actionLabel[retryAction] : retryLabel}
         </button>
+        {onSecondary && secondaryLabel ? (
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={onSecondary}
+            type="button"
+          >
+            {busyAction === secondaryAction && secondaryAction
+              ? actionLabel[secondaryAction]
+              : secondaryLabel}
+          </button>
+        ) : null}
+        {onTertiary && tertiaryLabel ? (
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={onTertiary}
+            type="button"
+          >
+            {busyAction === tertiaryAction && tertiaryAction
+              ? actionLabel[tertiaryAction]
+              : tertiaryLabel}
+          </button>
+        ) : null}
         <button
           aria-label="关闭错误提示"
           className="icon-button error-dismiss"
@@ -245,6 +374,9 @@ export default function App() {
   const [cards, setCards] = useState<CardListResponse["items"]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeTask, setActiveTask] = useState<AgentTaskResponse | null>(null);
+  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(
+    readPendingWrite,
+  );
   const [auditState, setAuditState] = useState<{
     key: string;
     events: AuditResponse["events"];
@@ -254,7 +386,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [retrying, setRetrying] = useState(false);
+  const [refreshingTask, setRefreshingTask] = useState(false);
+  const [recoveryAction, setRecoveryAction] = useState<RecoveryAction | null>(
+    null,
+  );
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<"assistant" | "cards">(
@@ -292,6 +427,37 @@ export default function App() {
     });
   }, []);
 
+  const storePendingWrite = useCallback((write: PendingWrite | null) => {
+    setPendingWrite(write);
+    try {
+      if (write)
+        sessionStorage.setItem(pendingWriteStorageKey, JSON.stringify(write));
+      else sessionStorage.removeItem(pendingWriteStorageKey);
+    } catch {
+      // Session storage is a recovery aid, never an identity or authorization source.
+    }
+  }, []);
+
+  const lookupPendingWrite = useCallback(async (write: PendingWrite) => {
+    const task = await apiClient.readTaskByIdempotencyKey(
+      write.key,
+      write.conversationId,
+      write.kind,
+      write.kind === "create" ? undefined : write.taskId,
+    );
+    if (task) {
+      const resolved =
+        write.kind !== "confirm" ||
+        task.status !== "awaiting_confirmation" ||
+        task.confirmation?.id !== write.challengeId;
+      return { task, resolved };
+    }
+    if (write.kind !== "create") {
+      return { task: await apiClient.readTask(write.taskId), resolved: false };
+    }
+    return { task: null, resolved: false };
+  }, []);
+
   useEffect(() => {
     let current = true;
     apiClient
@@ -309,10 +475,37 @@ export default function App() {
       });
 
     Promise.all([apiClient.readSession(), apiClient.readCards()])
-      .then(([demo, cardPage]) => {
+      .then(async ([demo, cardPage]) => {
         if (!current) return;
         setSession(demo);
         setCards(cardPage.items);
+        const savedWrite = readPendingWrite();
+        try {
+          if (savedWrite) {
+            const recovered = await lookupPendingWrite(savedWrite);
+            if (!current) return;
+            if (recovered.task) applyTask(recovered.task);
+            if (recovered.resolved) {
+              storePendingWrite(null);
+            } else {
+              setRequestError({
+                title: "提交状态尚未确认",
+                message: recovered.task
+                  ? "已读取服务端任务。请确认当前状态，或使用相同请求安全重试。"
+                  : "暂未找到这次提交的任务记录。请先查询结果，再使用原请求安全重试。",
+                code: null,
+                status: null,
+                requestId: null,
+                fieldDetails: [],
+              });
+            }
+          } else {
+            const recent = await apiClient.readRecentTask(conversationId);
+            if (current && recent) applyTask(recent);
+          }
+        } catch (error) {
+          if (current) setRequestError(toUiError(error));
+        }
       })
       .catch((error: unknown) => {
         if (current) setRequestError(toUiError(error));
@@ -323,7 +516,7 @@ export default function App() {
     return () => {
       current = false;
     };
-  }, []);
+  }, [applyTask, conversationId, lookupPendingWrite, storePendingWrite]);
 
   useEffect(() => {
     const desktopContext = window.matchMedia("(min-width: 1100px)");
@@ -416,7 +609,7 @@ export default function App() {
   }
 
   async function retryConnection() {
-    setRetrying(true);
+    setRecoveryAction("connection");
     setApiState("checking");
     setRequestError(null);
     try {
@@ -433,76 +626,187 @@ export default function App() {
       setApiState("unavailable");
       setRequestError(toUiError(error));
     } finally {
-      setRetrying(false);
+      setRecoveryAction(null);
       setLoading(false);
+    }
+  }
+
+  async function executeWrite(write: PendingWrite): Promise<AgentTaskResponse> {
+    if (write.kind === "create") {
+      return apiClient.createTask(
+        {
+          request_text: write.requestText,
+          conversation_id: write.conversationId,
+        },
+        write.key,
+      );
+    }
+    if (write.kind === "input") {
+      return apiClient.provideTaskInput(
+        write.taskId,
+        { request_text: write.requestText },
+        write.key,
+      );
+    }
+    if (write.kind === "confirm") {
+      return apiClient.confirmTask(
+        write.taskId,
+        write.challengeId,
+        write.parametersHash,
+        write.key,
+      );
+    }
+    return apiClient.cancelTask(write.taskId, write.key);
+  }
+
+  async function submitWrite(write: PendingWrite) {
+    storePendingWrite(write);
+    setBusy(true);
+    setRequestError(null);
+    try {
+      const task = await executeWrite(write);
+      applyTask(task);
+      storePendingWrite(null);
+      if (task.status === "completed") await refreshCards();
+    } catch (error) {
+      try {
+        const recovered = await lookupPendingWrite(write);
+        if (recovered.task) applyTask(recovered.task);
+        if (recovered.resolved) {
+          storePendingWrite(null);
+          if (recovered.task?.status === "completed") await refreshCards();
+          return;
+        }
+      } catch {
+        // Keep the idempotency record so the user can query or safely retry it later.
+      }
+      setRequestError(toUiError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function recoverPendingWrite(allowResubmit: boolean) {
+    if (!pendingWrite || recoveryAction || busy) return;
+    setRecoveryAction(allowResubmit ? "write-retry" : "write-lookup");
+    setBusy(true);
+    setRequestError(null);
+    try {
+      const recovered = await lookupPendingWrite(pendingWrite);
+      if (recovered.task) applyTask(recovered.task);
+      if (recovered.resolved) {
+        storePendingWrite(null);
+        if (recovered.task?.status === "completed") await refreshCards();
+        return;
+      }
+      if (!allowResubmit) {
+        setRequestError({
+          title: "尚未找到已完成的提交",
+          message: recovered.task
+            ? "服务端任务仍处于当前状态。可以继续查看任务，或用相同幂等键安全重试。"
+            : "服务端暂时没有这次请求的记录。若要继续，请用原请求和同一幂等键重试。",
+          code: null,
+          status: null,
+          requestId: null,
+          fieldDetails: [],
+        });
+        return;
+      }
+      const task = await executeWrite(pendingWrite);
+      applyTask(task);
+      storePendingWrite(null);
+      if (task.status === "completed") await refreshCards();
+    } catch (error) {
+      try {
+        const latest = await lookupPendingWrite(pendingWrite);
+        if (latest.task) applyTask(latest.task);
+        if (latest.resolved) {
+          storePendingWrite(null);
+          if (latest.task?.status === "completed") await refreshCards();
+          return;
+        }
+      } catch {
+        // Preserve the same request and key while connectivity is uncertain.
+      }
+      setRequestError(toUiError(error));
+    } finally {
+      setBusy(false);
+      setRecoveryAction(null);
+    }
+  }
+
+  async function refreshRecentTask() {
+    if (recoveryAction || busy) return;
+    setRecoveryAction("task");
+    setRequestError(null);
+    try {
+      const task = await apiClient.readRecentTask(conversationId);
+      if (task) applyTask(task);
+    } catch (error) {
+      setRequestError(toUiError(error));
+    } finally {
+      setRecoveryAction(null);
+    }
+  }
+
+  async function refreshTask() {
+    if (!activeTask || refreshingTask) return;
+    setRefreshingTask(true);
+    try {
+      const task = await apiClient.readTask(activeTask.id);
+      applyTask(task);
+      if (task.status === "completed") await refreshCards();
+      setRequestError(null);
+    } catch (error) {
+      setRequestError(toUiError(error));
+    } finally {
+      setRefreshingTask(false);
     }
   }
 
   async function sendMessage(value = draft) {
     const requestText = value.trim();
-    if (!requestText || busy || !session) return;
+    if (!requestText || busy || !session || pendingWrite) return;
     setDraft("");
-    setBusy(true);
-    setRequestError(null);
     setMessages((current) => [
       ...current,
       { id: crypto.randomUUID(), role: "user", text: requestText },
     ]);
-    try {
-      const task =
-        activeTask &&
-        ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status)
-          ? await apiClient.provideTaskInput(activeTask.id, {
-              request_text: requestText,
-            })
-          : await apiClient.createTask({
-              request_text: requestText,
-              conversation_id: conversationId,
-            });
-      applyTask(task);
-      if (task.status === "completed") await refreshCards();
-    } catch (error) {
-      setRequestError(toUiError(error));
-    } finally {
-      setBusy(false);
-    }
+    const key = crypto.randomUUID();
+    const write: PendingWrite =
+      activeTask &&
+      ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status)
+        ? {
+            kind: "input",
+            key,
+            conversationId,
+            taskId: activeTask.id,
+            requestText,
+          }
+        : { kind: "create", key, conversationId, requestText };
+    await submitWrite(write);
   }
 
   async function confirmTask(task: AgentTaskResponse) {
     if (!task.confirmation || busy) return;
-    setBusy(true);
-    setRequestError(null);
-    try {
-      applyTask(await apiClient.confirmTask(task));
-      await refreshCards();
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        try {
-          applyTask(await apiClient.readTask(task.id));
-          await refreshCards();
-        } catch (refreshError) {
-          setRequestError(toUiError(refreshError));
-        }
-      } else {
-        setRequestError(toUiError(error));
-      }
-    } finally {
-      setBusy(false);
-    }
+    await submitWrite({
+      kind: "confirm",
+      key: task.confirmation.idempotency_key,
+      conversationId: task.conversation_id,
+      taskId: task.id,
+      challengeId: task.confirmation.id,
+      parametersHash: task.confirmation.parameters_hash,
+    });
   }
 
   async function cancelTask(task: AgentTaskResponse) {
-    if (busy) return;
-    setBusy(true);
-    setRequestError(null);
-    try {
-      applyTask(await apiClient.cancelTask(task.id));
-      await refreshCards();
-    } catch (error) {
-      setRequestError(toUiError(error));
-    } finally {
-      setBusy(false);
-    }
+    if (busy || pendingWrite) return;
+    await submitWrite({
+      kind: "cancel",
+      key: crypto.randomUUID(),
+      conversationId: task.conversation_id,
+      taskId: task.id,
+    });
   }
 
   function showTaskDetails() {
@@ -569,8 +873,36 @@ export default function App() {
             <ErrorBanner
               error={requestError}
               onDismiss={() => setRequestError(null)}
-              onRetry={() => void retryConnection()}
-              retrying={retrying}
+              onRetry={() =>
+                void (pendingWrite
+                  ? recoverPendingWrite(false)
+                  : retryConnection())
+              }
+              retryLabel={pendingWrite ? "查询提交结果" : "恢复连接"}
+              retryAction={pendingWrite ? "write-lookup" : "connection"}
+              onSecondary={
+                pendingWrite
+                  ? () => void recoverPendingWrite(true)
+                  : !activeTask
+                    ? () => void refreshRecentTask()
+                    : undefined
+              }
+              secondaryLabel={
+                pendingWrite
+                  ? "使用相同请求安全重试"
+                  : !activeTask
+                    ? "重新读取任务状态"
+                    : undefined
+              }
+              secondaryAction={
+                pendingWrite ? "write-retry" : !activeTask ? "task" : undefined
+              }
+              onTertiary={
+                pendingWrite ? () => void retryConnection() : undefined
+              }
+              tertiaryLabel={pendingWrite ? "恢复连接" : undefined}
+              tertiaryAction={pendingWrite ? "connection" : undefined}
+              busyAction={recoveryAction}
             />
           ) : null}
 
@@ -611,7 +943,9 @@ export default function App() {
                           {promptSuggestions(cards).map((prompt) => (
                             <button
                               className="suggestion-button"
-                              disabled={busy || !session}
+                              disabled={
+                                busy || Boolean(pendingWrite) || !session
+                              }
                               key={prompt}
                               onClick={() => void sendMessage(prompt)}
                               type="button"
@@ -686,7 +1020,11 @@ export default function App() {
                   void sendMessage();
                 }}
               >
-                {activeTask?.status === "awaiting_input" ? (
+                {pendingWrite ? (
+                  <p className="composer-hint">
+                    上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
+                  </p>
+                ) : activeTask?.status === "awaiting_input" ? (
                   <p className="composer-hint">补充信息将继续当前任务。</p>
                 ) : activeTask?.status === "awaiting_confirmation" ? (
                   <p className="composer-hint">
@@ -699,6 +1037,7 @@ export default function App() {
                 <div className="composer-row">
                   <textarea
                     id="agent-request"
+                    disabled={Boolean(pendingWrite)}
                     maxLength={1000}
                     onChange={(event) => setDraft(event.target.value)}
                     onKeyDown={(event) => {
@@ -718,7 +1057,9 @@ export default function App() {
                   <button
                     aria-label="发送请求"
                     className="send-button"
-                    disabled={busy || !draft.trim() || !session}
+                    disabled={
+                      busy || Boolean(pendingWrite) || !draft.trim() || !session
+                    }
                     type="submit"
                   >
                     <AppIcon name="send" size={19} />
@@ -759,6 +1100,8 @@ export default function App() {
                 />
                 <TaskOverview
                   busy={busy}
+                  refreshing={refreshingTask}
+                  onRefresh={() => void refreshTask()}
                   onCancel={() => {
                     if (activeTask) void cancelTask(activeTask);
                   }}

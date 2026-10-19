@@ -1,7 +1,8 @@
-.git/
-node_modules/
-dist/
+# Generated contracts are checked by the OpenAPI regeneration diff in CI.
 apps/web/openapi.json
-apps/web/src/generated/
+apps/web/src/generated/api.d.ts
+
+# Package and browser automation artifacts are checked by their own tooling.
 pnpm-lock.yaml
-uv.lock
+.playwright-cli/
+output/playwright/
