@@ -34,6 +34,7 @@ from finorch_api.application.agent_workflow import (
     invalid_tool_input_name,
     missing_payday_parameters_message,
     missing_requested_write_tools,
+    missing_write_input_message,
     task_progress_context,
     tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
@@ -967,6 +968,21 @@ def _run_task(
             missing_tools = missing_requested_write_tools(request_text, current_progress)
             if not missing_tools or replan_count == 2:
                 break
+            clarification = missing_write_input_message(
+                request_text, current_progress, missing_tools
+            )
+            if clarification is None:
+                clarification = unknown_requested_transfer_payee_message(
+                    request_text, current_progress
+                )
+            if clarification:
+                result = AgentRunResult(
+                    status="awaiting_input",
+                    message=clarification,
+                    error_code=None,
+                    executed_tools=result.executed_tools,
+                )
+                break
             trusted_context["task_progress"] = {
                 **current_progress,
                 "required_next_tools": list(missing_tools),
@@ -1042,12 +1058,23 @@ def _run_task(
         else:
             missing_tools = missing_requested_write_tools(request_text, task_progress)
             if missing_tools:
-                result = AgentRunResult(
-                    status="failed",
-                    message="请求中的操作步骤尚未由业务工具完成，因此任务未标记为完成。",
-                    error_code="agent_workflow_incomplete",
-                    executed_tools=result.executed_tools,
+                clarification = missing_write_input_message(
+                    request_text, task_progress, missing_tools
                 )
+                if clarification:
+                    result = AgentRunResult(
+                        status="awaiting_input",
+                        message=clarification,
+                        error_code=None,
+                        executed_tools=result.executed_tools,
+                    )
+                else:
+                    result = AgentRunResult(
+                        status="failed",
+                        message="请求中的操作步骤尚未由业务工具完成，因此任务未标记为完成。",
+                        error_code="agent_workflow_incomplete",
+                        executed_tools=result.executed_tools,
+                    )
 
     _finalize_run(
         session,

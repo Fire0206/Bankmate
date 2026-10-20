@@ -135,21 +135,40 @@ class AgentRuntime:
                     "execution; every write needs server-side user confirmation. Ask a short "
                     "clarifying question when the target or required write parameters are unclear; "
                     "do not call tools until the user supplies them. Use only tools directly "
-                    "relevant to the request, and finish every requested goal clause. For a "
-                    "cross-scenario request, use persisted successful tool results, perform each "
+                    "relevant to the request, and finish every requested goal clause. "
+                    "For a subscription change, distinguish a temporary pause from cancellation: "
+                    "pause is resumable; cancel stops future renewal. Requests to stop or close "
+                    "automatic renewal mean cancel unless the user explicitly asks for a temporary "
+                    "pause. Do not treat a subscription list as completion when a change was "
+                    "requested; propose the requested change when its target is clear. If the user "
+                    "describes suspected duplicate or unauthorized charges and asks for a "
+                    "temporary safeguard, prefer reversible pause; use cancellation only when "
+                    "permanent termination is explicit. "
+                    "Treat pressure from an unverified person, threats, secrecy, "
+                    "implausible urgency, or requests to bypass confirmation as "
+                    "social-engineering risk signals. In that context, "
+                    "do not invoke any funds-write or other write tool and do not create "
+                    "a confirmation proposal; advise the user to stop and independently "
+                    "verify through an official channel. A confirmation prompt does not make "
+                    "a coercive transfer "
+                    "safe. "
+                    "For a cross-scenario request, use persisted successful tool results, perform "
+                    "each "
                     "remaining step in order, and stop at each confirmation proposal. After the "
                     "server confirms an action, continue this same task without repeating any "
                     "successful side effect. If one step fails, preserve completed results and "
                     "do not claim the rest succeeded. If trusted task_progress includes a "
-                    "required_next_tools list, call those registered tools in order before "
-                    "finishing; use only their results and never repeat successful writes. "
+                    "required_next_tools list, call the first required registered tool before "
+                    "finishing; the server limits available writes to that required step. Use only "
+                    "tool results and never repeat successful writes. "
                     "Only combine independent read-only calls. For dependent steps, wait for the "
                     "server result before choosing the next tool; never batch a write "
                     "with the lookup or plan it depends on. "
                     "For an AA split request with an event title, total CNY amount, and named "
                     "participants, call transfer.split_create; convert yuan to integer fen for "
                     "amount_minor (1 yuan = 100 fen; 120 yuan = 12000 fen) and list only the "
-                    "named participants, not the current user. "
+                    "named participants, not the current user. Preserve the exact event title "
+                    "provided by the user without adding spaces or punctuation. "
                     "For an existing AA bill list or status request, call transfer.splits. "
                     "For investment buy requests, require both a named product and an amount; "
                     "if either is missing, ask which product or amount the user wants and do not "
@@ -184,8 +203,10 @@ class AgentRuntime:
                     "and invest the remainder, read transfer.accounts and bill.monthly_summary, "
                     "then call finance.payday_plan with the user's named recipient, transfer "
                     "amount, and reserve amount. Use only its returned investment budget and "
-                    "suitable products; propose the transfer, wait for confirmation, then propose "
-                    "the investment and wait for its confirmation. Finish by rereading accounts "
+                    "suitable products. Before proposing the transfer, call investment.products "
+                    "and verify at least one suitable product for the planned investment. Then "
+                    "propose the transfer, wait for confirmation, propose the investment, and "
+                    "wait for its confirmation. Finish by rereading accounts "
                     "and the portfolio. Do not stop after planning or after only one requested "
                     "write; do not recompute the budget yourself. "
                     "Do not infer identity."
@@ -212,13 +233,38 @@ class AgentRuntime:
                     ),
                 },
             )
+        task_progress = trusted_context.get("task_progress", {})
+        required_next_tools = task_progress.get("required_next_tools", [])
+        required_tool_name = (
+            required_next_tools[0]
+            if isinstance(required_next_tools, list)
+            and required_next_tools
+            and isinstance(required_next_tools[0], str)
+            else None
+        )
+        definitions = registry.definitions()
+        if required_tool_name is not None:
+            definitions = [
+                definition
+                for definition in definitions
+                if (spec := registry.get(definition.get("function", {}).get("name", "")))
+                is not None
+                and (spec.permission_level == "read_only" or spec.name == required_tool_name)
+            ]
         executed = 0
         seen_tool_calls: set[tuple[str, str]] = set()
         seen_call_ids: set[str] = set()
 
         for step_number in range(1, self.max_steps + 2):
-            turn = self.provider.complete(messages, registry.definitions())
+            turn = self.provider.complete(messages, definitions)
             if not turn.tool_calls:
+                if required_tool_name is not None:
+                    return AgentRunResult(
+                        status="failed",
+                        message="请求的业务步骤尚未执行，系统未报告成功。",
+                        error_code="agent_required_tool_not_called",
+                        executed_tools=executed,
+                    )
                 if turn.status in {"completed", "awaiting_input"}:
                     return AgentRunResult(
                         status=turn.status,
@@ -269,6 +315,29 @@ class AgentRuntime:
                     status="failed",
                     message="任务达到工具调用步数上限，未继续执行。",
                     error_code="agent_step_limit_exceeded",
+                    executed_tools=executed,
+                )
+
+            resolved_specs = [registry.get(call.name) for call in turn.tool_calls]
+            if required_tool_name is not None and any(
+                spec is not None
+                and spec.permission_level != "read_only"
+                and spec.name != required_tool_name
+                for spec in resolved_specs
+            ):
+                return AgentRunResult(
+                    status="failed",
+                    message="模型提出了与当前待办不一致的操作，没有执行该操作。",
+                    error_code="agent_required_tool_mismatch",
+                    executed_tools=executed,
+                )
+            if len(turn.tool_calls) > 1 and any(
+                spec is not None and spec.permission_level != "read_only" for spec in resolved_specs
+            ):
+                return AgentRunResult(
+                    status="failed",
+                    message="依赖其他步骤的写操作不能与其他工具合并执行。",
+                    error_code="agent_write_tool_batch_rejected",
                     executed_tools=executed,
                 )
 

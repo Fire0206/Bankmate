@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
@@ -26,6 +27,13 @@ class Settings(BaseSettings):
     llm_model: str | None = None
     llm_timeout_seconds: float = Field(default=60.0, gt=0, le=120)
     llm_temperature: float = Field(default=0.2, ge=0, le=2)
+    # Evaluation-only telemetry and listener identity. The provider only writes
+    # sanitized token counts when this is configured in the test environment.
+    eval_usage_file: Path | None = None
+    eval_instance_id: str | None = Field(default=None, min_length=16, max_length=128)
+    eval_max_completion_tokens: int | None = Field(default=None, gt=0, le=8192)
+    eval_hard_budget_cny: float | None = Field(default=None, gt=0, le=120)
+    eval_initial_cost_cny: float = Field(default=0, ge=0, le=120)
 
 
 @lru_cache

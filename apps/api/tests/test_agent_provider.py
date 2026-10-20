@@ -2,8 +2,10 @@ import json
 import urllib.error
 from typing import Any
 
+import pytest
 from finorch_api.agent.providers import OpenAICompatibleProvider, select_provider
 from finorch_api.agent.runtime import (
+    AgentProviderError,
     AgentRuntime,
     FakeProvider,
     ModelToolCall,
@@ -191,6 +193,178 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
     assert provider.mode == "openai-compatible"
     assert turn.tool_calls[0].name == "card.freeze"
     assert json.loads(turn.tool_calls[0].arguments) == {"card_suffix": "1042"}
+
+
+def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
+    monkeypatch, tmp_path
+) -> None:
+    usage_file = tmp_path / "usage.jsonl"
+    response_content = "PRIVATE_MODEL_RESPONSE_DO_NOT_LOG"
+    captured: dict[str, Any] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "choices": [{"message": {"content": response_content}}],
+                    "usage": {
+                        "prompt_tokens": 321,
+                        "completion_tokens": 17,
+                        "total_tokens": 338,
+                        "prompt_cache_hit_tokens": 50,
+                    },
+                }
+            ).encode()
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            environment="test",
+            agent_provider="openai-compatible",
+            llm_base_url="https://model.example/v1",
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-eval-model",
+            eval_usage_file=usage_file,
+            eval_max_completion_tokens=8192,
+        )
+    )
+
+    assert selection.provider is not None
+    selection.provider.complete([{"role": "user", "content": "PRIVATE_REQUEST_DO_NOT_LOG"}], [])
+    assert captured["body"]["max_tokens"] == 8192
+
+    lines = usage_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    started, recorded = (json.loads(line) for line in lines)
+    assert started["event"] == "request_started"
+    assert recorded["event"] == "response_usage"
+    assert started["call_id"] == recorded["call_id"]
+    assert recorded == {
+        "event": "response_usage",
+        "call_id": started["call_id"],
+        "model": "mock-eval-model",
+        "usage_available": True,
+        "prompt_tokens": 321,
+        "completion_tokens": 17,
+        "total_tokens": 338,
+        "cached_prompt_tokens": 50,
+    }
+    assert "PRIVATE" not in usage_file.read_text(encoding="utf-8")
+    assert "unit-test-key" not in usage_file.read_text(encoding="utf-8")
+
+
+def test_evaluation_usage_telemetry_is_disabled_outside_test_environment(
+    monkeypatch, tmp_path
+) -> None:
+    usage_file = tmp_path / "usage.jsonl"
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}}
+            ).encode()
+
+    monkeypatch.setattr(
+        "finorch_api.agent.providers.urllib.request.urlopen", lambda *_args, **_kwargs: Response()
+    )
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            environment="development",
+            agent_provider="openai-compatible",
+            llm_base_url="https://model.example/v1",
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-eval-model",
+            eval_usage_file=usage_file,
+        )
+    )
+
+    assert selection.provider is not None
+    selection.provider.complete([{"role": "user", "content": "secret"}], [])
+
+    assert not usage_file.exists()
+
+
+def test_evaluation_hard_budget_guard_refuses_request_before_network(monkeypatch, tmp_path) -> None:
+    usage_file = tmp_path / "usage.jsonl"
+    network_called = False
+
+    def fake_urlopen(*_args, **_kwargs):
+        nonlocal network_called
+        network_called = True
+        raise AssertionError("Budget rejection must happen before the provider request.")
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            environment="test",
+            agent_provider="openai-compatible",
+            llm_base_url="https://model.example/v1",
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-eval-model",
+            eval_usage_file=usage_file,
+            eval_max_completion_tokens=8192,
+            eval_hard_budget_cny=0.1,
+        )
+    )
+
+    assert selection.provider is not None
+    with pytest.raises(AgentProviderError, match="hard model evaluation budget"):
+        selection.provider.complete([{"role": "user", "content": "test"}], [])
+
+    assert not network_called
+    assert not usage_file.exists()
+
+
+def test_evaluation_hard_budget_guard_includes_previous_runs(monkeypatch, tmp_path) -> None:
+    usage_file = tmp_path / "usage.jsonl"
+    network_called = False
+
+    def fake_urlopen(*_args, **_kwargs):
+        nonlocal network_called
+        network_called = True
+        raise AssertionError("Cumulative budget rejection must happen before the provider request.")
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            environment="test",
+            agent_provider="openai-compatible",
+            llm_base_url="https://model.example/v1",
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-eval-model",
+            eval_usage_file=usage_file,
+            eval_max_completion_tokens=8192,
+            eval_hard_budget_cny=120,
+            eval_initial_cost_cny=118,
+        )
+    )
+
+    assert selection.provider is not None
+    with pytest.raises(AgentProviderError, match="hard model evaluation budget"):
+        selection.provider.complete([{"role": "user", "content": "test"}], [])
+
+    assert not network_called
+    assert not usage_file.exists()
 
 
 def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypatch) -> None:
@@ -571,6 +745,140 @@ def test_runtime_limits_tool_repetition_and_model_steps() -> None:
     assert step_limited.status == "failed"
     assert step_limited.error_code == "agent_step_limit_exceeded"
     assert step_limited.executed_tools == 2
+
+
+def test_runtime_limits_required_write_and_refuses_completion_without_it() -> None:
+    registry = ToolRegistry(
+        (
+            ToolSpec(
+                name="card.list",
+                description="Read synthetic card data.",
+                version="1.0",
+                input_model=EmptyToolInput,
+                output_model=CardListOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=lambda _arguments, _context: {},
+            ),
+            ToolSpec(
+                name="card.freeze",
+                description="Propose freezing an owned card.",
+                version="1.0",
+                input_model=CardSuffixInput,
+                output_model=CardListOutput,
+                permission_level="funds_write",
+                risk_level="high",
+                confirmation_requirement="always",
+                handler=lambda _arguments, _context: {},
+            ),
+            ToolSpec(
+                name="card.unfreeze",
+                description="Propose unfreezing an owned card.",
+                version="1.0",
+                input_model=CardSuffixInput,
+                output_model=CardListOutput,
+                permission_level="funds_write",
+                risk_level="high",
+                confirmation_requirement="always",
+                handler=lambda _arguments, _context: {},
+            ),
+        )
+    )
+
+    class CompleteWithoutWriteProvider:
+        mode = "openai-compatible"
+
+        def __init__(self) -> None:
+            self.available_tools: set[str] = set()
+
+        def complete(self, messages, tools):
+            del messages
+            self.available_tools = {item["function"]["name"] for item in tools}
+            return ModelTurn("完成了。", status="completed")
+
+    provider = CompleteWithoutWriteProvider()
+    dispatch_calls: list[str] = []
+    result = AgentRuntime(provider).run(
+        request_text="冻结尾号1042的卡",
+        trusted_context={"task_progress": {"required_next_tools": ["card.freeze"]}},
+        registry=registry,
+        dispatch=lambda spec, _arguments, _call, _sequence, _error: (
+            dispatch_calls.append(spec.name) or ToolDispatchResult("succeeded", {})
+        ),
+    )
+
+    assert provider.available_tools == {"card__list", "card__freeze"}
+    assert result.status == "failed"
+    assert result.error_code == "agent_required_tool_not_called"
+    assert dispatch_calls == []
+
+
+def test_runtime_rejects_wrong_or_batched_write_when_a_step_is_required() -> None:
+    registry = ToolRegistry(
+        tuple(
+            ToolSpec(
+                name=name,
+                description="Synthetic card operation.",
+                version="1.0",
+                input_model=CardSuffixInput,
+                output_model=CardListOutput,
+                permission_level=permission,
+                risk_level="high" if permission != "read_only" else "low",
+                confirmation_requirement="always" if permission != "read_only" else "never",
+                handler=lambda _arguments, _context: {},
+            )
+            for name, permission in (
+                ("card.list", "read_only"),
+                ("card.freeze", "funds_write"),
+                ("card.unfreeze", "funds_write"),
+            )
+        )
+    )
+
+    class SequenceProvider:
+        mode = "openai-compatible"
+
+        def __init__(self, calls: tuple[ModelToolCall, ...]) -> None:
+            self.calls = calls
+
+        def complete(self, messages, tools):
+            del messages, tools
+            return ModelTurn(None, self.calls)
+
+    context = {"task_progress": {"required_next_tools": ["card.freeze"]}}
+    dispatch_calls: list[str] = []
+
+    def dispatch(spec, _arguments, _call, _sequence, _error):
+        dispatch_calls.append(spec.name)
+        return ToolDispatchResult("succeeded", {})
+
+    wrong_write = AgentRuntime(
+        SequenceProvider((ModelToolCall("wrong", "card.unfreeze", '{"card_suffix":"1042"}'),))
+    ).run(
+        request_text="冻结尾号1042的卡",
+        trusted_context=context,
+        registry=registry,
+        dispatch=dispatch,
+    )
+    assert wrong_write.error_code == "agent_required_tool_mismatch"
+    assert dispatch_calls == []
+
+    write_batch = AgentRuntime(
+        SequenceProvider(
+            (
+                ModelToolCall("freeze", "card.freeze", '{"card_suffix":"1042"}'),
+                ModelToolCall("read", "card.list", "{}"),
+            )
+        )
+    ).run(
+        request_text="冻结尾号1042的卡",
+        trusted_context=context,
+        registry=registry,
+        dispatch=dispatch,
+    )
+    assert write_batch.error_code == "agent_write_tool_batch_rejected"
+    assert dispatch_calls == []
 
 
 def test_openai_mode_without_settings_fails_closed_without_secret() -> None:

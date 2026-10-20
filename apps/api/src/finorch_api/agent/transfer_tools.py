@@ -60,7 +60,14 @@ class TransferCancelInput(BaseModel):
 class SplitCreateInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    title: str = Field(min_length=1, max_length=120)
+    title: str = Field(
+        min_length=1,
+        max_length=120,
+        description=(
+            "Exact event title supplied by the user. Preserve the title verbatim; do not shorten, "
+            "translate, or add words, spaces, or punctuation."
+        ),
+    )
     amount_minor: int = Field(
         gt=0,
         le=10_000_000_000,
@@ -434,9 +441,10 @@ def transfer_tool_specs() -> tuple[ToolSpec, ...]:
         ToolSpec(
             "transfer.split_create",
             "Create a proposed synthetic AA bill when the user provides its event title, total "
-            "CNY amount, and named participants. amount_minor is integer fen; participant_names "
-            "contains the named participants other than the current user. Always require "
-            "confirmation before any simulated payment or split status change.",
+            "CNY amount, and named participants. Copy the event title exactly as supplied; do not "
+            "shorten it or add words. amount_minor is integer fen; participant_names contains the "
+            "named participants other than the current user. Always require confirmation before "
+            "any simulated payment or split status change.",
             "1.0",
             SplitCreateInput,
             SplitProposalOutput,
