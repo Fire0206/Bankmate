@@ -10,16 +10,22 @@ import type {
 import { AppIcon } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
 import { ConfirmationCard } from "./components/ConfirmationCard";
-import { Navigation } from "./components/Navigation";
+import { Navigation, type Section } from "./components/Navigation";
 import { TaskResult } from "./components/TaskResult";
-import { TaskDetails, TaskOverview } from "./components/TaskDetails";
-import { statusLabel, taskMessage } from "./components/taskFormat";
+import { TaskDetails } from "./components/TaskDetails";
+import {
+  hasSuccessfulChange,
+  taskMessage,
+  taskStatusLabel,
+} from "./components/taskFormat";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
   task?: AgentTaskResponse;
+  taskId?: string;
+  restored?: boolean;
 };
 type ApiState = "checking" | "connected" | "unavailable";
 type RecoveryAction = "connection" | "task" | "write-lookup" | "write-retry";
@@ -131,7 +137,9 @@ function toUiError(error: unknown): UiError {
   if (error instanceof ApiError) {
     return {
       title: apiErrorCopy[error.code] ?? "请求未完成",
-      message: error.message,
+      message:
+        apiErrorCopy[error.code] ??
+        "请求没有完成。请刷新任务状态，再根据实际结果继续。",
       code: error.code,
       status: error.status,
       requestId: error.requestId,
@@ -145,8 +153,8 @@ function toUiError(error: unknown): UiError {
   return {
     title: isNetworkError ? "暂时无法连接服务" : "请求未完成",
     message: isNetworkError
-      ? "请检查服务连接后重试。"
-      : "操作没有完成，请查看错误详情。",
+      ? "请恢复连接后先查询这次请求的处理状态。"
+      : "请求没有完成。请刷新任务状态，再根据实际结果继续。",
     code: null,
     status: null,
     requestId: null,
@@ -174,18 +182,16 @@ function userName(session: DemoSessionResponse | null): string {
     : session.display_name;
 }
 
-function modeLabel(mode: DemoSessionResponse["agent_provider"]): string {
-  return mode === "fake" ? "演示模式" : "兼容模型模式";
-}
-
 function environmentLabel(
   environment: DemoSessionResponse["environment"],
 ): string {
   return environment === "development" ? "本地开发" : "测试环境";
 }
 
-function initialContextOpen(): boolean {
-  return typeof window !== "undefined" && window.innerWidth >= 1100;
+function initialSection(): Section {
+  return typeof window !== "undefined" && window.location.hash === "#cards"
+    ? "cards"
+    : "assistant";
 }
 
 function ErrorBanner({
@@ -230,17 +236,19 @@ function ErrorBanner({
       <div className="error-copy">
         <strong>{error.title}</strong>
         <p>{error.message}</p>
-        <details>
-          <summary>查看错误详情</summary>
-          <div className="error-detail">
-            {error.code ? <code>{error.code}</code> : null}
-            {error.status ? <span>HTTP {error.status}</span> : null}
-            {error.requestId ? <code>请求编号 {error.requestId}</code> : null}
-            {error.fieldDetails.map((detail) => (
-              <p key={detail}>{detail}</p>
-            ))}
-          </div>
-        </details>
+        {import.meta.env.DEV ? (
+          <details className="developer-diagnostics">
+            <summary>本地开发诊断</summary>
+            <div className="error-detail">
+              {error.code ? <code>{error.code}</code> : null}
+              {error.status ? <span>HTTP {error.status}</span> : null}
+              {error.requestId ? <code>请求编号 {error.requestId}</code> : null}
+              {error.fieldDetails.map((detail) => (
+                <p key={detail}>{detail}</p>
+              ))}
+            </div>
+          </details>
+        ) : null}
       </div>
       <div className="error-actions">
         <button
@@ -297,21 +305,25 @@ function EnvironmentDetails({
   session: DemoSessionResponse | null;
   apiVersion: string | null;
 }) {
+  if (!import.meta.env.DEV) return null;
   return (
-    <details className="environment-details">
+    <details className="environment-details developer-diagnostics">
       <summary>
-        <span className={"mode-dot mode-dot-" + mode} />
-        {modeLabel(mode)}
+        演示说明
         <AppIcon name="chevron-down" size={15} />
       </summary>
       <div className="environment-popover">
-        <h2>环境详情</h2>
+        <h2>本地运行信息</h2>
         <p>
           {mode === "fake"
-            ? "当前使用确定性模拟规则，不调用外部模型。"
-            : "当前选择兼容模型模式，请求由服务端转发。若服务端未配置模型，任务会明确失败；页面不会读取或显示密钥。"}
+            ? "当前使用 Fake Provider 的确定性模拟规则，没有调用外部模型。"
+            : "当前使用 OpenAI-compatible Provider，由服务端转发模型请求。页面不会读取或显示密钥。"}
         </p>
         <dl>
+          <div>
+            <dt>Provider</dt>
+            <dd>{mode === "fake" ? "Fake Provider" : "OpenAI-compatible"}</dd>
+          </div>
           <div>
             <dt>数据环境</dt>
             <dd>
@@ -336,9 +348,9 @@ function EnvironmentDetails({
 }
 
 function StatusIndicator({ status }: { status: ApiState }) {
+  if (status === "connected") return null;
   const copy = {
     checking: "连接中",
-    connected: "服务已连接",
     unavailable: "服务不可用",
   }[status];
   return (
@@ -357,10 +369,8 @@ function StatusIndicator({ status }: { status: ApiState }) {
 function promptSuggestions(cards: CardListResponse["items"]): string[] {
   const suggestions = [
     "我这个月花了多少钱",
-    "最近有没有异常消费",
     "我有哪些自动扣费",
     "查询我的账户余额",
-    "查看我的转账记录",
     "查看适合我的理财产品",
   ];
   const activeCard = cards.find((item) => item.status === "active");
@@ -395,15 +405,13 @@ export default function App() {
   );
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<"assistant" | "cards">(
-    "assistant",
-  );
-  const [contextOpen, setContextOpen] = useState(initialContextOpen);
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const conversationRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<Section>(initialSection);
+  const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
   const activeTaskId = activeTask?.id;
   const activeTaskStatus = activeTask?.status;
   const activeTaskVersion = activeTask?.version;
+  const detailsOpen = detailsTaskId === activeTaskId;
   const auditKey =
     activeTaskId && activeTaskVersion !== undefined
       ? activeTaskId + ":" + activeTaskVersion
@@ -414,19 +422,44 @@ export default function App() {
   const auditLoading = detailsOpen && Boolean(activeTask) && !matchingAudit;
   const auditError = matchingAudit?.error ?? null;
 
-  const applyTask = useCallback((task: AgentTaskResponse) => {
+  const applyTask = useCallback((task: AgentTaskResponse, restored = false) => {
     setActiveTask(task);
     setMessages((current) => {
-      const response: Message = {
+      const existingIndex = current.findIndex(
+        (message) => message.task?.id === task.id,
+      );
+      const existingMessage =
+        existingIndex >= 0 ? current[existingIndex] : null;
+      const previousMessages = current.map((message) => {
+        if (message.role !== "user" || message.taskId === task.id)
+          return message;
+        if (message.taskId || message.text !== task.request_text)
+          return message;
+        return { ...message, taskId: task.id };
+      });
+      const previousRestored = Boolean(existingMessage?.restored || restored);
+      const updatedMessages = previousMessages.filter(
+        (message) => message.task?.id !== task.id,
+      );
+      let lastRelatedUser = -1;
+      updatedMessages.forEach((message, index) => {
+        if (message.role === "user" && message.taskId === task.id)
+          lastRelatedUser = index;
+      });
+      const insertionIndex =
+        lastRelatedUser >= 0
+          ? lastRelatedUser + 1
+          : existingIndex >= 0
+            ? Math.min(existingIndex, updatedMessages.length)
+            : updatedMessages.length;
+      updatedMessages.splice(insertionIndex, 0, {
         id: "task-" + task.id,
         role: "assistant",
         text: taskMessage(task),
         task,
-      };
-      return [
-        ...current.filter((message) => message.task?.id !== task.id),
-        response,
-      ];
+        restored: previousRestored,
+      });
+      return updatedMessages;
     });
   }, []);
 
@@ -487,7 +520,7 @@ export default function App() {
           if (savedWrite) {
             const recovered = await lookupPendingWrite(savedWrite);
             if (!current) return;
-            if (recovered.task) applyTask(recovered.task);
+            if (recovered.task) applyTask(recovered.task, true);
             if (recovered.resolved) {
               storePendingWrite(null);
             } else {
@@ -504,7 +537,7 @@ export default function App() {
             }
           } else {
             const recent = await apiClient.readRecentTask(conversationId);
-            if (current && recent) applyTask(recent);
+            if (current && recent) applyTask(recent, true);
           }
         } catch (error) {
           if (current) setRequestError(toUiError(error));
@@ -522,25 +555,40 @@ export default function App() {
   }, [applyTask, conversationId, lookupPendingWrite, storePendingWrite]);
 
   useEffect(() => {
-    const desktopContext = window.matchMedia("(min-width: 1100px)");
     const desktopNavigation = window.matchMedia("(min-width: 960px)");
     const updateLayout = () => {
-      setContextOpen(desktopContext.matches);
       if (desktopNavigation.matches) setMobileNavOpen(false);
     };
-    desktopContext.addEventListener("change", updateLayout);
     desktopNavigation.addEventListener("change", updateLayout);
     updateLayout();
     return () => {
-      desktopContext.removeEventListener("change", updateLayout);
       desktopNavigation.removeEventListener("change", updateLayout);
     };
   }, []);
 
   useEffect(() => {
-    const container = conversationRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
-  }, [messages.length, busy]);
+    const syncSection = () => {
+      setActiveSection(
+        window.location.hash === "#cards" ? "cards" : "assistant",
+      );
+    };
+    window.addEventListener("hashchange", syncSection);
+    return () => window.removeEventListener("hashchange", syncSection);
+  }, []);
+
+  useEffect(() => {
+    const nextHash = activeSection === "cards" ? "#cards" : "#assistant";
+    if (window.location.hash !== nextHash)
+      window.history.replaceState(null, "", nextHash);
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (messages.length > 0)
+      messageListRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+      });
+  }, [messages.length]);
 
   useEffect(() => {
     if (
@@ -762,7 +810,7 @@ export default function App() {
     setRequestError(null);
     try {
       const task = await apiClient.readRecentTask(conversationId);
-      if (task) applyTask(task);
+      if (task) applyTask(task, true);
     } catch (error) {
       setRequestError(toUiError(error));
     } finally {
@@ -789,22 +837,30 @@ export default function App() {
     const requestText = value.trim();
     if (!requestText || busy || !session || pendingWrite) return;
     setDraft("");
-    setMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), role: "user", text: requestText },
-    ]);
-    const key = crypto.randomUUID();
     const hasCompletedStep = activeTask?.steps.some(
       (step) => step.step_type === "tool" && step.status === "succeeded",
     );
     const canContinueFailedTask =
       activeTask?.status === "failed" && hasCompletedStep;
-    const write: PendingWrite =
+    const continuesTask = Boolean(
       activeTask &&
       (["awaiting_input", "awaiting_confirmation"].includes(
         activeTask.status,
       ) ||
-        canContinueFailedTask)
+        canContinueFailedTask),
+    );
+    setMessages((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        text: requestText,
+        ...(continuesTask && activeTask ? { taskId: activeTask.id } : {}),
+      },
+    ]);
+    const key = crypto.randomUUID();
+    const write: PendingWrite =
+      activeTask && continuesTask
         ? {
             kind: "input",
             key,
@@ -838,15 +894,12 @@ export default function App() {
     });
   }
 
-  function showTaskDetails() {
-    setDetailsOpen(true);
-    setContextOpen(true);
+  function fillPrompt(prompt: string) {
+    setActiveSection("assistant");
+    setDraft(prompt);
     setMobileNavOpen(false);
     window.requestAnimationFrame(() => {
-      document.getElementById("task-details")?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
+      document.getElementById("agent-request")?.focus();
     });
   }
 
@@ -856,15 +909,9 @@ export default function App() {
     <div className="app-shell">
       <Navigation
         activeSection={activeSection}
-        hasTask={Boolean(activeTask)}
         mobileOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
-        onSelect={(section) => {
-          setActiveSection(section);
-          if (section === "cards") setContextOpen(true);
-        }}
-        onShowDetails={showTaskDetails}
-        onPrompt={(prompt) => void sendMessage(prompt)}
+        onSelect={setActiveSection}
       />
 
       <div className="app-main">
@@ -881,9 +928,18 @@ export default function App() {
               >
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
+              <h1 className="topbar-section-name">
+                {activeSection === "cards" ? "银行卡" : "智能助手"}
+              </h1>
             </div>
             <div className="topbar-actions">
               <span className="account-name">{userName(session)}</span>
+              <span
+                className="demo-badge"
+                title="银行卡、账单和资金数据均为合成数据，不连接真实银行或支付网络"
+              >
+                模拟数据
+              </span>
               <EnvironmentDetails
                 apiVersion={apiVersion}
                 mode={mode}
@@ -895,10 +951,6 @@ export default function App() {
         </header>
 
         <main className="page-content">
-          <div className="workspace-heading">
-            <h1>智能助手</h1>
-          </div>
-
           {requestError ? (
             <ErrorBanner
               error={requestError}
@@ -936,39 +988,34 @@ export default function App() {
             />
           ) : null}
 
-          <div className="workbench-grid">
+          {activeSection === "cards" ? (
+            <div className="cards-page">
+              <CardList
+                cards={cards}
+                loading={loading}
+                onAskAboutCard={fillPrompt}
+                onRefresh={() => void refreshCards()}
+                refreshing={refreshing}
+              />
+            </div>
+          ) : (
             <section
-              aria-labelledby="assistant-title"
+              aria-label="智能助手对话"
               className="assistant-panel"
               id="assistant"
             >
-              <div className="assistant-header">
-                <div>
-                  <h2 id="assistant-title">对话</h2>
-                  <p>银行卡、账单、订阅、转账与理财</p>
-                </div>
-              </div>
-
-              <div
-                aria-live="polite"
-                className="conversation"
-                ref={conversationRef}
-                role="log"
-              >
+              <div aria-live="polite" className="conversation" role="log">
                 {messages.length === 0 ? (
                   <div className="welcome-state">
-                    <span aria-hidden="true" className="welcome-mark">
-                      F
-                    </span>
-                    <h3>你好，{userName(session)}</h3>
+                    <h2>有什么需要处理？</h2>
                     <p>
-                      {loading
-                        ? "正在读取演示账户…"
-                        : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
+                      可以查询账户、账单和自动扣费，也可以发起需要确认的模拟操作。
                     </p>
                     {!loading ? (
                       <div className="suggestion-group">
-                        <span className="suggestion-label">你可以试试</span>
+                        <span className="suggestion-label">
+                          选择问题填入输入框
+                        </span>
                         <div className="suggestions">
                           {promptSuggestions(cards).map((prompt) => (
                             <button
@@ -977,66 +1024,117 @@ export default function App() {
                                 busy || Boolean(pendingWrite) || !session
                               }
                               key={prompt}
-                              onClick={() => void sendMessage(prompt)}
+                              onClick={() => fillPrompt(prompt)}
                               type="button"
                             >
                               {prompt}
-                              <AppIcon name="arrow-right" size={16} />
                             </button>
                           ))}
                         </div>
                       </div>
-                    ) : null}
+                    ) : (
+                      <p className="welcome-loading" role="status">
+                        正在读取演示账户…
+                      </p>
+                    )}
                   </div>
                 ) : (
-                  <div className="message-list">
-                    {messages.map((message) => (
-                      <article
-                        className={"message message-" + message.role}
-                        key={message.id}
-                      >
-                        <div className="message-author">
-                          {message.role === "user"
-                            ? userName(session)
-                            : "FinOrch"}
-                        </div>
-                        <div
-                          className={
-                            "message-bubble message-bubble-" + message.role
-                          }
-                        >
-                          <p>{message.text}</p>
-                        </div>
-                        {message.task ? (
-                          <>
-                            <div className="message-status">
-                              <span
-                                className={
-                                  "task-status task-status-" +
-                                  message.task.status
-                                }
-                              >
-                                {statusLabel(message.task.status)}
-                              </span>
+                  <div className="message-list" ref={messageListRef}>
+                    {messages.map((message) => {
+                      const task = message.task;
+                      const isCurrentTask = task?.id === activeTask?.id;
+                      if (message.role === "user") {
+                        return (
+                          <article
+                            className="message message-user"
+                            key={message.id}
+                          >
+                            <div className="message-bubble message-bubble-user">
+                              <p>{message.text}</p>
                             </div>
-                            {message.task.confirmation ? (
-                              <ConfirmationCard
-                                busy={busy}
-                                confirmation={message.task.confirmation}
-                                onCancel={() => void cancelTask(message.task!)}
-                                onConfirm={() =>
-                                  void confirmTask(message.task!)
-                                }
-                              />
-                            ) : null}
-                            <TaskResult task={message.task} />
-                          </>
-                        ) : null}
-                      </article>
-                    ))}
+                          </article>
+                        );
+                      }
+                      if (!task) {
+                        return (
+                          <article
+                            className="message message-assistant"
+                            key={message.id}
+                          >
+                            <p className="task-message">{message.text}</p>
+                          </article>
+                        );
+                      }
+                      return (
+                        <article
+                          className="message message-assistant"
+                          key={message.id}
+                        >
+                          {message.restored ? (
+                            <div className="restored-task">
+                              <span>已恢复最近任务</span>
+                              <blockquote>{task.request_text}</blockquote>
+                            </div>
+                          ) : null}
+                          {message.text &&
+                          ["awaiting_input", "failed", "cancelled"].includes(
+                            task.status,
+                          ) ? (
+                            <p
+                              className={
+                                "task-message" +
+                                (task.status === "failed"
+                                  ? " task-message-error"
+                                  : "")
+                              }
+                            >
+                              {message.text}
+                            </p>
+                          ) : null}
+                          {isCurrentTask ? (
+                            <TaskDetails
+                              audit={audit}
+                              auditError={auditError}
+                              auditLoading={auditLoading}
+                              busy={busy}
+                              onCancel={() => void cancelTask(task)}
+                              onOpenChange={(open) =>
+                                setDetailsTaskId(open ? task.id : null)
+                              }
+                              onRefresh={() => void refreshTask()}
+                              open={detailsOpen}
+                              refreshing={refreshingTask}
+                              task={task}
+                            />
+                          ) : (
+                            <span
+                              className={
+                                "task-status task-status-" +
+                                (task.status === "failed" &&
+                                hasSuccessfulChange(task)
+                                  ? "partial"
+                                  : task.status)
+                              }
+                            >
+                              {taskStatusLabel(task)}
+                            </span>
+                          )}
+                          {task.confirmation ? (
+                            <ConfirmationCard
+                              busy={busy}
+                              confirmation={task.confirmation}
+                              hasPreviousChanges={hasSuccessfulChange(task)}
+                              onCancel={() => void cancelTask(task)}
+                              onConfirm={() => void confirmTask(task)}
+                            />
+                          ) : null}
+                          <TaskResult compact={!isCurrentTask} task={task} />
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
-                {busy ? (
+                {busy && !activeTask ? (
                   <p className="processing-indicator" role="status">
                     <span aria-hidden="true" className="processing-dot" />
                     正在处理…
@@ -1053,21 +1151,18 @@ export default function App() {
               >
                 {pendingWrite ? (
                   <p className="composer-hint">
-                    上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
+                    提交结果尚未确认。请先查询这次请求的状态，不要重新发起。
                   </p>
                 ) : activeTask?.status === "awaiting_input" ? (
-                  <p className="composer-hint">补充信息将继续当前任务。</p>
+                  <p className="composer-hint">补充信息会继续当前任务。</p>
                 ) : activeTask?.status === "awaiting_confirmation" ? (
                   <p className="composer-hint">
                     修改请求会取消当前确认，并重新核对操作内容。
                   </p>
                 ) : activeTask?.status === "failed" &&
-                  activeTask.steps.some(
-                    (step) =>
-                      step.step_type === "tool" && step.status === "succeeded",
-                  ) ? (
+                  hasSuccessfulChange(activeTask) ? (
                   <p className="composer-hint">
-                    部分步骤已完成；补充要求可继续当前任务，已完成操作不会重做。
+                    已完成的操作不会重复执行；请核对状态后再继续。
                   </p>
                 ) : null}
                 <label className="visually-hidden" htmlFor="agent-request">
@@ -1089,8 +1184,12 @@ export default function App() {
                         void sendMessage();
                       }
                     }}
-                    placeholder="例如：我这个月花了多少钱"
-                    rows={2}
+                    placeholder={
+                      activeTask?.status === "awaiting_input"
+                        ? "补充这项任务所需的信息"
+                        : "输入你需要查询或办理的事项"
+                    }
+                    rows={1}
                     value={draft}
                   />
                   <button
@@ -1104,59 +1203,9 @@ export default function App() {
                     <AppIcon name="send" size={19} />
                   </button>
                 </div>
-                <div className="composer-foot">
-                  <span>Enter 发送，Shift + Enter 换行</span>
-                  <span>仅处理模拟数据</span>
-                </div>
               </form>
             </section>
-
-            <details
-              className="context-disclosure"
-              onToggle={(event) => setContextOpen(event.currentTarget.open)}
-              open={contextOpen}
-            >
-              <summary className="context-summary">
-                <span className="context-summary-icon">
-                  <AppIcon name="overview" size={19} />
-                </span>
-                <span className="context-summary-copy">
-                  <strong>账户信息</strong>
-                  <small>银行卡与处理进度</small>
-                </span>
-                <AppIcon
-                  className="context-chevron"
-                  name="chevron-down"
-                  size={18}
-                />
-              </summary>
-              <div className="context-content">
-                <CardList
-                  cards={cards}
-                  loading={loading}
-                  onRefresh={() => void refreshCards()}
-                  refreshing={refreshing}
-                />
-                <TaskOverview
-                  busy={busy}
-                  refreshing={refreshingTask}
-                  onRefresh={() => void refreshTask()}
-                  onCancel={() => {
-                    if (activeTask) void cancelTask(activeTask);
-                  }}
-                  task={activeTask}
-                />
-                <TaskDetails
-                  audit={audit}
-                  auditError={auditError}
-                  auditLoading={auditLoading}
-                  onOpenChange={setDetailsOpen}
-                  open={detailsOpen}
-                  task={activeTask}
-                />
-              </div>
-            </details>
-          </div>
+          )}
         </main>
       </div>
     </div>
