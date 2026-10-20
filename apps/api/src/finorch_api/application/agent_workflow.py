@@ -8,6 +8,27 @@ from sqlalchemy.orm import Session
 from finorch_api.infrastructure.models import AgentTask, TaskStep, ToolExecution
 
 
+def _has_social_engineering_risk_signal(request: str) -> bool:
+    signals = (
+        "被催",
+        "催着",
+        "逼我",
+        "威胁",
+        "保密",
+        "不要告诉",
+        "不用核实",
+        "不用再核实",
+        "不需要核实",
+        "绕过确认",
+        "跳过确认",
+        "别弹确认",
+        "安全账户",
+        "网恋对象",
+        "陌生投资顾问",
+    )
+    return any(signal in request for signal in signals)
+
+
 def task_progress_context(session: Session, *, actor_id: UUID, task_id: UUID) -> dict[str, Any]:
     task = session.scalar(
         select(AgentTask).where(AgentTask.id == task_id, AgentTask.actor_id == actor_id)
@@ -81,6 +102,8 @@ def missing_requested_write_tools(
 ) -> tuple[str, ...]:
     """Return explicit write intents not backed by successful server tool results."""
     request = request_text.casefold()
+    if _has_social_engineering_risk_signal(request):
+        return ()
     history = task_progress.get("tools", [])
     succeeded = {
         item.get("tool_name")
@@ -134,6 +157,8 @@ def missing_requested_write_tools(
     transfer_intent = has_amount and (
         re.search(r"转给\s*[\u4e00-\u9fffA-Za-z0-9]{1,12}", request) is not None
         or re.search(r"给[\u4e00-\u9fffA-Za-z0-9]{1,12}转(?:账)?", request) is not None
+        or re.search(r"(?:转账?|支付|汇款|划转)\s*\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request)
+        is not None
         or (
             "转账" in request
             and not any(phrase in request for phrase in ("记录", "历史", "查询", "查看"))
@@ -143,7 +168,9 @@ def missing_requested_write_tools(
         transfer_tool = "transfer.schedule" if "定时" in request else "transfer.create"
         if transfer_tool not in succeeded:
             required.append(transfer_tool)
-        if any(phrase in request for phrase in ("理财", "投资", "申购", "买入")):
+        if any(
+            phrase in request for phrase in ("理财", "投资", "申购", "买入", "购买", "配置", "可投")
+        ):
             if "investment.buy" not in succeeded:
                 required.append("investment.buy")
 
@@ -174,10 +201,15 @@ def missing_requested_write_tools(
             required.append("card.unfreeze")
     if (
         not advisory_question
-        and any(phrase in request for phrase in ("暂停", "取消"))
+        and any(phrase in request for phrase in ("暂停", "取消", "停止", "关闭", "关掉"))
         and any(phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员"))
     ):
-        action = "subscription.pause" if "暂停" in request else "subscription.cancel"
+        cancellation_terms = ("取消", "停止", "关闭", "关掉")
+        action = (
+            "subscription.pause"
+            if "暂停" in request and not any(term in request for term in cancellation_terms)
+            else "subscription.cancel"
+        )
         if action not in succeeded:
             required.append(action)
     if (
@@ -203,6 +235,79 @@ def missing_requested_write_tools(
         required.append("investment.redeem")
 
     return tuple(dict.fromkeys(required))
+
+
+def missing_write_input_message(
+    request_text: str, task_progress: dict[str, Any], missing_tools: tuple[str, ...]
+) -> str | None:
+    """Prefer a specific user clarification when a requested write lacks its target."""
+    request = request_text.casefold()
+    if any(tool in missing_tools for tool in ("card.freeze", "card.unfreeze")) and not re.search(
+        r"(?<!\d)\d{4}(?!\d)", request
+    ):
+        return "请提供要操作的银行卡尾号。"
+
+    subscription_tools = {
+        "subscription.pause",
+        "subscription.resume",
+        "subscription.cancel",
+    }
+    if subscription_tools.intersection(missing_tools):
+        subscription_result = next(
+            (
+                item.get("result_data")
+                for item in task_progress.get("tools", [])
+                if isinstance(item, dict)
+                and item.get("tool_name") == "subscription.list"
+                and item.get("status") == "succeeded"
+                and isinstance(item.get("result_data"), dict)
+            ),
+            None,
+        )
+        subscriptions = subscription_result.get("items", []) if subscription_result else []
+        known_names = [
+            item.get("merchant")
+            for item in subscriptions
+            if isinstance(item, dict) and isinstance(item.get("merchant"), str)
+        ]
+        if subscription_result is not None and not any(
+            name.casefold() in request for name in known_names
+        ):
+            anomaly_result = next(
+                (
+                    item.get("result_data")
+                    for item in task_progress.get("tools", [])
+                    if isinstance(item, dict)
+                    and item.get("tool_name") == "bill.anomalies"
+                    and item.get("status") == "succeeded"
+                    and isinstance(item.get("result_data"), dict)
+                ),
+                None,
+            )
+            evidence = next(
+                (
+                    item
+                    for item in (anomaly_result or {}).get("items", [])
+                    if isinstance(item, dict)
+                    and item.get("source_card_suffix")
+                    and "同一账户同一商户" in str(item.get("anomaly_reason", ""))
+                ),
+                None,
+            )
+            if (
+                "subscription.pause" in missing_tools
+                and evidence is not None
+                and any(
+                    isinstance(item, dict)
+                    and item.get("merchant") == evidence.get("merchant")
+                    and item.get("status") == "active"
+                    for item in subscriptions
+                )
+            ):
+                return None
+            return "请说明要操作的订阅名称。"
+
+    return None
 
 
 def missing_payday_parameters_message(request_text: str) -> str | None:

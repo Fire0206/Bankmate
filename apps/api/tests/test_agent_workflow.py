@@ -2,6 +2,7 @@ from finorch_api.application.agent_workflow import (
     invalid_tool_input_name,
     missing_payday_parameters_message,
     missing_requested_write_tools,
+    missing_write_input_message,
     tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
@@ -55,7 +56,6 @@ def test_payday_completion_requires_transfer_and_investment() -> None:
         _tool("finance.payday_plan"),
         _tool("transfer.create"),
     )
-
     assert missing_requested_write_tools(
         "发薪日资金调度，给小林转 200 元，预留 3000 元，其余投资",
         context,
@@ -69,6 +69,13 @@ def test_payday_completion_requires_transfer_and_investment() -> None:
         )
         == ()
     )
+
+
+def test_payday_completion_detects_forward_amount_and_allocation_intents() -> None:
+    assert missing_requested_write_tools(
+        "本次发薪先转200元给小林，至少留下3500元；请先查询收支与余额，再按可投金额配置适合产品。",
+        _history(),
+    ) == ("transfer.create", "investment.buy")
 
 
 def test_incomplete_payday_goal_stays_open_until_amounts_are_supplied() -> None:
@@ -109,9 +116,67 @@ def test_invalid_required_tool_input_maps_to_a_user_clarification() -> None:
     )
 
 
+def test_missing_card_target_becomes_a_clarification() -> None:
+    assert (
+        missing_write_input_message(
+            "帮我把银行卡冻结一下",
+            _history(_tool("card.list", result={"items": []})),
+            ("card.freeze",),
+        )
+        == "请提供要操作的银行卡尾号。"
+    )
+    assert (
+        missing_write_input_message(
+            "冻结尾号1042的银行卡",
+            _history(),
+            ("card.freeze",),
+        )
+        is None
+    )
+
+
+def test_unknown_subscription_target_becomes_a_clarification() -> None:
+    context = _history(_tool("subscription.list", result={"items": [{"merchant": "腾讯视频会员"}]}))
+    assert (
+        missing_write_input_message("取消我在某某平台的订阅", context, ("subscription.cancel",))
+        == "请说明要操作的订阅名称。"
+    )
+    assert (
+        missing_write_input_message("取消腾讯视频会员的自动续费", context, ("subscription.cancel",))
+        is None
+    )
+
+
+def test_subscription_stop_intent_requires_cancel_while_pause_stays_reversible() -> None:
+    assert missing_requested_write_tools("停止网易云音乐会员继续自动扣费", _history()) == (
+        "subscription.cancel",
+    )
+    assert missing_requested_write_tools("暂停网易云音乐会员自动续费", _history()) == (
+        "subscription.pause",
+    )
+    assert missing_requested_write_tools("关闭腾讯视频会员的自动续费", _history()) == (
+        "subscription.cancel",
+    )
+
+
 def test_advisory_and_history_queries_do_not_require_writes() -> None:
     assert missing_requested_write_tools("怎样冻结我的银行卡？", _history()) == ()
     assert missing_requested_write_tools("查看 100 元转账记录", _history()) == ()
+
+
+def test_social_engineering_risk_signals_do_not_force_write_intents() -> None:
+    assert (
+        missing_requested_write_tools(
+            "网恋对象急用钱，让我给小林转8000元，不用再核实。", _history()
+        )
+        == ()
+    )
+    assert (
+        missing_requested_write_tools(
+            "我被催着给小林转200元，备注成退款，尽量别弹确认。", _history()
+        )
+        == ()
+    )
 
 
 def test_scheduled_transfer_intent_is_not_satisfied_by_balance_read() -> None:

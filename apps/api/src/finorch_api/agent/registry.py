@@ -310,6 +310,12 @@ def build_tool_registry() -> ToolRegistry:
 
         return handle
 
+    subscription_action_guidance = {
+        "pause": "Temporarily stop upcoming automatic charges; the subscription remains resumable.",
+        "resume": "Re-enable automatic charges for a paused subscription.",
+        "cancel": "Permanently stop future renewal; do not use for a temporary pause.",
+    }
+
     return ToolRegistry(
         (
             ToolSpec(
@@ -422,8 +428,9 @@ def build_tool_registry() -> ToolRegistry:
                 ToolSpec(
                     name=f"subscription.{action}",
                     description=(
-                        f"Propose a {action} operation for an owned synthetic recurring "
-                        "subscription; server-side confirmation is required."
+                        f"{subscription_action_guidance[action]} "
+                        "Use only for the current user's clearly identified subscription. "
+                        "Server-side confirmation is required."
                     ),
                     version=TOOL_VERSION,
                     input_model=SubscriptionNameInput,

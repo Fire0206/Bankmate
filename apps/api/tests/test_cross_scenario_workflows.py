@@ -1,4 +1,6 @@
 import json
+import sys
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -24,6 +26,15 @@ from finorch_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from sqlalchemy import func, select, update
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from finorch_api.agent.registry import build_tool_registry
+from scripts.phase2d_eval import (  # noqa: E402
+    _business_snapshot,
+    _confirmed_resource_checks,
+    _result_schema_checks,
+)
 
 CONVERSATION_ID = "30000000-0000-4000-8000-000000000001"
 SOURCE_ACCOUNT_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -80,6 +91,16 @@ def result(task: dict, name: str) -> dict:
     )
 
 
+class _ReadCardsThenCompleteProvider:
+    mode = "openai-compatible"
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del tools
+        if any(message.get("role") == "tool" for message in messages):
+            return ModelTurn("我还需要知道要操作哪张卡。", status="completed")
+        return ModelTurn(None, (ModelToolCall("cards", "card__list", "{}"),))
+
+
 class _StopOnceAfterCardFreezeProvider:
     mode = "openai-compatible"
 
@@ -111,19 +132,48 @@ class _StopOnceAfterCardFreezeProvider:
         return self.delegate.complete(messages, tools)
 
 
+def test_missing_card_target_after_read_stays_awaiting_user_input(workflow_context) -> None:
+    client, database = workflow_context
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        _ReadCardsThenCompleteProvider(), "openai-compatible"
+    )
+
+    task = submit(client, "帮我把银行卡冻结一下", "ambiguous-card-freeze")
+
+    assert task["status"] == "awaiting_input"
+    assert task["error_code"] is None
+    assert task["confirmation"] is None
+    assert "银行卡尾号" in task["message"]
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ToolExecution)
+                .where(
+                    ToolExecution.task_id == UUID(task["id"]),
+                    ToolExecution.tool_name == "card.freeze",
+                )
+            )
+            == 0
+        )
+
+
 class _UnknownPayeeWriteAttemptProvider:
     mode = "openai-compatible"
 
+    def __init__(self) -> None:
+        self.calls = 0
+
     def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
         del messages, tools
+        self.calls += 1
+        if self.calls == 1:
+            return ModelTurn(None, (ModelToolCall("payees", "transfer.payees", "{}"),))
         return ModelTurn(
             None,
             (
-                ModelToolCall("payees", "transfer.payees", "{}"),
                 ModelToolCall(
-                    "write",
-                    "transfer.create",
-                    '{"recipient_name":"张三","amount_minor":10000}',
+                    "write", "transfer.create", '{"recipient_name":"张三","amount_minor":10000}'
                 ),
             ),
         )
@@ -254,6 +304,8 @@ def test_suspicious_charge_workflow_pauses_at_two_confirmations_and_resumes(
 
 def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_context) -> None:
     client, database = workflow_context
+    before = _business_snapshot(database.url)
+    confirmations = []
     task = submit(
         client,
         "发薪日资金调度：给小林转 200 元，预留 3000 元，其余投资适合的产品",
@@ -271,6 +323,7 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
     assert plan["monthly_expense_minor"] == 2_003_500
     assert task["confirmation"]["resource_type"] == "transfer"
     assert task["confirmation"]["details"]["amount_minor"] == 20_000
+    confirmations.append(task["confirmation"])
 
     first = confirm(client, task)
     assert first.status_code == 200, first.text
@@ -279,6 +332,7 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
     assert "investment.products" in tool_names(task)
     assert task["confirmation"]["resource_type"] == "investment_order"
     assert task["confirmation"]["details"]["amount_minor"] == plan["investment_budget_minor"]
+    confirmations.append(task["confirmation"])
 
     second = confirm(client, task)
     assert second.status_code == 200, second.text
@@ -318,6 +372,21 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
         assert latest_source_balance == source.balance_minor
         portfolio = result(task, "investment.portfolio")
         assert portfolio["invested_value_minor"] == plan["investment_budget_minor"]
+
+    after = _business_snapshot(database.url)
+    assert _confirmed_resource_checks(database.url, task["id"], confirmations, before, after) == [
+        True,
+        True,
+    ]
+    registry = build_tool_registry()
+    output_models = {
+        spec.name: spec.output_model
+        for name in (item["function"]["name"] for item in registry.definitions())
+        if (spec := registry.get(name)) is not None
+    }
+    valid, checked = _result_schema_checks(task, output_models)
+    assert checked > 0
+    assert valid == checked
 
 
 def test_payday_clarification_preserves_goal_and_resumes_after_input(workflow_context) -> None:

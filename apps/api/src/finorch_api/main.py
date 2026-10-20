@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import uuid
@@ -90,6 +91,11 @@ async def attach_request_id(request: Request, call_next: RequestResponseEndpoint
     )
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
+    if settings.environment == "test" and settings.eval_instance_id:
+        response.headers["X-FinOrch-Eval-Instance"] = settings.eval_instance_id
+        response.headers["X-FinOrch-Eval-Database"] = hashlib.sha256(
+            settings.database_url.encode("utf-8")
+        ).hexdigest()
     return response
 
 
