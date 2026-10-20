@@ -9,22 +9,23 @@ export function CardList({
   loading,
   refreshing,
   onRefresh,
+  onAskAboutCard,
 }: {
   cards: Card[];
   loading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
+  onAskAboutCard: (request: string) => void;
 }) {
   return (
     <section
       aria-labelledby="cards-title"
-      className="context-section"
+      className="card-management-section"
       id="cards"
     >
       <div className="section-heading">
         <div>
-          <h2 id="cards-title">银行卡</h2>
-          <p>当前演示账户</p>
+          <h2 id="cards-title">我的银行卡</h2>
         </div>
         <button
           aria-label="刷新银行卡"
@@ -75,11 +76,21 @@ export function CardList({
                 <span aria-hidden="true" className="status-dot" />
                 {card.status === "active" ? "正常" : "已冻结"}
               </span>
+              <button
+                className="card-action-button"
+                onClick={() =>
+                  onAskAboutCard(
+                    `${card.status === "active" ? "冻结" : "解冻"}尾号 ${card.card_suffix} 的卡`,
+                  )
+                }
+                type="button"
+              >
+                {card.status === "active" ? "请求冻结" : "请求解冻"}
+              </button>
             </li>
           ))}
         </ul>
       )}
-      <p className="card-footnote">卡片状态以服务端数据为准。</p>
     </section>
   );
 }

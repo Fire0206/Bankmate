@@ -1,4 +1,5 @@
 import type { components } from "../generated/api";
+import { cardLabel } from "./cardFormat";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type JsonObject = Record<string, unknown>;
@@ -53,7 +54,38 @@ function statusLabel(value: unknown): string {
     settled: "已结清",
   };
   const text = stringValue(value);
-  return labels[text] ?? text;
+  return labels[text] ?? "状态待更新";
+}
+
+function CardResults({ data }: { data: JsonObject }) {
+  const card = isObject(data.card) ? data.card : null;
+  const items = card ? [card] : objectArray(data.items);
+  return (
+    <section aria-label="银行卡查询结果" className="task-result">
+      <div className="task-result-heading">
+        <strong>银行卡</strong>
+        <span>{items.length} 张</span>
+      </div>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.map((item, index) => (
+            <div
+              className="task-result-row"
+              key={stringValue(item.id) || index}
+            >
+              <span>
+                {cardLabel(stringValue(item.label))} · 尾号{" "}
+                {stringValue(item.card_suffix)}
+              </span>
+              <strong>{statusLabel(item.status)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">当前没有银行卡。</p>
+      )}
+    </section>
+  );
 }
 
 function BillSummary({ data }: { data: JsonObject }) {
@@ -595,6 +627,9 @@ function PaydayPlan({ data }: { data: JsonObject }) {
 
 function resultForTool(toolName: string, data: JsonObject) {
   switch (toolName) {
+    case "card.list":
+    case "card.get":
+      return <CardResults data={data} />;
     case "transfer.accounts":
       return <AccountBalances data={data} />;
     case "transfer.payees":
@@ -641,7 +676,238 @@ function resultForTool(toolName: string, data: JsonObject) {
   }
 }
 
-export function TaskResult({ task }: { task: Task }) {
+type Step = Task["steps"][number];
+
+const resultTitles: Record<string, string> = {
+  "card.list": "银行卡",
+  "card.get": "银行卡状态",
+  "bill.monthly_summary": "月度账单",
+  "bill.transactions": "交易明细",
+  "bill.anomalies": "异常消费提示",
+  "subscription.list": "自动扣费",
+  "transfer.accounts": "账户余额",
+  "transfer.payees": "收款人",
+  "transfer.history": "转账记录",
+  "transfer.simulate_due": "到期转账",
+  "transfer.splits": "AA 分账",
+  "investment.products": "理财产品",
+  "investment.compare": "理财产品比较",
+  "investment.profile": "风险等级",
+  "investment.portfolio": "理财持仓",
+  "investment.orders": "理财操作记录",
+  "finance.payday_plan": "发薪日资金安排",
+};
+
+const readPriority: Record<string, string[]> = {
+  card: ["card.get", "card.list"],
+  bill: ["bill.anomalies", "bill.monthly_summary", "bill.transactions"],
+  subscription: ["subscription.list"],
+  transfer: [
+    "finance.payday_plan",
+    "transfer.accounts",
+    "transfer.history",
+    "transfer.splits",
+    "transfer.payees",
+    "transfer.simulate_due",
+  ],
+  investment: [
+    "investment.products",
+    "investment.compare",
+    "investment.portfolio",
+    "investment.profile",
+    "investment.orders",
+  ],
+};
+
+const writeTitles: Record<string, string> = {
+  "card.freeze": "银行卡已冻结",
+  "card.unfreeze": "银行卡已解冻",
+  "subscription.pause": "自动续费已暂停",
+  "subscription.resume": "自动续费已恢复",
+  "subscription.cancel": "自动续费已取消",
+  "transfer.create": "模拟转账已完成",
+  "transfer.schedule": "定时转账已创建",
+  "transfer.cancel_scheduled": "定时转账已取消",
+  "transfer.split_create": "AA 分账已创建",
+  "transfer.split_collect": "模拟收款已完成",
+  "investment.buy": "模拟申购已完成",
+  "investment.redeem": "模拟赎回已完成",
+};
+
+function isObjectResult(
+  step: Step,
+): step is Step & { result_data: JsonObject } {
+  return isObject(step.result_data);
+}
+
+function resultDomain(toolName: string): string | null {
+  if (toolName.startsWith("card.")) return "card";
+  if (toolName.startsWith("bill.")) return "bill";
+  if (toolName.startsWith("subscription.")) return "subscription";
+  if (toolName.startsWith("transfer.") || toolName === "finance.payday_plan")
+    return "transfer";
+  if (toolName.startsWith("investment.")) return "investment";
+  return null;
+}
+
+function conciseValue(step: Step): string[] {
+  if (!isObjectResult(step) || !step.tool_name) return [];
+  const data = step.result_data;
+  const items = objectArray(data.items);
+
+  switch (step.tool_name) {
+    case "card.list":
+      return items
+        .slice(0, 2)
+        .map(
+          (item) =>
+            `${cardLabel(stringValue(item.label))} · 尾号 ${stringValue(item.card_suffix)} · ${statusLabel(item.status)}`,
+        );
+    case "card.get": {
+      const card = isObject(data.card) ? data.card : data;
+      return [
+        `${cardLabel(stringValue(card.label))} · 尾号 ${stringValue(card.card_suffix)} · ${statusLabel(card.status)}`,
+      ];
+    }
+    case "bill.monthly_summary": {
+      const categories = objectArray(data.categories);
+      return [
+        `${stringValue(data.month)}支出 ${formatAmount(data.expense_minor)} · 收入 ${formatAmount(data.income_minor)}`,
+        ...categories
+          .slice(0, 2)
+          .map(
+            (item) =>
+              `${stringValue(item.category)} ${formatAmount(item.amount_minor)}`,
+          ),
+      ];
+    }
+    case "bill.anomalies":
+      return items.length
+        ? items
+            .slice(0, 2)
+            .map(
+              (item) =>
+                `${stringValue(item.merchant)} · ${formatAmount(item.amount_minor)} · ${stringValue(item.anomaly_reason)}`,
+            )
+        : ["没有发现符合提示规则的交易。"];
+    case "bill.transactions":
+      return items.length
+        ? items
+            .slice(0, 3)
+            .map(
+              (item) =>
+                `${stringValue(item.merchant)} · ${formatAmount(item.amount_minor)}`,
+            )
+        : ["没有符合条件的交易。"];
+    case "subscription.list":
+      return [
+        `${items.length} 项自动扣费 · 每月合计 ${formatAmount(data.monthly_total_minor)}`,
+        ...items
+          .slice(0, 2)
+          .map(
+            (item) =>
+              `${stringValue(item.merchant)} · ${formatAmount(item.amount_minor)} / 月`,
+          ),
+      ];
+    case "transfer.accounts":
+      return items
+        .slice(0, 3)
+        .map(
+          (item) =>
+            `${stringValue(item.label)} · ${formatAmount(item.balance_minor)}`,
+        );
+    case "transfer.payees":
+      return [`${items.length} 位已保存收款人`];
+    case "transfer.history":
+      return [`${items.length} 笔转账记录`];
+    case "transfer.splits":
+      return [`${items.length} 笔 AA 分账`];
+    case "investment.products":
+    case "investment.compare": {
+      const suitable = items.filter((item) => item.suitable === true);
+      return suitable.length
+        ? suitable
+            .slice(0, 3)
+            .map(
+              (item) =>
+                `${stringValue(item.name)} · 风险 R${String(item.risk_level ?? "—")}`,
+            )
+        : ["没有找到符合当前模拟风险等级的产品。"];
+    }
+    case "investment.profile":
+      return [
+        stringValue(data.risk_label) ||
+          `风险等级 R${String(data.risk_level ?? "—")}`,
+      ];
+    case "investment.portfolio":
+      return [
+        `资产合计 ${formatAmount(data.total_assets_minor)} · 持仓 ${formatAmount(data.invested_value_minor)}`,
+      ];
+    case "investment.orders":
+      return [`${items.length} 笔理财操作记录`];
+    case "finance.payday_plan":
+      return [
+        `当前余额 ${formatAmount(data.account_balance_minor)}`,
+        `月收入 ${formatAmount(data.monthly_income_minor)} · 月支出 ${formatAmount(data.monthly_expense_minor)}`,
+        `转账 ${formatAmount(data.transfer_amount_minor)} · 保留 ${formatAmount(data.reserve_amount_minor)} · 可投资 ${formatAmount(data.investment_budget_minor)}`,
+      ];
+    default:
+      return [];
+  }
+}
+
+function writeSummary(step: Step): { title: string; detail: string } {
+  const toolName = step.tool_name ?? "";
+  const data = isObjectResult(step) ? step.result_data : {};
+  if (toolName.startsWith("card.")) {
+    const card = isObject(data.card) ? data.card : data;
+    return {
+      title: writeTitles[toolName] ?? "银行卡状态已更新",
+      detail: `尾号 ${stringValue(card.card_suffix)}`,
+    };
+  }
+  if (toolName.startsWith("subscription.")) {
+    const subscription = isObject(data.subscription) ? data.subscription : data;
+    return {
+      title: writeTitles[toolName] ?? "自动扣费状态已更新",
+      detail: stringValue(subscription.merchant),
+    };
+  }
+  if (toolName.startsWith("transfer.")) {
+    const transfer = isObject(data.transfer) ? data.transfer : data;
+    return {
+      title: writeTitles[toolName] ?? "转账状态已更新",
+      detail: [
+        stringValue(transfer.payee_name || data.title),
+        typeof transfer.amount_minor === "number"
+          ? formatAmount(transfer.amount_minor)
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
+  const order = isObject(data.order) ? data.order : data;
+  return {
+    title: writeTitles[toolName] ?? "理财状态已更新",
+    detail: [
+      stringValue(order.product_name),
+      typeof order.amount_minor === "number"
+        ? formatAmount(order.amount_minor)
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
+export function TaskResult({
+  task,
+  compact = false,
+}: {
+  task: Task;
+  compact?: boolean;
+}) {
   const latestByTool = new Map<string, Task["steps"][number]>();
   for (const step of task.steps) {
     if (
@@ -656,15 +922,128 @@ export function TaskResult({ task }: { task: Task }) {
   );
   if (!results.length) return null;
 
-  return (
-    <div className="task-result-stack">
-      {results.map((step) => (
-        <div key={step.id}>
-          {step.tool_name && isObject(step.result_data)
-            ? resultForTool(step.tool_name, step.result_data)
-            : null}
+  const writes = results.filter(
+    (step) =>
+      step.tool_name !== null && Object.hasOwn(writeTitles, step.tool_name),
+  );
+  const reads = results.filter(
+    (step) =>
+      step.tool_name !== null &&
+      !Object.hasOwn(writeTitles, step.tool_name) &&
+      resultTitles[step.tool_name],
+  );
+  const selectedReads = new Map<string, Step>();
+  for (const step of reads) {
+    const domain = step.tool_name ? resultDomain(step.tool_name) : null;
+    if (!domain || !step.tool_name) continue;
+    const current = selectedReads.get(domain);
+    const options = readPriority[domain] ?? [];
+    if (
+      !current ||
+      options.indexOf(step.tool_name) < options.indexOf(current.tool_name ?? "")
+    )
+      selectedReads.set(domain, step);
+  }
+  const primaryReads = [...selectedReads.values()]
+    .sort((a, b) => a.sequence - b.sequence)
+    .slice(0, 4);
+
+  const resultContent = (
+    <>
+      {primaryReads.length ? (
+        <div className="result-group">
+          <h3>{writes.length ? "处理依据" : "查询结果"}</h3>
+          <div className="result-summary-grid">
+            {primaryReads.map((step) => (
+              <article className="result-summary" key={step.id}>
+                <h4>{resultTitles[step.tool_name ?? ""]}</h4>
+                <ul>
+                  {conciseValue(step).map((line, index) => (
+                    <li key={`${step.id}-${index}`}>{line}</li>
+                  ))}
+                </ul>
+                {step.tool_name?.startsWith("bill.anomalies") ? (
+                  <p className="task-result-notice">
+                    规则提示仅供核对，不代表欺诈结论。
+                  </p>
+                ) : null}
+                {step.tool_name?.startsWith("investment.products") ||
+                step.tool_name?.startsWith("investment.compare") ? (
+                  <p className="task-result-notice">
+                    产品与收益为模拟信息，不构成投资建议。
+                  </p>
+                ) : null}
+              </article>
+            ))}
+          </div>
         </div>
-      ))}
-    </div>
+      ) : null}
+
+      {writes.length ? (
+        <div className="result-group">
+          <ul className="completed-change-list">
+            {writes.map((step) => {
+              const summary = writeSummary(step);
+              return (
+                <li key={step.id}>
+                  <span className="completed-change-mark" aria-hidden="true" />
+                  <span>
+                    <strong>{summary.title}</strong>
+                    {summary.detail ? <small>{summary.detail}</small> : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      <details className="full-result-details">
+        <summary>展开完整结果</summary>
+        {results.map((step) => (
+          <div className="full-result-item" key={step.id}>
+            {step.tool_name && isObject(step.result_data) ? (
+              <>
+                <h4>{resultTitles[step.tool_name] ?? "业务结果"}</h4>
+                {resultForTool(step.tool_name, step.result_data)}
+              </>
+            ) : null}
+          </div>
+        ))}
+      </details>
+    </>
+  );
+
+  if (compact) {
+    const compactSummary = writes.length
+      ? writes
+          .map((step) => {
+            const summary = writeSummary(step);
+            return [summary.title, summary.detail].filter(Boolean).join(" · ");
+          })
+          .slice(0, 2)
+          .join("；")
+      : primaryReads.flatMap(conciseValue).slice(0, 2).join("；");
+
+    return (
+      <details className="historical-task-result">
+        <summary>
+          <span>{compactSummary || "查看本次结果"}</span>
+          <span className="historical-result-action">详情</span>
+        </summary>
+        <section
+          aria-label="业务结果"
+          className="task-result-summary historical-result-content"
+        >
+          {resultContent}
+        </section>
+      </details>
+    );
+  }
+
+  return (
+    <section aria-label="业务结果" className="task-result-summary">
+      {resultContent}
+    </section>
   );
 }

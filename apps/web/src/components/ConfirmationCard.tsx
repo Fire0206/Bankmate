@@ -14,6 +14,14 @@ function text(details: Details | null | undefined, key: string): string | null {
   return typeof item === "string" && item ? item : null;
 }
 
+function personName(value: string): string {
+  const labels: Record<string, string> = {
+    "Demo User One": "本人",
+    "Demo User Two": "模拟用户二",
+  };
+  return labels[value] ?? value;
+}
+
 function amount(
   details: Details | null | undefined,
   key: string,
@@ -37,7 +45,7 @@ function statusName(status: string): string {
     open: "待收款",
     settled: "已结清",
   };
-  return labels[status] ?? status;
+  return labels[status] ?? "状态待更新";
 }
 
 function actionName(confirmation: Confirmation): string {
@@ -81,11 +89,13 @@ function expiryLabel(value: string): string {
 export function ConfirmationCard({
   confirmation,
   busy,
+  hasPreviousChanges,
   onConfirm,
   onCancel,
 }: {
   confirmation: Confirmation;
   busy: boolean;
+  hasPreviousChanges: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -97,6 +107,13 @@ export function ConfirmationCard({
     transfer: "转账",
     split: "AA 分账",
     investment_order: "理财操作",
+  };
+  const impactLabels: Record<Confirmation["resource_type"], string> = {
+    card: "只影响这张模拟银行卡。",
+    subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
+    transfer: "这笔转账只在模拟账本中记账。",
+    split: "仅更新这笔模拟 AA 分账的状态。",
+    investment_order: "仅更新模拟资金和持仓，不代表真实收益。",
   };
   const detailsRows: Array<[string, string | null]> = [];
 
@@ -120,13 +137,13 @@ export function ConfirmationCard({
         Array.isArray(value(details, "participants"))
           ? (value(details, "participants") as unknown[])
               .map((item) => {
-                if (typeof item === "string") return item;
+                if (typeof item === "string") return personName(item);
                 if (
                   typeof item === "object" &&
                   item !== null &&
                   "display_name" in item
                 )
-                  return String(item.display_name);
+                  return personName(String(item.display_name));
                 return "";
               })
               .filter(Boolean)
@@ -150,14 +167,7 @@ export function ConfirmationCard({
   return (
     <section aria-labelledby="confirmation-title" className="confirmation-card">
       <div className="confirmation-heading">
-        <div>
-          <p className="section-kicker">请核对操作</p>
-          <h3 id="confirmation-title">确认{action}</h3>
-        </div>
-        <span className="confirmation-mark">
-          <AppIcon name="info" size={17} />
-          需要确认
-        </span>
+        <h3 id="confirmation-title">确认{action}</h3>
       </div>
 
       <div className="confirmation-card-name">
@@ -213,8 +223,8 @@ export function ConfirmationCard({
       </div>
 
       <p className="confirmation-impact">
-        仅影响当前模拟{resourceLabels[confirmation.resource_type]}
-        ，不会连接真实银行或支付网络。
+        {impactLabels[confirmation.resource_type]}
+        {hasPreviousChanges ? "此前已完成的操作不会因取消任务而撤销。" : null}
       </p>
       <p className="confirmation-expiry">
         <AppIcon name="clock" size={15} />
@@ -242,7 +252,7 @@ export function ConfirmationCard({
           onClick={onCancel}
           type="button"
         >
-          取消操作
+          取消任务
         </button>
       </div>
     </section>
