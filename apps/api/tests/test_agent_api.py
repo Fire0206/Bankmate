@@ -712,7 +712,7 @@ def test_invalid_tool_schema_is_rejected_before_handler(api_context):
         InvalidArgumentsProvider(), "fake"
     )
     try:
-        task = submit(client, "冻结卡", key="invalid-args-task")
+        task = submit(client, "冻结尾号1042的卡", key="invalid-args-task")
     finally:
         app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
             FakeProvider(), "fake"

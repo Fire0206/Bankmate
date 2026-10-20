@@ -133,7 +133,7 @@ pnpm run api:types
 
 API Schema 或接口实现变更后，应重新生成并提交 `apps/web/openapi.json` 和 `apps/web/src/generated/api.d.ts`。不要手工编辑生成文件。
 
-Phase 1E 的 DeepSeek 端到端评测脚本见[开发指南](docs/development.md)。评测仅使用隔离的临时测试数据库和合成数据；脚本默认不打印原始提示词、模型响应或密钥。
+Phase 1E 历史基线与 Phase 2E 最新 DeepSeek 可靠性评测见[开发指南](docs/development.md)。Phase 2E 新 Holdout 为 40 个本地案例的两轮评测，端到端通过 63/80；这是小样本观测，不代表普遍表现。评测仅使用隔离临时数据库和合成数据，不把原始提示词、模型回复或密钥写入报告。
 
 ## 协作与开源
 

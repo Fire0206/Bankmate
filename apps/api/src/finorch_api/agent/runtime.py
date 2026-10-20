@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from finorch_api.agent.intent import is_planning_only_request, parse_split_intent
+
 
 @dataclass(frozen=True)
 class ModelToolCall:
@@ -209,6 +211,8 @@ class AgentRuntime:
                     "wait for its confirmation. Finish by rereading accounts "
                     "and the portfolio. Do not stop after planning or after only one requested "
                     "write; do not recompute the budget yourself. "
+                    "When the user explicitly asks only for a plan or calculation and says not "
+                    "to execute, use read-only tools only and do not create any confirmation. "
                     "Do not infer identity."
                 ),
             },
@@ -390,6 +394,10 @@ class AgentRuntime:
                     seen_tool_calls.add(repeat_key)
 
                 result = dispatch(spec, parsed, call, step_number * 10 + call_index, error)
+                if result.status == "blocked":
+                    # A precondition rejection has no side effect, so the same call may be
+                    # retried after the model completes the missing prerequisite read.
+                    seen_tool_calls.discard(repeat_key)
                 if result.status == "failed":
                     return AgentRunResult(
                         status="failed",
@@ -629,7 +637,7 @@ class FakeProvider(LLMProvider):
             return ModelTurn("已读取账单和订阅信息，请检查任务步骤。", status="completed")
 
         payday_intent = "资金调度" in full_request or (
-            "发薪日" in full_request
+            any(phrase in full_request for phrase in ("发薪日", "工资", "薪资", "收入到账"))
             and any(phrase in full_request for phrase in ("规划", "安排", "调度", "资金"))
         )
         if payday_intent:
@@ -650,6 +658,10 @@ class FakeProvider(LLMProvider):
             reserve_amount_minor = (
                 int(Decimal(reserve_match.group(1)) * 100) if reserve_match else None
             )
+            if reserve_amount_minor is None and any(
+                phrase in request for phrase in ("剩余", "余下", "其余", "全部余款")
+            ):
+                reserve_amount_minor = 0
             product_names = ("安稳现金管理", "稳健短债组合", "成长指数模拟")
             requested_product = next((name for name in product_names if name in request), None)
             investment_amount_match = re.search(
@@ -685,13 +697,10 @@ class FakeProvider(LLMProvider):
                     "当前余额不足以完成转账并保留指定金额；没有提出资金变更。",
                     status="awaiting_input",
                 )
-            if "transfer.create" not in succeeded:
-                return call(
-                    "transfer.create",
-                    {
-                        "recipient_name": recipient_name,
-                        "amount_minor": transfer_amount_minor,
-                    },
+            if is_planning_only_request(request):
+                return ModelTurn(
+                    "资金测算已完成，具体结果见任务步骤；未创建转账或申购操作。",
+                    status="completed",
                 )
             products_result = result_for("investment.products")
             if "investment.products" not in succeeded:
@@ -715,8 +724,16 @@ class FakeProvider(LLMProvider):
             )
             if product is None:
                 return ModelTurn(
-                    "扣除转账和预留金额后，没有符合起购金额与当前模拟风险等级的产品；未申购。",
-                    status="completed",
+                    "扣除转账和预留金额后，没有符合起购金额与当前模拟风险等级的产品；未提出资金变更。",
+                    status="awaiting_input",
+                )
+            if "transfer.create" not in succeeded:
+                return call(
+                    "transfer.create",
+                    {
+                        "recipient_name": recipient_name,
+                        "amount_minor": transfer_amount_minor,
+                    },
                 )
             investment_amount = (
                 int(Decimal(investment_amount_match.group(1)) * 100)
@@ -847,36 +864,35 @@ class FakeProvider(LLMProvider):
                 ):
                     return call("transfer.splits", {})
                 if any(word in request for word in ("收取", "收款", "催收")):
+                    parsed_title = parse_split_intent(request).title
+                    split_items = result_for("transfer.splits").get("items", [])
                     title = next(
                         (
-                            name
-                            for name in ("火锅", "聚餐", "晚餐", "电影", "旅行")
-                            if name in request
+                            item.get("title")
+                            for item in split_items
+                            if isinstance(item, dict)
+                            and isinstance(item.get("title"), str)
+                            and item["title"] in request
                         ),
-                        None,
+                        parsed_title,
                     )
                     if title is None:
                         return ModelTurn("请提供已创建的 AA 账单名称，我再准备模拟收款。")
                     return call("transfer.split_collect", {"title": title})
-                if amount_minor is None:
+                split_intent = parse_split_intent(request)
+                if split_intent.amount_minor is None:
                     return ModelTurn("请告诉我这笔 AA 账单的总金额。")
-                names_match = re.search(r"(?:和|与|、)([^。！？；，]+)", request)
-                names = []
-                if names_match:
-                    names = [
-                        item.strip()
-                        for item in re.split(r"[、,，和与及]", names_match.group(1))
-                        if item.strip() and item.strip() not in {"我", "朋友", "大家"}
-                    ]
-                if not names:
+                if split_intent.title is None:
+                    return ModelTurn("请说明这笔分账对应的活动名称。", status="awaiting_input")
+                if split_intent.participant_names is None:
                     return ModelTurn("请提供需要参与分账的人员姓名。")
-                title = next(
-                    (name for name in ("火锅", "聚餐", "晚餐", "电影", "旅行") if name in request),
-                    "AA 分账",
-                )
                 return call(
                     "transfer.split_create",
-                    {"title": title, "amount_minor": amount_minor, "participant_names": names},
+                    {
+                        "title": split_intent.title,
+                        "amount_minor": split_intent.amount_minor,
+                        "participant_names": list(split_intent.participant_names),
+                    },
                 )
             if "取消" in request and any(word in request for word in ("定时", "预约")):
                 if payee_name is None:

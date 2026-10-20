@@ -1,8 +1,11 @@
 from finorch_api.application.agent_workflow import (
     invalid_tool_input_name,
+    missing_explicit_write_parameters_message,
     missing_payday_parameters_message,
     missing_requested_write_tools,
     missing_write_input_message,
+    requires_transfer_before_investment,
+    split_proposal_mismatch_message,
     tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
@@ -83,7 +86,7 @@ def test_incomplete_payday_goal_stays_open_until_amounts_are_supplied() -> None:
         missing_payday_parameters_message(
             "发薪日帮我规划资金，给小林转一部分，剩余买适合我的理财。"
         )
-        == "请补充转账金额和希望保留在账户中的金额，再继续安排剩余资金。"
+        == "请补充收款人、转账金额和希望保留的金额；如要投资全部余款，请明确说明。"
     )
     assert (
         missing_payday_parameters_message(
@@ -92,8 +95,8 @@ def test_incomplete_payday_goal_stays_open_until_amounts_are_supplied() -> None:
         is None
     )
     assert missing_payday_parameters_message("发薪日理财怎么规划？") is None
-    assert missing_payday_parameters_message("工资到账后给小林转 200 元，余下安排模拟理财。") == (
-        "请补充转账金额和希望保留在账户中的金额，再继续安排剩余资金。"
+    assert missing_payday_parameters_message("工资到账后给小林转 200 元，并安排模拟理财。") == (
+        "请补充收款人、转账金额和希望保留的金额；如要投资全部余款，请明确说明。"
     )
 
 
@@ -156,6 +159,21 @@ def test_subscription_stop_intent_requires_cancel_while_pause_stays_reversible()
     )
     assert missing_requested_write_tools("关闭腾讯视频会员的自动续费", _history()) == (
         "subscription.cancel",
+    )
+
+
+def test_future_restore_language_does_not_request_an_immediate_resume() -> None:
+    request = "临时暂停腾讯视频会员自动续费，之后可以恢复"
+    assert missing_requested_write_tools(request, _history()) == ("subscription.pause",)
+    assert (
+        missing_requested_write_tools(
+            request,
+            _history(_tool("subscription.pause")),
+        )
+        == ()
+    )
+    assert missing_requested_write_tools("恢复腾讯视频会员的自动续费", _history()) == (
+        "subscription.resume",
     )
 
 
@@ -232,6 +250,99 @@ def test_server_product_risk_result_becomes_authoritative_rejection() -> None:
         unsuitable_requested_investment_message(
             "申购 1000 元安稳现金管理。",
             context,
+        )
+        is None
+    )
+    assert (
+        missing_requested_write_tools(
+            "申购 1000 元成长指数模拟。",
+            _history(
+                _tool(
+                    "investment.products",
+                    result={"items": [{"name": "成长指数模拟", "suitable": False}]},
+                )
+            ),
+        )
+        == ()
+    )
+
+
+def test_incomplete_write_intents_pause_before_any_proposal() -> None:
+    assert missing_explicit_write_parameters_message("冻结银行卡尾号1042或4318") == (
+        "请明确选择一张银行卡，并提供唯一的尾号。"
+    )
+    assert missing_explicit_write_parameters_message("给小林转一部分钱") == (
+        "请补充转账金额后再继续。"
+    )
+    assert missing_explicit_write_parameters_message("给小林转200元，再买一只低风险理财") == (
+        "请补充申购金额或明确的剩余资金范围；整组操作的信息明确后，才会创建第一项操作确认。"
+    )
+    assert (
+        missing_explicit_write_parameters_message(
+            "给小林转200元，再把剩余资金全部投入适合的理财产品"
+        )
+        is None
+    )
+
+
+def test_card_lock_synonyms_and_incomplete_split_are_clarified_preflight() -> None:
+    assert missing_explicit_write_parameters_message("帮我锁上银行卡") == (
+        "请提供要操作的银行卡尾号。"
+    )
+    assert missing_explicit_write_parameters_message("把尾号1042或4318的卡锁住") == (
+        "请明确选择一张银行卡，并提供唯一的尾号。"
+    )
+    assert "参与人姓名" in missing_explicit_write_parameters_message(
+        "创建一笔火锅AA分账，总金额180元"
+    )
+
+
+def test_clarification_can_resolve_a_previously_ambiguous_card() -> None:
+    assert (
+        missing_explicit_write_parameters_message(
+            "冻结银行卡尾号1042或4318\n\n用户补充：请冻结尾号1042"
+        )
+        is None
+    )
+
+
+def test_split_proposal_must_match_explicit_title_amount_and_participants() -> None:
+    from types import SimpleNamespace
+
+    request = "创建180元的火锅AA分账，和小林、小王平分"
+    assert (
+        split_proposal_mismatch_message(
+            request,
+            SimpleNamespace(title="火锅", amount_minor=18_000, participant_names=["小林", "小王"]),
+        )
+        is None
+    )
+    assert "名称" in split_proposal_mismatch_message(
+        request,
+        SimpleNamespace(
+            title="火锅AA分账", amount_minor=18_000, participant_names=["小林", "小王"]
+        ),
+    )
+    assert "参与人" in split_proposal_mismatch_message(
+        request,
+        SimpleNamespace(
+            title="火锅", amount_minor=18_000, participant_names=["小林", "小王", "平分"]
+        ),
+    )
+
+
+def test_transfer_and_investment_are_a_dependent_write_sequence() -> None:
+    assert requires_transfer_before_investment("先给小林转200元，再申购安稳现金管理100元") is True
+    assert requires_transfer_before_investment("如何安排转账和理财？") is False
+    assert (
+        requires_transfer_before_investment(
+            "工资到账后给小林转200元，留5000元，剩余资金投资多少？请只计算方案，不执行。"
+        )
+        is False
+    )
+    assert (
+        missing_explicit_write_parameters_message(
+            "只计算给小林转账并预留资金后的理财额度，不执行。"
         )
         is None
     )
