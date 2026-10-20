@@ -195,6 +195,118 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
     assert json.loads(turn.tool_calls[0].arguments) == {"card_suffix": "1042"}
 
 
+def test_openai_compatible_adapter_can_force_a_server_required_workflow_tool(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": "", "tool_calls": []}}]}
+            ).encode()
+
+    def fake_urlopen(request, timeout):
+        del timeout
+        captured["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.deepseek.com/v1",
+        api_key=SecretStr("unit-test-key"),
+        model="mock-card-model",
+    )
+
+    provider.complete_required_tool(
+        [{"role": "user", "content": "continue the confirmed workflow"}],
+        [
+            {"type": "function", "function": {"name": "card__list"}},
+            {"type": "function", "function": {"name": "subscription__pause"}},
+        ],
+        "subscription.pause",
+    )
+
+    assert captured["body"]["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "subscription__pause"},
+    }
+    assert captured["body"]["thinking"] == {"type": "disabled"}
+
+
+def test_openai_compatible_adapter_rejects_missing_server_required_tool() -> None:
+    provider = OpenAICompatibleProvider(
+        base_url="https://api.deepseek.com/v1",
+        api_key=SecretStr("unit-test-key"),
+        model="mock-card-model",
+    )
+
+    with pytest.raises(AgentProviderError) as exc_info:
+        provider.complete_required_tool([], [], "subscription.pause")
+
+    assert exc_info.value.code == "agent_required_tool_unavailable"
+
+
+def test_runtime_uses_provider_required_tool_entrypoint_for_pending_workflow_step() -> None:
+    registry = ToolRegistry(
+        (
+            ToolSpec(
+                name="card.list",
+                description="List synthetic cards.",
+                version="1.0",
+                input_model=EmptyToolInput,
+                output_model=CardListOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=lambda _arguments, _context: {"items": []},
+            ),
+            ToolSpec(
+                name="card.freeze",
+                description="Propose freezing an owned card.",
+                version="1.0",
+                input_model=CardSuffixInput,
+                output_model=CardListOutput,
+                permission_level="funds_write",
+                risk_level="high",
+                confirmation_requirement="always",
+                handler=lambda _arguments, _context: {},
+            ),
+        )
+    )
+
+    class RequiredToolProvider(FakeProvider):
+        def __init__(self) -> None:
+            self.required_tools: list[str] = []
+
+        def complete(self, messages, tools):
+            raise AssertionError("A pending workflow step must use the required-tool entrypoint.")
+
+        def complete_required_tool(self, messages, tools, tool_name):
+            del messages, tools
+            self.required_tools.append(tool_name)
+            return ModelTurn(
+                None, (ModelToolCall("required-call", "card__freeze", '{"card_suffix":"1042"}'),)
+            )
+
+    provider = RequiredToolProvider()
+    result = AgentRuntime(provider).run(
+        request_text="Freeze card 1042",
+        trusted_context={"task_progress": {"required_next_tools": ["card.freeze"]}},
+        registry=registry,
+        dispatch=lambda _spec, _args, _call, _sequence, _error: ToolDispatchResult(
+            "awaiting_confirmation", {"status": "awaiting_confirmation"}
+        ),
+    )
+
+    assert provider.required_tools == ["card.freeze"]
+    assert result.status == "awaiting_confirmation"
+
+
 def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
     monkeypatch, tmp_path
 ) -> None:

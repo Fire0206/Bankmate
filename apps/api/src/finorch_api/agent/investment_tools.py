@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -178,20 +179,34 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
     def compare_products(arguments: BaseModel, context: ToolCallContext) -> ProductsOutput:
         values = InvestmentCompareInput.model_validate(arguments)
         all_items = list_products(context.session, actor_id=context.actor_id)
-        selected = [
-            next(
-                (
+        selected = []
+        for name in values.product_names:
+            normalized = re.sub(r"[\s·•\-—_()（）]", "", name).casefold()
+            exact = [
+                item
+                for item in all_items
+                if item.name.casefold() == normalized or item.code.casefold() == normalized
+            ]
+            candidates = exact or (
+                [
                     item
                     for item in all_items
-                    if item.name.casefold() == name.strip().casefold()
-                    or item.code.casefold() == name.strip().casefold()
-                ),
-                None,
+                    if len(normalized) >= 2
+                    and normalized in re.sub(r"[\s·•\-—_()（）]", "", item.name).casefold()
+                ]
             )
-            for name in values.product_names
-        ]
-        if any(item is None for item in selected):
-            raise BankingRuleError("product_not_found", "有产品名称未匹配到模拟产品目录。")
+            unique = {item.id: item for item in candidates}
+            if len(unique) > 1:
+                options = "、".join(item.name for item in unique.values())
+                raise BankingRuleError(
+                    "product_name_ambiguous",
+                    f"“{name}”对应多个模拟产品，请从以下名称中选择：{options}。",
+                )
+            if not unique:
+                raise BankingRuleError(
+                    "product_not_found", "没有找到匹配的模拟理财产品，请查看当前产品列表。"
+                )
+            selected.append(next(iter(unique.values())))
         risk_level, risk_label = get_risk_profile(context.session, actor_id=context.actor_id)
         return ProductsOutput(
             items=[ProductToolItem.model_validate(item.__dict__) for item in selected if item],

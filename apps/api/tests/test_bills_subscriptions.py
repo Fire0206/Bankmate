@@ -260,9 +260,19 @@ def test_subscription_pause_resume_and_illegal_transition(bill_agent_context):
     assert pause_task["status"] == "awaiting_confirmation"
     assert confirm(client, pause_task).json()["status"] == "completed"
 
-    resume_task = submit(client, "恢复云盘会员自动续费", "subscription-resume")
+    resume_task = submit(
+        client,
+        "把云盘会员从暂停状态恢复成正常续费。",
+        "subscription-resume",
+    )
     assert resume_task["status"] == "awaiting_confirmation"
-    assert confirm(client, resume_task).json()["status"] == "completed"
+    assert resume_task["steps"][-1]["tool_name"] == "subscription.resume"
+    resumed = confirm(client, resume_task)
+    assert resumed.json()["status"] == "completed"
+    assert all(step["tool_name"] != "subscription.pause" for step in resumed.json()["steps"])
+    refreshed = client.get(f"/api/v1/agent/tasks/{resume_task['id']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["status"] == "completed"
 
     with database.session_factory() as session:
         subscription = session.scalar(

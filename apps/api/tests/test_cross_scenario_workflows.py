@@ -818,7 +818,14 @@ def test_failed_second_step_can_resume_without_repeating_first_write(workflow_co
 
     done = confirm(client, task)
     assert done.status_code == 200, done.text
-    assert done.json()["status"] == "completed"
+    result = done.json()
+    assert result["status"] == "completed", {
+        "message": result["message"],
+        "error_code": result["error_code"],
+        "steps": [
+            (step["tool_name"], step["status"], step["error_code"]) for step in result["steps"]
+        ],
+    }
     with database.session_factory() as session:
         subscription = session.get(Subscription, subscription_id)
         assert subscription is not None and subscription.status == "paused"

@@ -21,6 +21,7 @@ from finorch_api.infrastructure.models import (
     AuditEvent,
     Card,
     ConfirmationChallenge,
+    SplitBill,
     ToolExecution,
 )
 from finorch_api.main import app
@@ -197,6 +198,125 @@ def test_unfreeze_and_repeated_confirmation_are_idempotent(api_context) -> None:
             )
             == 1
         )
+
+
+def test_phase2f_reverse_card_instruction_executes_unfreeze_and_audits_actual_state(
+    api_context,
+) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "解除尾号4318储蓄卡的冻结状态。", key="phase2f-unfreeze")
+
+    assert task["status"] == "awaiting_confirmation"
+    tool_names = [step["tool_name"] for step in task["steps"]]
+    assert "card.unfreeze" in tool_names
+    assert "card.freeze" not in tool_names
+    assert task["confirmation"]["target_status"] == "active"
+
+    response = confirm(client, task)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "completed"
+    refreshed = client.get(f"/api/v1/agent/tasks/{task['id']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["status"] == "completed"
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_FROZEN_CARD_ID)
+        event = session.scalar(
+            select(AuditEvent).where(AuditEvent.event_type == "card.status_changed")
+        )
+        assert card is not None and card.status is CardStatus.ACTIVE and card.version == 2
+        assert event is not None and event.after_state == {"status": "active", "version": 2}
+
+
+def test_phase2f_ambiguous_card_is_clarified_before_any_write(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "冻结尾号1042或4318的卡", key="phase2f-ambiguous-card")
+
+    assert task["status"] == "awaiting_input"
+    assert task["confirmation"] is None
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
+
+    clarified = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/input",
+        json={"request_text": "请冻结尾号1042的卡"},
+        headers={"Idempotency-Key": "phase2f-card-clarification"},
+    )
+    assert clarified.status_code == 200, clarified.text
+    proposal = clarified.json()
+    assert proposal["status"] == "awaiting_confirmation"
+    assert proposal["confirmation"]["card_suffix"] == "1042"
+    assert "4318" not in str(proposal["confirmation"])
+
+    confirmed = confirm(client, proposal)
+    assert confirmed.status_code == 200, confirmed.text
+    with database.session_factory() as session:
+        active_card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        frozen_card = session.get(Card, ALICE_FROZEN_CARD_ID)
+        assert active_card is not None and active_card.status is CardStatus.FROZEN
+        assert (
+            frozen_card is not None
+            and frozen_card.status is CardStatus.FROZEN
+            and frozen_card.version == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(AuditEvent.event_type == "card.status_changed")
+            )
+            == 1
+        )
+
+
+def test_phase2f_read_only_preflight_requests_call_history_and_products_tools(api_context) -> None:
+    client, _actor, _database = api_context
+    history = submit(
+        client,
+        "最近的转账和预约付款各是什么状态？",
+        key="phase2f-history-preflight",
+    )
+    products = submit(
+        client,
+        "哪些模拟理财产品符合我的风险承受级别？",
+        key="phase2f-products-preflight",
+    )
+
+    assert history["status"] == "completed"
+    assert [step["tool_name"] for step in history["steps"] if step["tool_name"] is not None] == [
+        "transfer.history"
+    ]
+    assert products["status"] == "completed"
+    assert [step["tool_name"] for step in products["steps"] if step["tool_name"] is not None] == [
+        "investment.products"
+    ]
+
+
+def test_phase2f_split_supplement_resumes_with_provided_fields(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "创建AA分账", key="phase2f-split-incomplete")
+    assert task["status"] == "awaiting_input"
+    assert task["confirmation"] is None
+
+    response = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/input",
+        json={"request_text": "活动名为团队聚餐，总额300元，参与人包括小林和小王。"},
+        headers={"Idempotency-Key": "phase2f-split-supplement"},
+    )
+    assert response.status_code == 200, response.text
+    proposal = response.json()
+    assert proposal["status"] == "awaiting_confirmation"
+    assert proposal["confirmation"]["resource_label"] == "团队聚餐"
+    assert proposal["confirmation"]["details"]["total_amount_minor"] == 30_000
+    assert [item["display_name"] for item in proposal["confirmation"]["details"]["participants"]][
+        -2:
+    ] == ["小林", "小王"]
+
+    completed = confirm(client, proposal)
+    assert completed.status_code == 200, completed.text
+    with database.session_factory() as session:
+        split = session.scalar(select(SplitBill))
+        assert split is not None and split.title == "团队聚餐"
+        assert split.total_amount_minor == 30_000
 
 
 def test_fake_provider_resolves_recent_card_from_conversation_context(api_context) -> None:

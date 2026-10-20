@@ -6,7 +6,13 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from finorch_api.agent.intent import is_planning_only_request, parse_split_intent
+from finorch_api.agent.intent import (
+    is_planning_only_request,
+    is_split_creation_request,
+    parse_split_intent,
+    requested_card_tool,
+    requested_subscription_tool,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +46,16 @@ class LLMProvider:
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
         raise NotImplementedError
+
+    def complete_required_tool(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_name: str,
+    ) -> ModelTurn:
+        """Ask the provider to continue with a server-required tool, when supported."""
+        del tool_name
+        return self.complete(messages, tools)
 
 
 @dataclass(frozen=True)
@@ -168,8 +184,10 @@ class AgentRuntime:
                     "with the lookup or plan it depends on. "
                     "For an AA split request with an event title, total CNY amount, and named "
                     "participants, call transfer.split_create; convert yuan to integer fen for "
-                    "amount_minor (1 yuan = 100 fen; 120 yuan = 12000 fen) and list only the "
-                    "named participants, not the current user. Preserve the exact event title "
+                    "amount_minor (1 yuan = 100 fen; 120 yuan = 12000 fen). Use exactly the "
+                    "schema fields title (string), amount_minor (integer fen), and "
+                    "participant_names (array of names); do not invent extra fields. List only "
+                    "the named participants, not the current user. Preserve the exact event title "
                     "provided by the user without adding spaces or punctuation. "
                     "For an existing AA bill list or status request, call transfer.splits. "
                     "For investment buy requests, require both a named product and an amount; "
@@ -260,7 +278,15 @@ class AgentRuntime:
         seen_call_ids: set[str] = set()
 
         for step_number in range(1, self.max_steps + 2):
-            turn = self.provider.complete(messages, definitions)
+            if required_tool_name is not None:
+                required_completion = getattr(self.provider, "complete_required_tool", None)
+                turn = (
+                    required_completion(messages, definitions, required_tool_name)
+                    if callable(required_completion)
+                    else self.provider.complete(messages, definitions)
+                )
+            else:
+                turn = self.provider.complete(messages, definitions)
             if not turn.tool_calls:
                 if required_tool_name is not None:
                     return AgentRunResult(
@@ -490,6 +516,7 @@ class FakeProvider(LLMProvider):
         full_request = _last_user_text(messages).strip()
         has_followup = "用户补充：" in full_request
         request = full_request.rsplit("用户补充：", 1)[-1].strip() if has_followup else full_request
+        split_request = full_request
         lowered = request.casefold()
         context = _trusted_context(messages)
         persisted_tools = context.get("task_progress", {}).get("tools", [])
@@ -541,13 +568,13 @@ class FakeProvider(LLMProvider):
                 default=-1,
             )
 
-        month_match = re.search(r"(?<!\d)(20\d{2})[-年](\d{1,2})(?:月)?", request)
+        month_match = re.search(r"(?<!\d)(20\d{2})[-年](\d{1,2})(?:月)?", full_request)
         month = (
             f"{int(month_match.group(1)):04d}-{int(month_match.group(2)):02d}"
             if month_match
             else None
         )
-        if "上个月" in request or "上月" in request:
+        if "上个月" in full_request or "上月" in full_request:
             from datetime import UTC, datetime
 
             current = datetime.now(UTC)
@@ -850,21 +877,34 @@ class FakeProvider(LLMProvider):
                 )
             )
             or re.search(r"给.{1,12}转", request) is not None
+            or is_split_creation_request(split_request)
+            or (
+                any(word in full_request for word in ("最近", "状态", "是什么"))
+                and any(word in full_request for word in ("转账", "预约付款", "定时转账"))
+            )
         )
         if transfer_intent:
-            if "余额" in request or "账户" in request and "转账" not in request:
+            if "余额" in full_request or "账户" in full_request and "转账" not in full_request:
                 return call("transfer.accounts", {})
-            if "收款人" in request or "收款账户" in request:
+            if "收款人" in full_request or "收款账户" in full_request:
                 return call("transfer.payees", {})
-            if "转账记录" in request or "转账历史" in request:
+            if (
+                "转账记录" in full_request
+                or "转账历史" in full_request
+                or (
+                    any(word in full_request for word in ("最近", "状态", "是什么"))
+                    and any(word in full_request for word in ("转账", "预约付款", "定时转账"))
+                )
+            ):
                 return call("transfer.history", {})
-            if "分账" in request or "AA" in request:
+            if "分账" in split_request or "AA" in split_request:
                 if any(
-                    word in request for word in ("有哪些", "查看", "查询", "列出", "历史", "状态")
+                    word in request
+                    for word in ("有哪些", "查看", "查询", "列出", "历史", "状态", "是什么")
                 ):
                     return call("transfer.splits", {})
                 if any(word in request for word in ("收取", "收款", "催收")):
-                    parsed_title = parse_split_intent(request).title
+                    parsed_title = parse_split_intent(split_request).title
                     split_items = result_for("transfer.splits").get("items", [])
                     title = next(
                         (
@@ -879,7 +919,9 @@ class FakeProvider(LLMProvider):
                     if title is None:
                         return ModelTurn("请提供已创建的 AA 账单名称，我再准备模拟收款。")
                     return call("transfer.split_collect", {"title": title})
-                split_intent = parse_split_intent(request)
+                if not is_split_creation_request(split_request):
+                    return call("transfer.splits", {})
+                split_intent = parse_split_intent(split_request)
                 if split_intent.amount_minor is None:
                     return ModelTurn("请告诉我这笔 AA 账单的总金额。")
                 if split_intent.title is None:
@@ -931,35 +973,54 @@ class FakeProvider(LLMProvider):
                 )
             return call("transfer.accounts", {})
 
-        product_names = (
-            "安稳现金管理",
-            "稳健短债组合",
-            "成长指数模拟",
+        product_aliases = (
+            ("安稳现金管理", ("现金管理", "现金管理产品")),
+            ("稳健短债组合", ("短债组合", "稳健短债", "短债")),
+            ("成长指数模拟", ("成长指数",)),
         )
-        product_name = next((name for name in product_names if name in request), None)
-        investment_intent = any(
-            word in request for word in ("理财", "产品", "基金", "申购", "赎回")
+        product_names = tuple(name for name, _aliases in product_aliases)
+        product_name = next(
+            (name for name in product_names if name in request),
+            next((name for name in product_names if name in full_request), None),
+        )
+        investment_intent = (
+            any(word in request for word in ("理财", "产品", "基金", "申购", "赎回"))
+            or ("比较" in full_request or "对比" in full_request)
+            and any(
+                name in full_request or any(alias in full_request for alias in aliases)
+                for name, aliases in product_aliases
+            )
         )
         if investment_intent:
-            if "风险" in request and any(word in request for word in ("等级", "承受", "测评")):
+            if "产品" in full_request and any(
+                word in full_request for word in ("哪些", "符合", "适合", "匹配", "产品有")
+            ):
+                return call("investment.products", {"category": None})
+            if "风险" in full_request and any(
+                word in full_request for word in ("等级", "承受", "测评")
+            ):
                 return call("investment.profile", {})
-            if any(word in request for word in ("持仓", "资产", "市值", "收益")):
+            if any(word in full_request for word in ("持仓", "资产", "市值", "收益")):
                 return call("investment.portfolio", {})
-            if any(word in request for word in ("订单", "交易记录", "申购记录", "赎回记录")):
+            if any(word in full_request for word in ("订单", "交易记录", "申购记录", "赎回记录")):
                 return call("investment.orders", {})
-            if "比较" in request or "对比" in request:
-                names = [name for name in product_names if name in request]
+            if "比较" in full_request or "对比" in full_request:
+                names = [
+                    name
+                    for name, aliases in product_aliases
+                    if name in full_request or any(alias in full_request for alias in aliases)
+                ]
                 if len(names) < 2:
                     return ModelTurn("请提供至少两个理财产品名称进行比较。")
                 return call("investment.compare", {"product_names": names})
-            if "赎回" in request:
+            if "赎回" in full_request:
                 if product_name is None:
                     return ModelTurn("请说明要赎回哪款模拟理财产品。")
                 arguments = {"product_name": product_name}
                 if amount_minor is not None:
                     arguments["amount_minor"] = amount_minor
                 return call("investment.redeem", arguments)
-            if any(word in request for word in ("申购", "买入", "购买")):
+            if any(word in full_request for word in ("申购", "买入", "购买")):
                 if product_name is None:
                     return ModelTurn("请说明要申购哪款模拟理财产品。")
                 if amount_minor is None:
@@ -971,7 +1032,8 @@ class FakeProvider(LLMProvider):
                     {"product_name": product_name, "amount_minor": amount_minor},
                 )
             category = next(
-                (name for name in ("货币基金", "债券基金", "指数基金") if name in request), None
+                (name for name in ("货币基金", "债券基金", "指数基金") if name in full_request),
+                None,
             )
             return call("investment.products", {"category": category})
 
@@ -986,19 +1048,20 @@ class FakeProvider(LLMProvider):
                 for name, aliases in subscription_aliases
                 if any(alias in request for alias in aliases)
             ),
-            None,
+            next(
+                (
+                    name
+                    for name, aliases in subscription_aliases
+                    if any(alias in full_request for alias in aliases)
+                ),
+                None,
+            ),
         )
-        subscription_action = None
-        if any(word in request for word in ("取消", "关闭自动续费", "停止扣费")):
-            subscription_action = "cancel"
-        elif any(word in request for word in ("暂停", "暂时停")):
-            subscription_action = "pause"
-        elif any(word in request for word in ("恢复", "重新开启", "继续扣费")):
-            subscription_action = "resume"
-        if subscription_action:
+        subscription_tool = requested_subscription_tool(full_request)
+        if subscription_tool:
             if subscription_target is None:
                 return ModelTurn("请说明需要调整的订阅名称，例如腾讯视频会员。")
-            tool_name = f"subscription.{subscription_action}"
+            tool_name = subscription_tool
             return ModelTurn(
                 "",
                 (
@@ -1058,9 +1121,11 @@ class FakeProvider(LLMProvider):
             return ModelTurn(
                 "", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, json.dumps(args)),)
             )
-        is_unfreeze = any(word in lowered for word in ("解冻", "unfreeze", "unfreeze card"))
-        is_freeze = not is_unfreeze and any(word in lowered for word in ("冻结", "freeze"))
-        suffix_match = re.search(r"(?<!\d)(\d{4})(?!\d)", request)
+        requested_card_action = requested_card_tool(full_request)
+        is_unfreeze = requested_card_action == "card.unfreeze"
+        is_freeze = requested_card_action == "card.freeze"
+        suffix_source = request if has_followup else full_request
+        suffix_match = re.search(r"(?<!\d)(\d{4})(?!\d)", suffix_source)
 
         if is_freeze or is_unfreeze:
             suffix = suffix_match.group(1) if suffix_match else None

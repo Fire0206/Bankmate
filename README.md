@@ -2,7 +2,7 @@
 
 **FinOrch** 是一个面向 2026 深圳国际金融科技大赛国内人工智能赛道的 AI Banking Agent 项目。目标是让用户用自然语言表达金融意图，由系统规划并执行模拟银行业务，同时提供可解释、可控、安全的操作体验。
 
-> **项目状态：Phase 2C — 竞赛演示与可靠性加固已完成。** 六类模拟业务及跨场景任务已实现；本阶段补充确定性财务提示、发薪日计划预览和独立 `/showcase` 工作台，并复核服务端安全边界。真实认证、真实金融服务和生产部署仍未实现。
+> **当前阶段：Phase 2F — 工作流收尾与可靠性加固。** 六类模拟业务和两条跨场景主线已实现；当前分支补强自然语言意图识别、确认后的必需步骤续跑及评测校验。真实认证、真实金融服务和生产部署仍未实现。真实模型小样本存在已记录的分账参数失败，结果和限制见[开发指南](docs/development.md)。
 
 ## 产品规划
 
@@ -24,7 +24,7 @@
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
 - **API**：Python、FastAPI、Pydantic、uv、pytest；包括账户、收款人、转账、AA 分账、模拟理财产品/持仓/订单，以及 Agent Task、确认、取消和审计 API。资金变更只经 Agent 服务端确认流程执行。
 - **Phase 2C 扩展**：只读发薪日资金计划预览和按合成流水确定性生成的财务提示；这些接口不创建转账、订单或其他资金副作用。
-- **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；可选 OpenAI-compatible Chat Completions Adapter 需要自行配置服务端密钥。
+- **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；OpenAI-compatible Adapter 在工作流要求指定下一工具时可使用受限的函数选择，仍由服务端校验工具和参数。模型 Adapter 需要自行配置服务端密钥。
 - **数据**：SQLAlchemy 2.x、SQLite、Alembic；包括合成账户、银行卡、交易、订阅、收款人、转账、分账、理财产品/持仓/订单、持久化 Agent Workflow、确认挑战和追加式审计。没有真实资金流或外部商户操作。
 - **API 类型**：FastAPI/Pydantic 生成的 OpenAPI Schema 是单一事实来源；Web 类型通过 `openapi-typescript` 生成。
 
