@@ -1,4 +1,7 @@
+from finorch_api.agent.intent import has_explicit_investment_write_intent
 from finorch_api.application.agent_workflow import (
+    _requested_card_tool,
+    _requested_subscription_tool,
     invalid_tool_input_name,
     missing_explicit_write_parameters_message,
     missing_payday_parameters_message,
@@ -72,6 +75,11 @@ def test_payday_completion_requires_transfer_and_investment() -> None:
         )
         == ()
     )
+
+    assert missing_requested_write_tools(
+        "发薪日资金调度，给小林转 200 元，预留 3000 元，其余投资",
+        _history(),
+    ) == ("transfer.create", "investment.buy")
 
 
 def test_payday_completion_detects_forward_amount_and_allocation_intents() -> None:
@@ -162,6 +170,18 @@ def test_subscription_stop_intent_requires_cancel_while_pause_stays_reversible()
     )
 
 
+def test_explicit_payday_intents_accept_remainder_and_suitability_wording() -> None:
+    assert has_explicit_investment_write_intent(
+        "本次发薪先转200元给小林，至少留下3500元；请先查询收支与余额，再按可投金额配置适合产品。"
+    )
+    assert has_explicit_investment_write_intent("剩余买适合我的理财")
+    assert has_explicit_investment_write_intent("剩余资金全部投入适合的理财产品")
+
+
+def test_subscription_stop_with_continue_word_is_still_cancel() -> None:
+    assert _requested_subscription_tool("停止网易云音乐会员继续自动扣费") == ("subscription.cancel")
+
+
 def test_future_restore_language_does_not_request_an_immediate_resume() -> None:
     request = "临时暂停腾讯视频会员自动续费，之后可以恢复"
     assert missing_requested_write_tools(request, _history()) == ("subscription.pause",)
@@ -180,6 +200,41 @@ def test_future_restore_language_does_not_request_an_immediate_resume() -> None:
 def test_advisory_and_history_queries_do_not_require_writes() -> None:
     assert missing_requested_write_tools("怎样冻结我的银行卡？", _history()) == ()
     assert missing_requested_write_tools("查看 100 元转账记录", _history()) == ()
+    assert missing_requested_write_tools("最近的转账和预约付款各是什么状态？", _history()) == ()
+    assert missing_requested_write_tools("哪些模拟理财产品符合我的风险承受级别？", _history()) == ()
+    assert missing_explicit_write_parameters_message("最近的转账和预约付款各是什么状态？") is None
+    assert (
+        missing_explicit_write_parameters_message("哪些模拟理财产品符合我的风险承受级别？") is None
+    )
+
+
+def test_card_direction_recognizes_action_scope_and_negation() -> None:
+    assert _requested_card_tool("解除尾号4318储蓄卡的冻结状态。") == "card.unfreeze"
+    assert _requested_card_tool("将被冻结的银行卡恢复使用。") == "card.unfreeze"
+    assert _requested_card_tool("重新启用已冻结的银行卡。") == "card.unfreeze"
+    assert _requested_card_tool("冻结尾号1042的银行卡。") == "card.freeze"
+    assert _requested_card_tool("保持银行卡冻结，不要解冻。") is None
+    assert _requested_card_tool("查看卡片冻结状态。") is None
+
+
+def test_ambiguous_card_write_is_stopped_before_tool_execution() -> None:
+    request = "我记不清要冻结的是1042还是4318，先帮我处理一下。"
+
+    assert missing_explicit_write_parameters_message(request) == (
+        "请明确选择一张银行卡，并提供唯一的尾号。"
+    )
+
+
+def test_subscription_direction_uses_current_action_not_state_description() -> None:
+    assert (
+        _requested_subscription_tool("把云盘会员从暂停状态恢复成正常续费。")
+        == "subscription.resume"
+    )
+    assert _requested_subscription_tool("暂停云盘会员自动续费，之后可以恢复。") == (
+        "subscription.pause"
+    )
+    assert _requested_subscription_tool("查看云盘会员当前是否暂停。") is None
+    assert _requested_subscription_tool("取消之后查看云盘会员历史。") is None
 
 
 def test_social_engineering_risk_signals_do_not_force_write_intents() -> None:
@@ -345,4 +400,13 @@ def test_transfer_and_investment_are_a_dependent_write_sequence() -> None:
             "只计算给小林转账并预留资金后的理财额度，不执行。"
         )
         is None
+    )
+
+
+def test_split_creation_with_per_person_amount_requires_total() -> None:
+    assert (
+        missing_explicit_write_parameters_message(
+            "创建读书会AA分账，每人出100元，参与者为林岚和陈舟。"
+        )
+        == "请补充分账总金额后再创建操作确认。"
     )

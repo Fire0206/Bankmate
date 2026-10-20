@@ -302,6 +302,67 @@ def test_aa_split_rounds_minor_units_and_requires_collection_confirmation(bankin
         )
 
 
+@pytest.mark.parametrize(
+    ("request_text", "expected_title", "expected_amount", "expected_participants"),
+    [
+        (
+            "活动名是读书会聚餐，建立一笔315.60元AA分账，参与者为林岚、陈舟、王珂。",
+            "读书会聚餐",
+            31_560,
+            {"林岚", "陈舟", "王珂"},
+        ),
+        (
+            "请把周末羽毛球活动记作AA分账，合计178元，除我之外有陈舟和王珂参加。",
+            "周末羽毛球活动",
+            17_800,
+            {"陈舟", "王珂"},
+        ),
+    ],
+)
+def test_phase2f_split_wording_preserves_title_total_and_people(
+    banking_api,
+    request_text: str,
+    expected_title: str,
+    expected_amount: int,
+    expected_participants: set[str],
+) -> None:
+    client, _actor, database = banking_api
+    task = submit(client, request_text, f"phase2f-split-{expected_amount}")
+
+    assert task["status"] == "awaiting_confirmation", task
+    confirmation = task["confirmation"]
+    assert confirmation["resource_label"] == expected_title
+    assert confirmation["details"]["total_amount_minor"] == expected_amount
+    participant_names = {item["display_name"] for item in confirmation["details"]["participants"]}
+    assert expected_participants <= participant_names
+    assert "我" not in participant_names
+
+    completed = confirm(client, task)
+    assert completed.status_code == 200, completed.text
+    with database.session_factory() as session:
+        bill = session.scalar(select(SplitBill))
+        assert bill is not None
+        assert bill.title == expected_title
+        assert bill.total_amount_minor == expected_amount
+        persisted_names = {
+            item.display_name
+            for item in session.scalars(
+                select(SplitParticipant).where(SplitParticipant.split_bill_id == bill.id)
+            )
+        }
+        assert expected_participants <= persisted_names
+
+
+def test_phase2f_compare_resolves_short_product_aliases(banking_api) -> None:
+    client, _actor, _database = banking_api
+    task = submit(client, "对比现金管理和短债组合", "phase2f-investment-aliases")
+
+    assert task["status"] == "completed", task
+    assert task["steps"][-1]["tool_name"] == "investment.compare"
+    product_names = {item["name"] for item in task["steps"][-1]["result_data"]["items"]}
+    assert product_names == {"安稳现金管理", "稳健短债组合"}
+
+
 def test_split_proposal_with_model_added_operation_words_needs_clarification(banking_api) -> None:
     client, _actor, database = banking_api
 

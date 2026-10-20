@@ -184,6 +184,37 @@ class OpenAICompatibleProvider(LLMProvider):
             )
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
+        return self._complete(messages, tools, tool_choice="auto")
+
+    def complete_required_tool(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_name: str,
+    ) -> ModelTurn:
+        provider_name = tool_name.replace(".", "__")
+        if not any(
+            item.get("function", {}).get("name") == provider_name
+            for item in tools
+            if isinstance(item, dict) and isinstance(item.get("function"), dict)
+        ):
+            raise AgentProviderError(
+                "agent_required_tool_unavailable",
+                "A required workflow tool is not available to the configured provider.",
+            )
+        return self._complete(
+            messages,
+            tools,
+            tool_choice={"type": "function", "function": {"name": provider_name}},
+        )
+
+    def _complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        tool_choice: str | dict[str, Any],
+    ) -> ModelTurn:
         endpoint = (
             self.base_url
             if self.base_url.endswith("/chat/completions")
@@ -193,7 +224,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "model": self.model,
             "messages": messages,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": tool_choice,
             "temperature": self.temperature,
         }
         if self.max_tokens is not None:

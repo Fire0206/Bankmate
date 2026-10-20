@@ -4,8 +4,8 @@
 
 ## 项目与目录
 
-- FinOrch 目标是模拟银行场景的 AI Banking Agent。六大场景及跨场景联动已实现；Phase 2C 的只读财务提示/资金计划预览和独立 `/showcase` 展示已交付；Phase 2E 完成失败驱动修复与新独立 DeepSeek Holdout（开发集 32/32，Holdout 63/80，详见 `docs/development.md`），仍有未解决的模型可靠性缺口。交接字段与扩展能力见 `docs/frontend-handoff.md`。跨场景示例为可疑扣款处置、发薪日资金调度。生产认证、真实金融服务及生产部署仍为 Planned。所有金额、产品与账户数据均为合成数据。
-- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、多确认续跑、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现。DeepSeek 工具调用使用低温度配置，理财申购由服务端要求同一任务提供适当性查询结果。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态。
+- FinOrch 目标是模拟银行场景的 AI Banking Agent。六大场景及跨场景联动已实现；Phase 2C 的只读财务提示/资金计划预览和独立 `/showcase` 展示已交付；当前为 Phase 2F 工作流可靠性加固。最新 DeepSeek 20 例小样本经风险拒绝预期校正后为 18/20；一次确认后续跑定向复测通过，AA 分账参数错误仍有一个未解决案例。详细结果与限制见 `docs/development.md`。交接字段与扩展能力见 `docs/frontend-handoff.md`。生产认证、真实金融服务及生产部署仍为 Planned。所有金额、产品与账户数据均为合成数据。
+- 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、多确认续跑、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现。服务端提供必需下一步骤时，兼容 Provider 使用指定工具选择，服务端仍校验工具、参数、权限和确认。理财申购由服务端要求同一任务提供适当性查询结果。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态或夸大样本。
 - `docs/` 是架构、产品、API、Agent、Workflow、安全、开发和协作契约入口；`docs/decisions/` 保存 ADR。
 - 逻辑分层：Web UI；API 验证和响应；Application 流程；Domain 规则；Infrastructure 存储/外部适配；Agent 意图/规划/工具编排；Security 授权/确认/策略/审计。按需落地，不为逻辑分层制造空模块。
 

@@ -69,6 +69,56 @@ def test_phase2e_rejects_inverted_dependent_write_order() -> None:
     assert scored["success"] is False
 
 
+def test_phase2e_allows_independent_read_tools_in_either_order_before_writes() -> None:
+    case = _write_case()
+    case["required_tools"] = [
+        "finance.payday_plan",
+        "investment.products",
+        "transfer.create",
+        "investment.buy",
+    ]
+    case["required_tool_sequence"] = case["required_tools"]
+    trial = _write_trial(
+        tools=[
+            "investment.products",
+            "finance.payday_plan",
+            "transfer.create",
+            "investment.buy",
+        ]
+    )
+
+    scored = _score_trial(case, trial)
+
+    assert scored["required_tool_covered"] is True
+    assert scored["required_tool_sequence_correct"] is True
+    assert scored["success"] is True
+
+
+def test_phase2e_requires_read_prerequisites_before_the_first_dependent_write() -> None:
+    case = _write_case()
+    case["required_tools"] = [
+        "finance.payday_plan",
+        "investment.products",
+        "transfer.create",
+        "investment.buy",
+    ]
+    case["required_tool_sequence"] = case["required_tools"]
+    trial = _write_trial(
+        tools=[
+            "finance.payday_plan",
+            "transfer.create",
+            "investment.products",
+            "investment.buy",
+        ]
+    )
+
+    scored = _score_trial(case, trial)
+
+    assert scored["required_tool_covered"] is True
+    assert scored["required_tool_sequence_correct"] is False
+    assert scored["success"] is False
+
+
 def test_phase2e_counts_unrequested_pending_write_without_inventing_effect() -> None:
     case = {
         "case_id": "CLARIFY-01",

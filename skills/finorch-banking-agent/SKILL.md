@@ -4,7 +4,7 @@ description: |
   Guide the end-to-end product, architecture, safety, implementation, evaluation, and competition demo of FinOrch, a high-stakes banking AI agent. Use for FinOrch PRDs, six-scenario scope, banking tool/confirmation/audit design, UI, safety tests, demo scripts, and pitch materials. Do not use for generic web apps or non-financial agents.
 metadata:
   short-description: Build and demo FinOrch safely
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # FinOrch Banking Agent
@@ -28,7 +28,7 @@ FinOrch 的目标是让用户用自然语言表达金融目标，由系统在可
 
 ## 当前项目假设
 
-以下内容是 2026-10-19 的设计假设，可以随用户裁决更新，不是永久架构：
+以下内容是 2026-10-20 的设计假设，可以随用户裁决更新，不是永久架构：
 
 - 对外叙事：懂用户的个人财务管家。
 - 对内叙事：银行级可信执行平台。
@@ -36,7 +36,7 @@ FinOrch 的目标是让用户用自然语言表达金融目标，由系统在可
 - 六个场景都是一级模块，三条主线负责串联演示。
 - 线框图和 Demo 脚本是设计探针，不是最终实现。
 
-当前仓库状态：Phase 2C 为六场景竞赛演示和可靠性加固阶段，六个模拟业务场景、跨场景确认续跑和 React `/showcase` 页面已实现。发薪日预览和财务提示为只读确定性接口，不会创建业务副作用。理财申购必须由服务端核对同一任务中的产品适当性结果；所有业务变更仍须服务端确认。真实模型评测结果仅引用 `docs/development.md` 的本轮记录；不得将 Fake Provider 描述为 LLM 推理，也不得将异常规则描述为欺诈检测。
+当前仓库状态：Phase 2F 聚焦工作流续跑、Agent 可靠性和竞赛演示。六个模拟业务场景、跨场景确认续跑和 React `/showcase` 页面已实现。发薪日预览和财务提示为只读确定性接口，不会创建业务副作用。理财申购必须由服务端核对同一任务中的产品适当性结果；所有业务变更仍须服务端确认。Provider 在服务端记录必需的下一步骤时使用受限工具选择；服务端仍校验工具、参数、授权和确认。2026-10-20 DeepSeek 小样本经安全预期校正后为 18/20；确认续跑一次定向复测通过，AA 分账参数错误仍未解决。真实模型评测结果仅引用 `docs/development.md` 的最新记录；不得将 Fake Provider 描述为 LLM 推理，也不得将异常规则描述为欺诈检测。
 
 如果用户改变方向，先更新相关设计文档和决策记录，再改实现，不要为了保住旧 Demo 而扭曲产品。
 

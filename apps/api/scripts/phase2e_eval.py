@@ -192,7 +192,39 @@ def _update_phase2e_budget(report: dict[str, Any]) -> None:
 
 
 def _ordered_subsequence(actual: list[str], expected: list[str]) -> bool:
-    return harness._ordered_subsequence(actual, expected)
+    """Require read phases before dependent writes while allowing reads to commute.
+
+    A contiguous group of read-only tools is an unordered prerequisite set for the
+    next write. Write tools remain ordered exactly as declared. This keeps
+    independent lookups such as product suitability and a payday plan from being
+    scored as a dependency, while preserving transfer-before-investment order.
+    """
+    actual_index = 0
+    expected_index = 0
+    reads: list[str] = []
+
+    while expected_index < len(expected):
+        required = expected[expected_index]
+        if required not in harness.WRITE_TOOLS:
+            reads.append(required)
+            expected_index += 1
+            continue
+
+        write_index = next(
+            (index for index in range(actual_index, len(actual)) if actual[index] == required),
+            None,
+        )
+        if write_index is None:
+            return False
+        observed_reads = Counter(actual[actual_index:write_index])
+        if any(observed_reads[name] < count for name, count in Counter(reads).items()):
+            return False
+        actual_index = write_index + 1
+        reads.clear()
+        expected_index += 1
+
+    observed_reads = Counter(actual[actual_index:])
+    return all(observed_reads[name] >= count for name, count in Counter(reads).items())
 
 
 def _score_trial(case: dict[str, Any], trial: dict[str, Any]) -> dict[str, Any]:

@@ -1,10 +1,10 @@
 # Agent Provider 与任务恢复
 
-> 本文保留 Phase 1B.5 的 Provider Mock 与任务恢复验证，并记录 Phase 1D 历史基线及 Phase 2A 的当前 DeepSeek 结果。当前 Agent 复用同一 Runtime/Registry/Workflow，覆盖六个模拟业务场景。
+> 本文记录当前 Provider 接口、任务恢复约定和历史验证。当前 Agent 复用同一 Runtime/Registry/Workflow，覆盖六个模拟业务场景；Phase 2F 的最新小样本与限制见[开发指南](../development.md)。
 
 ## Provider 验证范围
 
-`OpenAICompatibleProvider` 使用 Chat Completions `POST /chat/completions`，发送 `model`、`messages`、注册工具定义和 `tool_choice: auto`。适配层解析 `choices[0].message.tool_calls`；运行时会校验工具调用 ID、注册表、JSON 参数 Schema，并按每个原始 `tool_call_id` 回送工具结果。多个调用结果可以在下一轮一起返回。Provider 错误、无效响应、重复工具调用和步数上限均不会被当成业务成功。
+`OpenAICompatibleProvider` 使用 Chat Completions `POST /chat/completions`。常规轮次发送注册工具定义和 `tool_choice: auto`；持久化工作流提供 `required_next_tools` 时，适配器使用对应的命名工具选择，要求模型继续调用该步骤。DeepSeek 请求会关闭 thinking 模式，以支持命名工具选择。工具选项仍受服务端注册表筛选，运行时继续校验工具调用 ID、注册表、JSON 参数 Schema，并按每个原始 `tool_call_id` 回送工具结果。Provider 错误、无效响应、重复工具调用和步数上限均不会被当成业务成功。
 
 pytest 使用 Mock HTTP 响应覆盖请求结构、多工具多轮、无工具响应、重复/无效调用 ID、未知工具、参数 JSON/Schema 错误、HTTP 错误、超时和连接失败。这些 Mock 检查不替代真实模型验证，也不能证明不同兼容服务的具体行为一致。
 
