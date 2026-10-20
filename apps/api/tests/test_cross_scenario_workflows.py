@@ -18,6 +18,7 @@ from finorch_api.infrastructure.models import (
     InvestmentOrder,
     Subscription,
     ToolExecution,
+    Transfer,
 )
 from finorch_api.main import app
 from finorch_api.security.demo_identity import (
@@ -226,6 +227,61 @@ class _CountingNoopProvider:
         return ModelTurn("No tool call.")
 
 
+class _TransferBeforeProductsProvider:
+    mode = "openai-compatible"
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del tools
+        tool_payloads = [
+            json.loads(message["content"])
+            for message in messages
+            if message.get("role") == "tool" and isinstance(message.get("content"), str)
+        ]
+        if not any(item.get("error_code") == "workflow_step_not_ready" for item in tool_payloads):
+            return ModelTurn(
+                None,
+                (
+                    ModelToolCall(
+                        "premature-transfer",
+                        "transfer.create",
+                        '{"recipient_name":"小林","amount_minor":20000}',
+                    ),
+                ),
+            )
+        if not any(item.get("items") and "suitable" in item["items"][0] for item in tool_payloads):
+            return ModelTurn(
+                None,
+                (ModelToolCall("read-products", "investment.products", "{}"),),
+            )
+        return ModelTurn(
+            None,
+            (
+                ModelToolCall(
+                    "valid-transfer",
+                    "transfer.create",
+                    '{"recipient_name":"小林","amount_minor":20000}',
+                ),
+            ),
+        )
+
+
+class _InvestmentBeforeTransferProvider:
+    mode = "openai-compatible"
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        del messages, tools
+        return ModelTurn(
+            None,
+            (
+                ModelToolCall(
+                    "premature-buy",
+                    "investment.buy",
+                    '{"product_name":"安稳现金管理","amount_minor":10000}',
+                ),
+            ),
+        )
+
+
 def tool_names(task: dict) -> list[str]:
     return [step["tool_name"] for step in task["steps"] if step.get("tool_name")]
 
@@ -316,6 +372,7 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
         "transfer.accounts",
         "bill.monthly_summary",
         "finance.payday_plan",
+        "investment.products",
         "transfer.create",
     ]
     plan = result(task, "finance.payday_plan")
@@ -409,6 +466,139 @@ def test_payday_clarification_preserves_goal_and_resumes_after_input(workflow_co
     assert task["status"] == "awaiting_confirmation", task
     assert "finance.payday_plan" in tool_names(task)
     assert task["confirmation"]["resource_type"] == "transfer"
+
+
+def test_out_of_order_transfer_is_blocked_then_retried_after_suitability_read(
+    workflow_context,
+) -> None:
+    client, database = workflow_context
+    provider = _TransferBeforeProductsProvider()
+    previous_override = app.dependency_overrides[get_provider_selection]
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        provider, provider.mode
+    )
+    try:
+        task = submit(
+            client,
+            "先给小林转200元，再申购安稳现金管理100元",
+            "transfer-before-products",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = previous_override
+
+    assert task["status"] == "awaiting_confirmation", task
+    assert task["confirmation"]["resource_type"] == "transfer"
+    assert "investment.products" in tool_names(task)
+    blocked = [
+        step for step in task["steps"] if step.get("error_code") == "workflow_step_not_ready"
+    ]
+    assert len(blocked) == 1
+    assert blocked[0]["status"] == "failed"
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 1
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+
+
+def test_investment_proposal_cannot_bypass_required_transfer(workflow_context) -> None:
+    client, database = workflow_context
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        _InvestmentBeforeTransferProvider(), "openai-compatible"
+    )
+    try:
+        task = submit(
+            client,
+            "先给小林转200元，再申购安稳现金管理100元",
+            "investment-before-transfer",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert task["status"] == "failed"
+    assert task["error_code"] == "agent_required_tool_mismatch"
+    assert task["confirmation"] is None
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
+        assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+
+
+def test_plan_only_payday_request_completes_without_business_write(workflow_context) -> None:
+    client, database = workflow_context
+
+    task = submit(
+        client,
+        "工资到账后给小林转200元，留5000元，剩余资金投资多少？请只计算方案，不执行。",
+        "payday-plan-only",
+    )
+
+    assert task["status"] == "completed", task
+    assert "finance.payday_plan" in tool_names(task)
+    assert "transfer.create" not in tool_names(task)
+    assert "investment.buy" not in tool_names(task)
+    assert task["confirmation"] is None
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
+
+
+def test_plan_only_server_guard_rejects_model_generated_write_confirmation(
+    workflow_context,
+) -> None:
+    client, database = workflow_context
+
+    class WriteDespitePlanOnlyProvider:
+        mode = "openai-compatible"
+
+        def __init__(self):
+            self.counter = 0
+
+        def complete(self, messages, tools):
+            del messages, tools
+            self.counter += 1
+            return ModelTurn(
+                None,
+                (
+                    ModelToolCall(
+                        f"plan-only-write-{self.counter}",
+                        "transfer.create",
+                        '{"recipient_name":"小林","amount_minor":20000}',
+                    ),
+                ),
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        WriteDespitePlanOnlyProvider(), "openai-compatible"
+    )
+    try:
+        task = submit(
+            client,
+            "工资到账后给小林转200元，留5000元，剩余资金投资多少？请只计算方案，不执行。",
+            "payday-plan-only-guard",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert task["confirmation"] is None
+    assert task["error_code"] in {"agent_step_limit_exceeded", "agent_required_tool_not_called"}
+    assert any(
+        step.get("error_code") == "workflow_write_not_authorized" for step in task["steps"]
+    ), task
+    assert not any(
+        step.get("status") in {"succeeded", "awaiting_confirmation"} for step in task["steps"]
+    )
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
+        assert session.scalar(select(func.count()).select_from(Transfer)) == 0
+        source = session.get(Account, SOURCE_ACCOUNT_ID)
+        assert source is not None and source.balance_minor == 1_250_000
 
 
 def test_incomplete_confirmed_workflow_replans_before_marking_complete(workflow_context) -> None:
@@ -545,7 +735,7 @@ def test_incomplete_payday_parameters_clarify_before_any_tool_or_confirmation(
     try:
         task = submit(
             client,
-            "工资到账后给小林转 200 元，余下帮我安排成合适的模拟理财。",
+            "工资到账后给小林转 200 元，再帮我安排合适的模拟理财。",
             "incomplete-payday-clarification",
         )
     finally:

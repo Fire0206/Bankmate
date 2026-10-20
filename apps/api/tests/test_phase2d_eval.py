@@ -13,6 +13,7 @@ from scripts.phase2d_eval import (
     _aggregate,
     _balances_reconcile,
     _business_effect_unchanged,
+    _confirmation_field_results,
     _confirmation_mismatch_fields,
     _expected_confirmation_matches,
     _ordered_subsequence,
@@ -139,6 +140,42 @@ def test_confirmation_diagnostics_report_field_names_without_values() -> None:
         "details.total_amount_minor",
         "resource_label",
     ]
+
+
+def test_confirmation_field_checks_cover_split_participants_without_storing_values() -> None:
+    expected = {
+        "resource_type": "split",
+        "resource_label": "团队午餐",
+        "target_status": "open",
+        "total_amount_minor": 24_000,
+        "participants": ["林岚", "陈舟"],
+    }
+    challenge = {
+        "resource_type": "split",
+        "resource_label": "团队午餐",
+        "target_status": "open",
+        "details": {
+            "total_amount_minor": 24_000,
+            "participants": [
+                {"display_name": "演示用户甲", "status": "organizer_paid"},
+                {"display_name": "林岚", "status": "pending"},
+                {"display_name": "陈舟", "status": "pending"},
+            ],
+        },
+    }
+
+    checks = _confirmation_field_results(expected, challenge, {"steps": []})
+
+    assert checks == {
+        "resource_type": True,
+        "resource_label": True,
+        "target_status": True,
+        "total_amount_minor": True,
+        "participants": True,
+    }
+    assert _confirmation_field_results(expected, None, {"steps": []}) == {
+        key: None for key in checks
+    }
 
 
 def test_tool_sequence_comparison_is_ordered_and_allows_extra_reads() -> None:

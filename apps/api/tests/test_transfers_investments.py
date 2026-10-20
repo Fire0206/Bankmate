@@ -225,7 +225,7 @@ def test_scheduled_transfer_one_year_limit_handles_leap_day(banking_api, monkeyp
         response = client.post(
             "/api/v1/agent/tasks",
             json={
-                "request_text": "下个闰年日期给小林定时转账",
+                "request_text": "2025-02-28 00:00 给小林定时转账 20 元",
                 "conversation_id": str(UUID(int=4)),
             },
             headers={"Idempotency-Key": "schedule-after-leap-day"},
@@ -300,6 +300,52 @@ def test_aa_split_rounds_minor_units_and_requires_collection_confirmation(bankin
             )
             == 2
         )
+
+
+def test_split_proposal_with_model_added_operation_words_needs_clarification(banking_api) -> None:
+    client, _actor, database = banking_api
+
+    class AlteredSplitProvider(FakeProvider):
+        def complete(self, messages, tools):
+            del messages, tools
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "wrong-title",
+                        "transfer.split_create",
+                        json.dumps(
+                            {
+                                "title": "火锅AA分账",
+                                "amount_minor": 18_000,
+                                "participant_names": ["小林", "小王", "平分"],
+                            },
+                            ensure_ascii=False,
+                        ),
+                    ),
+                ),
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        AlteredSplitProvider(), "fake"
+    )
+    try:
+        task = submit(
+            client,
+            "创建180元的火锅AA分账，和小林、小王平分",
+            "split-altered-fields",
+        )
+    finally:
+        app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+            FakeProvider(), "fake"
+        )
+
+    assert task["status"] == "awaiting_input", task
+    assert task["confirmation"] is None
+    assert "参与人" in task["message"] or "名称" in task["message"]
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(SplitBill)) == 0
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
 
 
 def test_investment_purchase_and_redemption_update_cash_holdings_orders_and_audit(

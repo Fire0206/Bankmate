@@ -11,6 +11,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from finorch_api.agent.context import ToolCallContext
+from finorch_api.agent.intent import is_planning_only_request
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.registry import (
     POLICY_VERSION,
@@ -32,9 +33,12 @@ from finorch_api.agent.runtime import (
 from finorch_api.application.agent_workflow import (
     has_completed_tool_execution,
     invalid_tool_input_name,
+    missing_explicit_write_parameters_message,
     missing_payday_parameters_message,
     missing_requested_write_tools,
     missing_write_input_message,
+    requires_transfer_before_investment,
+    split_proposal_mismatch_message,
     task_progress_context,
     tool_input_clarification_message,
     unknown_requested_transfer_payee_message,
@@ -308,6 +312,142 @@ def _record_tool_failure(
     return ToolDispatchResult("failed", execution.result_data, message, code)
 
 
+def _record_workflow_block(
+    session: Session,
+    *,
+    task: AgentTask,
+    step: TaskStep,
+    execution: ToolExecution,
+    actor_id: UUID,
+    request_id: str,
+    code: str,
+    message: str,
+) -> ToolDispatchResult:
+    """Persist a rejected out-of-order tool call without ending the planner turn."""
+    execution.status = "failed"
+    execution.error_code = code
+    execution.result_summary = message
+    execution.result_data = {"status": "blocked", "error_code": code}
+    execution.completed_at = utc_now()
+    step.status = "failed"
+    step.error_code = code
+    step.summary = message
+    step.completed_at = utc_now()
+    _audit(
+        session,
+        actor_id=actor_id,
+        event_type="agent.workflow_step_blocked",
+        resource_type="task",
+        resource_id=task.id,
+        request_id=request_id,
+        task_id=task.id,
+        tool_execution_id=execution.id,
+        outcome="blocked",
+        before_state={"status": task.status},
+        after_state={"status": task.status, "tool_name": execution.tool_name, "error_code": code},
+    )
+    return ToolDispatchResult("blocked", execution.result_data, message, code)
+
+
+def _successful_tool_result(
+    session: Session, *, task_id: UUID, tool_name: str
+) -> dict[str, Any] | None:
+    return session.scalar(
+        select(ToolExecution.result_data)
+        .where(
+            ToolExecution.task_id == task_id,
+            ToolExecution.tool_name == tool_name,
+            ToolExecution.status == "succeeded",
+        )
+        .order_by(ToolExecution.created_at.desc(), ToolExecution.id.desc())
+        .limit(1)
+    )
+
+
+def _workflow_write_block_reason(
+    session: Session, *, task: AgentTask, tool_name: str, parsed: BaseModel
+) -> tuple[str, str] | None:
+    """Enforce the persisted transfer, planning, and suitability dependencies."""
+    if is_planning_only_request(task.request_text):
+        return "workflow_write_not_authorized", "本次只请求资金测算，没有授权创建或执行业务操作。"
+    if not requires_transfer_before_investment(task.request_text):
+        return None
+
+    plan = _successful_tool_result(session, task_id=task.id, tool_name="finance.payday_plan")
+    products = _successful_tool_result(session, task_id=task.id, tool_name="investment.products")
+    items = products.get("items", []) if isinstance(products, dict) else []
+    suitable_items = (
+        [item for item in items if isinstance(item, dict) and item.get("suitable") is True]
+        if isinstance(items, list)
+        else []
+    )
+    is_payday = any(
+        phrase in task.request_text.casefold()
+        for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度")
+    )
+
+    if tool_name == "transfer.create":
+        if is_payday and not isinstance(plan, dict):
+            return "workflow_step_not_ready", "请先完成服务端资金计划，再提出转账确认。"
+        if is_payday and isinstance(plan, dict):
+            if getattr(parsed, "recipient_name", None) != plan.get("recipient_name") or getattr(
+                parsed, "amount_minor", None
+            ) != plan.get("transfer_amount_minor"):
+                return (
+                    "workflow_step_mismatch",
+                    "转账对象或金额与服务端资金计划不一致，已阻止确认。",
+                )
+        if not isinstance(products, dict):
+            return "workflow_step_not_ready", "请先查询理财产品适当性，再提出转账确认。"
+        if not suitable_items:
+            return (
+                "no_suitable_investment_product",
+                "没有适当的模拟理财产品，未提出转账或申购确认。",
+            )
+        requested_product = next(
+            (
+                item
+                for item in items
+                if isinstance(item, dict) and item.get("name") and item["name"] in task.request_text
+            ),
+            None,
+        )
+        if requested_product is not None and requested_product.get("suitable") is not True:
+            return "risk_mismatch", "所选模拟产品不符合当前风险等级，未提出转账确认。"
+
+    if tool_name == "investment.buy":
+        transfer = _successful_tool_result(session, task_id=task.id, tool_name="transfer.create")
+        transfer_data = transfer.get("transfer", transfer) if isinstance(transfer, dict) else None
+        if not isinstance(transfer_data, dict) or transfer_data.get("status") != "executed":
+            return "workflow_step_not_ready", "转账尚未确认并成功执行，不能提出后续申购确认。"
+        if isinstance(plan, dict) and (
+            transfer_data.get("payee_name") != plan.get("recipient_name")
+            or transfer_data.get("amount_minor") != plan.get("transfer_amount_minor")
+        ):
+            return "workflow_step_mismatch", "已执行的转账与服务端资金计划不一致，已阻止后续申购。"
+        if isinstance(plan, dict) and getattr(parsed, "amount_minor", 0) > plan.get(
+            "investment_budget_minor", 0
+        ):
+            return "investment_budget_exceeded", "申购金额超过服务端计算的可投资额度。"
+        product_name = getattr(parsed, "product_name", None)
+        product = (
+            next(
+                (
+                    item
+                    for item in items
+                    if isinstance(item, dict) and item.get("name") == product_name
+                ),
+                None,
+            )
+            if isinstance(items, list)
+            else None
+        )
+        if product is None or product.get("suitable") is not True:
+            return "investment_suitability_not_verified", "申购产品尚未通过服务端适当性查询。"
+
+    return None
+
+
 def _dispatch_tool(
     session: Session,
     *,
@@ -410,6 +550,35 @@ def _dispatch_tool(
                 request_id=request_id,
                 error=error,
             )
+
+        if spec.name == "transfer.split_create" and parsed is not None:
+            mismatch = split_proposal_mismatch_message(task.request_text, parsed)
+            if mismatch is not None:
+                return _record_tool_failure(
+                    session,
+                    task=task,
+                    step=step,
+                    execution=execution,
+                    actor_id=actor_id,
+                    request_id=request_id,
+                    error=ToolExecutionError("tool_input_invalid", mismatch),
+                )
+
+        if spec.permission_level != "read_only" and parsed is not None:
+            block = _workflow_write_block_reason(
+                session, task=task, tool_name=spec.name, parsed=parsed
+            )
+            if block is not None:
+                return _record_workflow_block(
+                    session,
+                    task=task,
+                    step=step,
+                    execution=execution,
+                    actor_id=actor_id,
+                    request_id=request_id,
+                    code=block[0],
+                    message=block[1],
+                )
 
         context = ToolCallContext(session, actor_id, task, step, execution, request_id)
         try:
@@ -904,6 +1073,19 @@ def _run_task(
         )
         return _task_view(session, actor_id=actor_id, task_id=task_id)
 
+    write_clarification = missing_explicit_write_parameters_message(request_text)
+    if write_clarification:
+        _finalize_run(
+            session,
+            actor_id=actor_id,
+            task_id=task_id,
+            request_id=request_id,
+            status="awaiting_input",
+            message=write_clarification,
+            error_code=None,
+        )
+        return _task_view(session, actor_id=actor_id, task_id=task_id)
+
     if selection.error is not None or selection.provider is None:
         error = selection.error or AgentProviderError(
             "provider_not_configured", "The selected provider is not configured."
@@ -924,6 +1106,19 @@ def _run_task(
         session, actor_id=actor_id, conversation_id=conversation_id
     )
     trusted_context.update(task_progress_context(session, actor_id=actor_id, task_id=task_id))
+    requires_ordered_transfer = requires_transfer_before_investment(request_text)
+    if requires_ordered_transfer:
+        progress = trusted_context.get("task_progress", {})
+        succeeded_names = {
+            item.get("tool_name")
+            for item in progress.get("tools", [])
+            if isinstance(item, dict) and item.get("status") == "succeeded"
+        }
+        if "transfer.create" not in succeeded_names:
+            trusted_context["task_progress"] = {
+                **progress,
+                "required_next_tools": ["transfer.create"],
+            }
     registry = build_tool_registry()
 
     def dispatch(
@@ -960,6 +1155,19 @@ def _run_task(
                 dispatch=dispatch,
                 continuation=continuation or replan_count > 0,
             )
+            if (
+                requires_ordered_transfer
+                and result.error_code == "agent_required_tool_mismatch"
+                and replan_count < 2
+            ):
+                progress = task_progress_context(session, actor_id=actor_id, task_id=task_id).get(
+                    "task_progress", {}
+                )
+                trusted_context["task_progress"] = {
+                    **progress,
+                    "required_next_tools": ["transfer.create"],
+                }
+                continue
             if result.status != "completed":
                 break
             current_progress = task_progress_context(

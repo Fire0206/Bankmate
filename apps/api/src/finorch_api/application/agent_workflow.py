@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.intent import is_planning_only_request, parse_split_intent
 from finorch_api.infrastructure.models import AgentTask, TaskStep, ToolExecution
 
 
@@ -92,9 +93,53 @@ def tool_input_clarification_message(tool_name: str) -> str:
         return "请补充或核对理财产品名称和申购金额。"
     if tool_name in {"investment.redeem", "card.freeze", "card.unfreeze"}:
         return "请补充或核对要操作的产品或银行卡信息。"
+    if tool_name == "transfer.split_create":
+        return "请核对分账活动名称、总金额和参与人姓名后再继续。"
     if tool_name.startswith("subscription."):
         return "请补充或核对要操作的订阅名称。"
     return "操作信息不完整或格式不正确，请补充后再继续。"
+
+
+def _requested_card_tool(request: str) -> str | None:
+    """Recognize direct card-state requests without treating a future option as intent."""
+    if not any(phrase in request for phrase in ("银行卡", "卡片", "卡", "尾号")):
+        return None
+    unfreeze_terms = ("解冻", "解除冻结", "恢复使用", "恢复刷卡")
+    freeze_terms = ("冻结", "锁卡", "锁上", "锁住", "锁定")
+    unfreeze_positions = [request.find(term) for term in unfreeze_terms if term in request]
+    freeze_positions = [request.find(term) for term in freeze_terms if term in request]
+    if not unfreeze_positions and not freeze_positions:
+        return None
+    if unfreeze_positions and freeze_positions:
+        if min(unfreeze_positions) == min(freeze_positions):
+            return None
+        return "card.unfreeze" if min(unfreeze_positions) > min(freeze_positions) else "card.freeze"
+    return "card.unfreeze" if unfreeze_positions else "card.freeze"
+
+
+def _requested_subscription_tool(request: str) -> str | None:
+    """Recognize the requested subscription action, excluding future capability language."""
+    if not any(phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员")):
+        return None
+    if any(phrase in request for phrase in ("取消", "停止", "关闭", "关掉", "永久关闭")):
+        return "subscription.cancel"
+    if any(phrase in request for phrase in ("暂停", "暂时停", "临时停", "先停一下")):
+        return "subscription.pause"
+
+    future_restore = re.search(
+        r"(?:以后|之后|稍后|将来|随时|可以|可|能够|还能|能再).{0,8}恢复|恢复.{0,8}(?:可以|可|能够|还能|能再)",
+        request,
+    )
+    if future_restore:
+        return None
+    direct_restore = re.search(
+        r"(?:恢复.{0,8}(?:自动扣费|自动续费|订阅|会员|续费|扣款)|"
+        r"(?:自动扣费|自动续费|订阅|会员|续费|扣款).{0,8}恢复|"
+        r"重新(?:开启|开通|启用).{0,8}(?:自动扣费|自动续费|订阅|会员)|"
+        r"(?:开启|开通|启用).{0,8}(?:自动扣费|自动续费))",
+        request,
+    )
+    return "subscription.resume" if direct_restore else None
 
 
 def missing_requested_write_tools(
@@ -102,6 +147,8 @@ def missing_requested_write_tools(
 ) -> tuple[str, ...]:
     """Return explicit write intents not backed by successful server tool results."""
     request = request_text.casefold()
+    if is_planning_only_request(request_text):
+        return ()
     if _has_social_engineering_risk_signal(request):
         return ()
     history = task_progress.get("tools", [])
@@ -138,7 +185,7 @@ def missing_requested_write_tools(
             None,
         )
         if evidence is not None:
-            if "冻结" in request and "card.freeze" not in succeeded:
+            if _requested_card_tool(request) == "card.freeze" and "card.freeze" not in succeeded:
                 required.append("card.freeze")
             if "暂停" in request:
                 subscriptions = results.get("subscription.list", {}).get("items", [])
@@ -185,46 +232,23 @@ def missing_requested_write_tools(
     if not advisory_question and "取消" in request and "定时转账" in request:
         if "transfer.cancel_scheduled" not in succeeded:
             required.append("transfer.cancel_scheduled")
-    if (
-        not advisory_question
-        and "冻结" in request
-        and any(phrase in request for phrase in ("银行卡", "尾号", "卡 "))
-    ):
-        if "card.freeze" not in succeeded:
-            required.append("card.freeze")
-    if (
-        not advisory_question
-        and "解冻" in request
-        and any(phrase in request for phrase in ("银行卡", "尾号", "卡 "))
-    ):
-        if "card.unfreeze" not in succeeded:
-            required.append("card.unfreeze")
-    if (
-        not advisory_question
-        and any(phrase in request for phrase in ("暂停", "取消", "停止", "关闭", "关掉"))
-        and any(phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员"))
-    ):
-        cancellation_terms = ("取消", "停止", "关闭", "关掉")
-        action = (
-            "subscription.pause"
-            if "暂停" in request and not any(term in request for term in cancellation_terms)
-            else "subscription.cancel"
-        )
-        if action not in succeeded:
-            required.append(action)
-    if (
-        not advisory_question
-        and "恢复" in request
-        and any(phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员"))
-    ):
-        if "subscription.resume" not in succeeded:
-            required.append("subscription.resume")
+    if not advisory_question:
+        card_tool = _requested_card_tool(request)
+        if card_tool and card_tool not in succeeded:
+            required.append(card_tool)
+
+        subscription_tool = _requested_subscription_tool(request)
+        if subscription_tool and subscription_tool not in succeeded:
+            required.append(subscription_tool)
     if (
         not advisory_question
         and any(phrase in request for phrase in ("申购", "买入", "购买"))
         and has_amount
     ):
-        if "investment.buy" not in succeeded:
+        if (
+            "investment.buy" not in succeeded
+            and unsuitable_requested_investment_message(request_text, task_progress) is None
+        ):
             required.append("investment.buy")
     if (
         not advisory_question
@@ -319,14 +343,221 @@ def missing_payday_parameters_message(request_text: str) -> str | None:
         return None
     if not (
         any(phrase in request for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度"))
-        and "转" in request
+        and any(phrase in request for phrase in ("转", "支付", "汇款", "打款"))
         and any(phrase in request for phrase in ("理财", "投资", "申购", "买入", "购买"))
     ):
         return None
-    amounts = re.findall(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request)
-    if len(amounts) >= 2:
+    amount_count = len(re.findall(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request))
+    has_reserve = any(phrase in request for phrase in ("预留", "保留", "留出", "留下"))
+    explicitly_invest_remainder = bool(
+        re.search(
+            r"(?:剩余|余下|其余|余款|可用余额)[^，。；;]{0,12}(?:全部|都|全额|投资|理财|申购|买入|配置)"
+            r"|(?:全部|都|全额)[^，。；;]{0,12}(?:剩余|余下|其余|余款|可用余额)",
+            request,
+        )
+    )
+    if amount_count >= 2 and has_reserve:
         return None
-    return "请补充转账金额和希望保留在账户中的金额，再继续安排剩余资金。"
+    if amount_count >= 1 and explicitly_invest_remainder and not has_reserve:
+        return None
+    return "请补充收款人、转账金额和希望保留的金额；如要投资全部余款，请明确说明。"
+
+
+def requires_transfer_before_investment(request_text: str) -> bool:
+    """Treat an explicit same-task transfer and investment as ordered writes."""
+    request = request_text.casefold()
+    if is_planning_only_request(request):
+        return False
+    advisory = any(
+        phrase in request for phrase in ("怎么", "怎样", "如何", "能否", "可以吗", "是否", "能不能")
+    )
+    historical = any(phrase in request for phrase in ("记录", "历史", "查询", "查看", "列出"))
+    transfer = (
+        any(
+            phrase in request for phrase in ("转账", "转给", "转钱", "支付", "汇款", "打款", "划转")
+        )
+        or re.search(r"给\s*[^，。！？；,;]{1,20}转", request) is not None
+    )
+    investment = any(phrase in request for phrase in ("申购", "买入", "购买", "买", "投资", "理财"))
+    return not advisory and not historical and transfer and investment
+
+
+def missing_explicit_write_parameters_message(request_text: str) -> str | None:
+    """Clarify explicit, incomplete writes before the model can propose any side effect."""
+    request = request_text.casefold()
+    if is_planning_only_request(request):
+        return None
+    if any(
+        phrase in request
+        for phrase in (
+            "怎么",
+            "怎样",
+            "如何",
+            "能否",
+            "可以吗",
+            "是否",
+            "能不能",
+            "查询",
+            "查看",
+            "列出",
+            "记录",
+            "历史",
+            "看看",
+        )
+    ):
+        return None
+
+    if "取消" in request and any(phrase in request for phrase in ("定时转账", "预约转账")):
+        return None
+
+    supplement = request_text.rsplit("\n\n用户补充：", 1)
+    active_text = supplement[-1].casefold() if len(supplement) > 1 else request
+    card_change = any(phrase in request for phrase in ("冻结", "解冻")) and any(
+        phrase in request for phrase in ("银行卡", "卡", "尾号")
+    )
+    card_change = card_change or (
+        _requested_card_tool(request) == "card.freeze"
+        and any(phrase in request for phrase in ("锁卡", "锁上", "锁住", "锁定"))
+    )
+    if card_change:
+        suffix_source = active_text if len(supplement) > 1 else request
+        suffix_source = re.sub(r"20\d{2}[-年]\d{1,2}(?:[-月]\d{1,2}(?:日)?)?", " ", suffix_source)
+        suffix_source = re.sub(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", " ", suffix_source)
+        suffixes = set(re.findall(r"(?<!\d)\d{4}(?!\d)", suffix_source))
+        if len(suffixes) != 1:
+            if not suffixes:
+                if any(
+                    phrase in request
+                    for phrase in ("刚才", "刚刚", "上一张", "上次操作", "之前操作")
+                ):
+                    return None
+                if any(
+                    phrase in request
+                    for phrase in (
+                        "关联",
+                        "相关",
+                        "对应",
+                        "扣款卡",
+                        "异常账单",
+                        "重复扣费",
+                        "可疑扣款",
+                    )
+                ):
+                    return None
+                return "请提供要操作的银行卡尾号。"
+            return "请明确选择一张银行卡，并提供唯一的尾号。"
+
+    transfer_intent = (
+        any(
+            phrase in request
+            for phrase in ("转账", "转给", "转钱", "转一部分", "支付", "汇款", "打款", "划转")
+        )
+        or re.search(r"给\s*[^，。！？；,;]{1,20}转", request) is not None
+    )
+    investment_intent = any(
+        phrase in request for phrase in ("申购", "买入", "购买", "买", "投资", "理财")
+    )
+    if not transfer_intent and not investment_intent:
+        split_creation = any(phrase in request for phrase in ("分账", "aa")) and any(
+            phrase in request
+            for phrase in ("创建", "新建", "建立", "发起", "安排", "做一笔", "开一笔")
+        )
+        if not split_creation:
+            return None
+        split_intent = parse_split_intent(request_text)
+        missing_split_fields = []
+        if split_intent.title is None:
+            missing_split_fields.append("活动名称")
+        if split_intent.amount_minor is None:
+            missing_split_fields.append("总金额")
+        if split_intent.participant_names is None:
+            missing_split_fields.append("参与人姓名")
+        if missing_split_fields:
+            return "请补充分账" + "、".join(missing_split_fields) + "后再创建操作确认。"
+        return None
+
+    amount_count = len(re.findall(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request))
+    has_amount = amount_count > 0
+    recipient_pattern = (
+        r"(?:转给|给)\s*(?!我\b|自己\b|用户\b)"
+        r"[\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9]{0,11}"
+        r"(?=\s*(?:转|支付|汇款|打款|\d|[，,。！？；;]|$))"
+    )
+    payment_target_pattern = (
+        r"(?:支付|汇款|打款)\s*(?:给\s*)?"
+        r"[\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9]{0,11}"
+        r"(?=\s*\d)"
+    )
+    has_recipient = bool(
+        re.search(recipient_pattern, request) or re.search(payment_target_pattern, request)
+    )
+
+    missing: list[str] = []
+    if transfer_intent:
+        if not has_recipient:
+            missing.append("收款人")
+        if not has_amount:
+            missing.append("转账金额")
+
+    payday_context = any(
+        phrase in request for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度")
+    )
+    uses_remaining_budget = any(
+        phrase in request for phrase in ("剩余", "余下", "其余", "可投金额", "可用余额")
+    )
+    if investment_intent:
+        reserve_terms = any(phrase in request for phrase in ("预留", "保留", "留出", "留下"))
+        explicit_remainder = uses_remaining_budget
+        required_amount_count = 1
+        if transfer_intent:
+            required_amount_count = 2
+            if reserve_terms and not uses_remaining_budget:
+                required_amount_count = 3
+            if payday_context and reserve_terms:
+                required_amount_count = 2
+        if not explicit_remainder and amount_count < required_amount_count:
+            missing.append("申购金额或明确的剩余资金范围")
+
+    if not missing:
+        return None
+    if transfer_intent and investment_intent:
+        return "请补充" + "、".join(missing) + "；整组操作的信息明确后，才会创建第一项操作确认。"
+    if len(missing) > 1:
+        return "请补充" + "和".join(missing) + "后再继续。"
+    return "请补充" + missing[0] + "后再继续。"
+
+
+def split_proposal_mismatch_message(request_text: str, proposed: Any) -> str | None:
+    """Reject split proposals whose material fields cannot be tied to explicit intent."""
+    request = request_text.casefold()
+    if not any(phrase in request for phrase in ("分账", "aa")):
+        return "本次请求没有明确要求创建 AA 分账。"
+    is_creation = any(
+        phrase in request for phrase in ("创建", "新建", "建立", "发起", "安排", "做一笔", "开一笔")
+    )
+    if not is_creation and any(
+        phrase in request for phrase in ("查询", "查看", "列出", "历史", "状态")
+    ):
+        return "本次请求是查看分账信息，没有授权创建新的 AA 分账。"
+
+    intent = parse_split_intent(request_text)
+    if intent.title is None:
+        return "请提供明确的分账活动名称，再创建确认请求。"
+    if intent.amount_minor is None:
+        return "请提供明确的分账总金额，再创建确认请求。"
+    if intent.participant_names is None:
+        return "请列出具体参与人姓名，再创建确认请求。"
+
+    proposed_title = getattr(proposed, "title", None)
+    proposed_amount = getattr(proposed, "amount_minor", None)
+    proposed_participants = getattr(proposed, "participant_names", None)
+    if proposed_title != intent.title:
+        return "分账活动名称与您的描述不一致，未创建确认请求；请补充或核对名称。"
+    if proposed_amount != intent.amount_minor:
+        return "分账总金额与您的描述不一致，未创建确认请求；请补充或核对金额。"
+    if tuple(proposed_participants or ()) != intent.participant_names:
+        return "分账参与人与您的描述不一致，未创建确认请求；请补充或核对姓名。"
+    return None
 
 
 def unknown_requested_transfer_payee_message(

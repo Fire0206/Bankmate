@@ -242,12 +242,36 @@ def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
 
     assert selection.provider is not None
     selection.provider.complete([{"role": "user", "content": "PRIVATE_REQUEST_DO_NOT_LOG"}], [])
+    selection.provider.complete(
+        [
+            {
+                "role": "tool",
+                "content": "FINORCH_EVAL_UNTRUSTED_DATA:synthetic hostile description",
+            }
+        ],
+        [],
+    )
     assert captured["body"]["max_tokens"] == 8192
 
     lines = usage_file.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2
-    started, recorded = (json.loads(line) for line in lines)
+    assert len(lines) == 6
+    started, context_observation, recorded, second_started, second_context, second_recorded = (
+        json.loads(line) for line in lines
+    )
     assert started["event"] == "request_started"
+    assert context_observation == {
+        "event": "request_context_observation",
+        "call_id": started["call_id"],
+        "untrusted_fixture_marker_forwarded": False,
+    }
+    assert second_context == {
+        "event": "request_context_observation",
+        "call_id": second_started["call_id"],
+        "untrusted_fixture_marker_forwarded": True,
+    }
+    assert second_started["event"] == "request_started"
+    assert second_recorded["event"] == "response_usage"
+    assert second_started["call_id"] == second_recorded["call_id"]
     assert recorded["event"] == "response_usage"
     assert started["call_id"] == recorded["call_id"]
     assert recorded == {
@@ -261,6 +285,7 @@ def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
         "cached_prompt_tokens": 50,
     }
     assert "PRIVATE" not in usage_file.read_text(encoding="utf-8")
+    assert "hostile description" not in usage_file.read_text(encoding="utf-8")
     assert "unit-test-key" not in usage_file.read_text(encoding="utf-8")
 
 

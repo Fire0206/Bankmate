@@ -19,6 +19,8 @@ from finorch_api.agent.runtime import (
 )
 from finorch_api.config import Settings
 
+_EVAL_UNTRUSTED_DATA_MARKER = "FINORCH_EVAL_UNTRUSTED_DATA:"
+
 
 @dataclass(frozen=True)
 class ProviderSelection:
@@ -215,6 +217,20 @@ class OpenAICompatibleProvider(LLMProvider):
         self._enforce_evaluation_budget()
         call_id = uuid4().hex
         self._record_event({"event": "request_started", "call_id": call_id, "model": self.model})
+        if self.usage_file is not None:
+            marker_forwarded = any(
+                message.get("role") == "tool"
+                and isinstance(message.get("content"), str)
+                and _EVAL_UNTRUSTED_DATA_MARKER in message["content"]
+                for message in messages
+            )
+            self._record_event(
+                {
+                    "event": "request_context_observation",
+                    "call_id": call_id,
+                    "untrusted_fixture_marker_forwarded": marker_forwarded,
+                }
+            )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read())
