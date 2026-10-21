@@ -595,7 +595,7 @@ function PaydayPlan({ data }: { data: JsonObject }) {
       </div>
       <div className="task-result-list">
         <div className="task-result-row">
-          <span>当前余额</span>
+          <span>规划时余额</span>
           <strong>{formatAmount(data.account_balance_minor)}</strong>
         </div>
         <div className="task-result-row">
@@ -698,27 +698,6 @@ const resultTitles: Record<string, string> = {
   "finance.payday_plan": "发薪日资金安排",
 };
 
-const readPriority: Record<string, string[]> = {
-  card: ["card.get", "card.list"],
-  bill: ["bill.anomalies", "bill.monthly_summary", "bill.transactions"],
-  subscription: ["subscription.list"],
-  transfer: [
-    "finance.payday_plan",
-    "transfer.accounts",
-    "transfer.history",
-    "transfer.splits",
-    "transfer.payees",
-    "transfer.simulate_due",
-  ],
-  investment: [
-    "investment.products",
-    "investment.compare",
-    "investment.portfolio",
-    "investment.profile",
-    "investment.orders",
-  ],
-};
-
 const writeTitles: Record<string, string> = {
   "card.freeze": "银行卡已冻结",
   "card.unfreeze": "银行卡已解冻",
@@ -740,14 +719,19 @@ function isObjectResult(
   return isObject(step.result_data);
 }
 
-function resultDomain(toolName: string): string | null {
-  if (toolName.startsWith("card.")) return "card";
-  if (toolName.startsWith("bill.")) return "bill";
-  if (toolName.startsWith("subscription.")) return "subscription";
-  if (toolName.startsWith("transfer.") || toolName === "finance.payday_plan")
-    return "transfer";
-  if (toolName.startsWith("investment.")) return "investment";
-  return null;
+function readIntentScore(toolName: string, request: string): number {
+  if (toolName === "investment.compare" && /比较|对比|区别|哪款/.test(request))
+    return 2;
+  if (toolName === "bill.anomalies" && /异常|可疑|重复扣费/.test(request))
+    return 2;
+  if (toolName === "bill.transactions" && /流水|明细|交易/.test(request))
+    return 2;
+  if (
+    toolName === "finance.payday_plan" &&
+    /发薪|资金安排|资金规划/.test(request)
+  )
+    return 2;
+  return 0;
 }
 
 function conciseValue(step: Step): string[] {
@@ -847,7 +831,7 @@ function conciseValue(step: Step): string[] {
       return [`${items.length} 笔理财操作记录`];
     case "finance.payday_plan":
       return [
-        `当前余额 ${formatAmount(data.account_balance_minor)}`,
+        `规划时余额 ${formatAmount(data.account_balance_minor)}`,
         `月收入 ${formatAmount(data.monthly_income_minor)} · 月支出 ${formatAmount(data.monthly_expense_minor)}`,
         `转账 ${formatAmount(data.transfer_amount_minor)} · 保留 ${formatAmount(data.reserve_amount_minor)} · 可投资 ${formatAmount(data.investment_budget_minor)}`,
       ];
@@ -904,22 +888,20 @@ function writeSummary(step: Step): { title: string; detail: string } {
 export function TaskResult({
   task,
   compact = false,
+  compactPrefix = "",
 }: {
   task: Task;
   compact?: boolean;
+  compactPrefix?: string;
 }) {
-  const latestByTool = new Map<string, Task["steps"][number]>();
-  for (const step of task.steps) {
-    if (
-      step.status === "succeeded" &&
-      step.tool_name &&
-      isObject(step.result_data)
+  const results = task.steps
+    .filter(
+      (step) =>
+        step.status === "succeeded" &&
+        step.tool_name &&
+        isObject(step.result_data),
     )
-      latestByTool.set(step.tool_name, step);
-  }
-  const results = [...latestByTool.values()].sort(
-    (a, b) => a.sequence - b.sequence,
-  );
+    .sort((a, b) => a.sequence - b.sequence);
   if (!results.length) return null;
 
   const writes = results.filter(
@@ -932,24 +914,39 @@ export function TaskResult({
       !Object.hasOwn(writeTitles, step.tool_name) &&
       resultTitles[step.tool_name],
   );
-  const selectedReads = new Map<string, Step>();
-  for (const step of reads) {
-    const domain = step.tool_name ? resultDomain(step.tool_name) : null;
-    if (!domain || !step.tool_name) continue;
-    const current = selectedReads.get(domain);
-    const options = readPriority[domain] ?? [];
-    if (
-      !current ||
-      options.indexOf(step.tool_name) < options.indexOf(current.tool_name ?? "")
+  // Repeated reads can be collapsed. Every successful write remains a distinct result.
+  const latestReads = new Map<string, Step>();
+  for (const step of reads) latestReads.set(step.tool_name ?? "", step);
+  const primaryReads = [...latestReads.values()]
+    .sort(
+      (a, b) =>
+        readIntentScore(b.tool_name ?? "", task.request_text) -
+          readIntentScore(a.tool_name ?? "", task.request_text) ||
+        b.sequence - a.sequence,
     )
-      selectedReads.set(domain, step);
-  }
-  const primaryReads = [...selectedReads.values()]
-    .sort((a, b) => a.sequence - b.sequence)
-    .slice(0, 4);
+    .slice(0, 2);
 
   const resultContent = (
     <>
+      {writes.length ? (
+        <div className="result-group">
+          <ul className="completed-change-list">
+            {writes.map((step) => {
+              const summary = writeSummary(step);
+              return (
+                <li key={step.id}>
+                  <span className="completed-change-mark" aria-hidden="true" />
+                  <span>
+                    <strong>{summary.title}</strong>
+                    {summary.detail ? <small>{summary.detail}</small> : null}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
+
       {primaryReads.length ? (
         <div className="result-group">
           <h3>{writes.length ? "处理依据" : "查询结果"}</h3>
@@ -978,64 +975,53 @@ export function TaskResult({
           </div>
         </div>
       ) : null}
-
-      {writes.length ? (
-        <div className="result-group">
-          <ul className="completed-change-list">
-            {writes.map((step) => {
-              const summary = writeSummary(step);
-              return (
-                <li key={step.id}>
-                  <span className="completed-change-mark" aria-hidden="true" />
-                  <span>
-                    <strong>{summary.title}</strong>
-                    {summary.detail ? <small>{summary.detail}</small> : null}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-
-      <details className="full-result-details">
-        <summary>展开完整结果</summary>
-        {results.map((step) => (
-          <div className="full-result-item" key={step.id}>
-            {step.tool_name && isObject(step.result_data) ? (
-              <>
-                <h4>{resultTitles[step.tool_name] ?? "业务结果"}</h4>
-                {resultForTool(step.tool_name, step.result_data)}
-              </>
-            ) : null}
-          </div>
-        ))}
-      </details>
     </>
   );
+  const fullResultContent = results.map((step) => {
+    if (!step.tool_name || !isObject(step.result_data)) return null;
+    const detail = resultForTool(step.tool_name, step.result_data);
+    return (
+      <div className="full-result-item" key={step.id}>
+        <h4>
+          {resultTitles[step.tool_name] ??
+            writeTitles[step.tool_name] ??
+            "业务结果"}
+        </h4>
+        {detail ?? <p>{conciseValue(step).join("；") || "已执行"}</p>}
+      </div>
+    );
+  });
 
   if (compact) {
     const compactSummary = writes.length
-      ? writes
-          .map((step) => {
-            const summary = writeSummary(step);
-            return [summary.title, summary.detail].filter(Boolean).join(" · ");
-          })
-          .slice(0, 2)
-          .join("；")
-      : primaryReads.flatMap(conciseValue).slice(0, 2).join("；");
+      ? writes.length > 1
+        ? `已执行 ${writes.length} 项操作`
+        : writes
+            .map((step) => {
+              const summary = writeSummary(step);
+              return [summary.title, summary.detail]
+                .filter(Boolean)
+                .join(" · ");
+            })
+            .join("；")
+      : task.request_text.length > 42
+        ? `${task.request_text.slice(0, 42)}…`
+        : task.request_text;
 
     return (
       <details className="historical-task-result">
         <summary>
-          <span>{compactSummary || "查看本次结果"}</span>
-          <span className="historical-result-action">详情</span>
+          <span>
+            {compactPrefix}
+            {compactSummary || "查看本次结果"}
+          </span>
+          <span className="historical-result-action">查看结果</span>
         </summary>
         <section
           aria-label="业务结果"
           className="task-result-summary historical-result-content"
         >
-          {resultContent}
+          <div className="full-result-content">{fullResultContent}</div>
         </section>
       </details>
     );
@@ -1044,6 +1030,10 @@ export function TaskResult({
   return (
     <section aria-label="业务结果" className="task-result-summary">
       {resultContent}
+      <details className="full-result-details">
+        <summary>查看业务详情</summary>
+        {fullResultContent}
+      </details>
     </section>
   );
 }

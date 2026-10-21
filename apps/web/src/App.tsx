@@ -29,6 +29,7 @@ type Message = {
 };
 type ApiState = "checking" | "connected" | "unavailable";
 type RecoveryAction = "connection" | "task" | "write-lookup" | "write-retry";
+type ComposerChoice = { taskId: string; mode: "new" | "continue" };
 type UiError = {
   title: string;
   message: string;
@@ -366,17 +367,22 @@ function StatusIndicator({ status }: { status: ApiState }) {
   );
 }
 
-function promptSuggestions(cards: CardListResponse["items"]): string[] {
-  const suggestions = [
+function promptSuggestions(): string[] {
+  return [
     "我这个月花了多少钱",
     "我有哪些自动扣费",
-    "查询我的账户余额",
     "查看适合我的理财产品",
+    "我要转账",
   ];
-  const activeCard = cards.find((item) => item.status === "active");
-  if (activeCard)
-    suggestions.push("冻结尾号 " + activeCard.card_suffix + " 的卡");
-  return suggestions;
+}
+
+function canContinueTask(task: AgentTaskResponse | null): boolean {
+  if (!task) return false;
+  return (
+    task.status === "awaiting_input" ||
+    task.status === "awaiting_confirmation" ||
+    (task.status === "failed" && hasSuccessfulChange(task))
+  );
 }
 
 export default function App() {
@@ -407,7 +413,10 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<Section>(initialSection);
   const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null);
-  const messageListRef = useRef<HTMLDivElement>(null);
+  const [composerChoice, setComposerChoice] = useState<ComposerChoice | null>(
+    null,
+  );
+  const conversationRef = useRef<HTMLDivElement>(null);
   const activeTaskId = activeTask?.id;
   const activeTaskStatus = activeTask?.status;
   const activeTaskVersion = activeTask?.version;
@@ -421,6 +430,19 @@ export default function App() {
   const audit = matchingAudit?.events ?? [];
   const auditLoading = detailsOpen && Boolean(activeTask) && !matchingAudit;
   const auditError = matchingAudit?.error ?? null;
+  const needsTaskChoice = canContinueTask(activeTask);
+  const selectedChoice =
+    composerChoice?.taskId === activeTaskId
+      ? (composerChoice?.mode ?? null)
+      : null;
+  const recentTerminalTask =
+    messages.length === 1 &&
+    messages[0]?.restored &&
+    messages[0].task &&
+    messages[0].task.status === "completed"
+      ? messages[0].task
+      : null;
+  const showWelcome = messages.length === 0 || Boolean(recentTerminalTask);
 
   const applyTask = useCallback((task: AgentTaskResponse, restored = false) => {
     setActiveTask(task);
@@ -583,11 +605,8 @@ export default function App() {
   }, [activeSection]);
 
   useEffect(() => {
-    if (messages.length > 0)
-      messageListRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-      });
+    if (messages.length > 0 && conversationRef.current)
+      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
   }, [messages.length]);
 
   useEffect(() => {
@@ -710,7 +729,9 @@ export default function App() {
     return apiClient.cancelTask(write.taskId, write.key);
   }
 
-  async function submitWrite(write: PendingWrite) {
+  async function submitWrite(
+    write: PendingWrite,
+  ): Promise<AgentTaskResponse | null> {
     storePendingWrite(write);
     setBusy(true);
     setRequestError(null);
@@ -728,6 +749,7 @@ export default function App() {
           ))
       )
         await refreshCards();
+      return task;
     } catch (error) {
       try {
         const recovered = await lookupPendingWrite(write);
@@ -744,12 +766,13 @@ export default function App() {
               ))
           )
             await refreshCards();
-          return;
+          return recovered.task;
         }
       } catch {
         // Keep the idempotency record so the user can query or safely retry it later.
       }
       setRequestError(toUiError(error));
+      return null;
     } finally {
       setBusy(false);
     }
@@ -836,21 +859,22 @@ export default function App() {
   async function sendMessage(value = draft) {
     const requestText = value.trim();
     if (!requestText || busy || !session || pendingWrite) return;
+    if (needsTaskChoice && !selectedChoice) return;
     setDraft("");
-    const hasCompletedStep = activeTask?.steps.some(
-      (step) => step.step_type === "tool" && step.status === "succeeded",
-    );
-    const canContinueFailedTask =
-      activeTask?.status === "failed" && hasCompletedStep;
-    const continuesTask = Boolean(
-      activeTask &&
-      (["awaiting_input", "awaiting_confirmation"].includes(
-        activeTask.status,
-      ) ||
-        canContinueFailedTask),
-    );
+    const continuesTask = needsTaskChoice && selectedChoice === "continue";
     setMessages((current) => [
-      ...current,
+      ...(continuesTask
+        ? current
+        : current.filter(
+            (message) =>
+              !(
+                message.restored &&
+                message.task &&
+                ["completed", "failed", "cancelled"].includes(
+                  message.task.status,
+                )
+              ),
+          )),
       {
         id: crypto.randomUUID(),
         role: "user",
@@ -870,6 +894,23 @@ export default function App() {
           }
         : { kind: "create", key, conversationId, requestText };
     await submitWrite(write);
+  }
+
+  async function startNewTask() {
+    if (!activeTask || busy || pendingWrite) return;
+    if (
+      ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status)
+    ) {
+      const cancelled = await submitWrite({
+        kind: "cancel",
+        key: crypto.randomUUID(),
+        conversationId: activeTask.conversation_id,
+        taskId: activeTask.id,
+      });
+      if (!cancelled || cancelled.status !== "cancelled") return;
+    }
+    setComposerChoice({ taskId: activeTask.id, mode: "new" });
+    document.getElementById("agent-request")?.focus();
   }
 
   async function confirmTask(task: AgentTaskResponse) {
@@ -1001,23 +1042,25 @@ export default function App() {
           ) : (
             <section
               aria-label="智能助手对话"
-              className="assistant-panel"
+              className={
+                "assistant-panel" + (showWelcome ? " assistant-panel-idle" : "")
+              }
               id="assistant"
             >
-              <div aria-live="polite" className="conversation" role="log">
-                {messages.length === 0 ? (
+              <div
+                aria-live="polite"
+                className="conversation"
+                ref={conversationRef}
+                role="log"
+              >
+                {showWelcome ? (
                   <div className="welcome-state">
-                    <h2>有什么需要处理？</h2>
-                    <p>
-                      可以查询账户、账单和自动扣费，也可以发起需要确认的模拟操作。
-                    </p>
+                    <h2>有什么可以帮你？</h2>
+                    <p>查询资金情况，或发起需要你确认的模拟操作。</p>
                     {!loading ? (
                       <div className="suggestion-group">
-                        <span className="suggestion-label">
-                          选择问题填入输入框
-                        </span>
                         <div className="suggestions">
-                          {promptSuggestions(cards).map((prompt) => (
+                          {promptSuggestions().map((prompt) => (
                             <button
                               className="suggestion-button"
                               disabled={
@@ -1031,6 +1074,15 @@ export default function App() {
                             </button>
                           ))}
                         </div>
+                        {recentTerminalTask ? (
+                          <div className="recent-task">
+                            <TaskResult
+                              compact
+                              compactPrefix="最近完成："
+                              task={recentTerminalTask}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <p className="welcome-loading" role="status">
@@ -1039,7 +1091,7 @@ export default function App() {
                     )}
                   </div>
                 ) : (
-                  <div className="message-list" ref={messageListRef}>
+                  <div className="message-list">
                     {messages.map((message) => {
                       const task = message.task;
                       const isCurrentTask = task?.id === activeTask?.id;
@@ -1091,7 +1143,12 @@ export default function App() {
                               {message.text}
                             </p>
                           ) : null}
-                          {isCurrentTask ? (
+                          {isCurrentTask && task.status === "completed" ? (
+                            <TaskResult task={task} />
+                          ) : null}
+                          {isCurrentTask &&
+                          (task.status !== "completed" ||
+                            hasSuccessfulChange(task)) ? (
                             <TaskDetails
                               audit={audit}
                               auditError={auditError}
@@ -1106,7 +1163,7 @@ export default function App() {
                               refreshing={refreshingTask}
                               task={task}
                             />
-                          ) : (
+                          ) : task.status !== "completed" ? (
                             <span
                               className={
                                 "task-status task-status-" +
@@ -1118,7 +1175,7 @@ export default function App() {
                             >
                               {taskStatusLabel(task)}
                             </span>
-                          )}
+                          ) : null}
                           {task.confirmation ? (
                             <ConfirmationCard
                               busy={busy}
@@ -1128,7 +1185,9 @@ export default function App() {
                               onConfirm={() => void confirmTask(task)}
                             />
                           ) : null}
-                          <TaskResult compact={!isCurrentTask} task={task} />
+                          {task.status !== "completed" || !isCurrentTask ? (
+                            <TaskResult compact={!isCurrentTask} task={task} />
+                          ) : null}
                         </article>
                       );
                     })}
@@ -1149,60 +1208,129 @@ export default function App() {
                   void sendMessage();
                 }}
               >
+                {needsTaskChoice && !pendingWrite ? (
+                  <div
+                    className="composer-choice"
+                    role="group"
+                    aria-label="任务输入方式"
+                  >
+                    <span>
+                      {activeTask?.status === "awaiting_confirmation"
+                        ? "当前有待确认操作"
+                        : activeTask?.status === "awaiting_input"
+                          ? "当前任务需要补充信息"
+                          : "当前任务部分完成"}
+                    </span>
+                    <div>
+                      <button
+                        className={
+                          selectedChoice === "continue" ? "choice-active" : ""
+                        }
+                        disabled={busy}
+                        onClick={() =>
+                          activeTask &&
+                          setComposerChoice({
+                            taskId: activeTask.id,
+                            mode: "continue",
+                          })
+                        }
+                        type="button"
+                      >
+                        补充当前任务
+                      </button>
+                      <button
+                        className={
+                          selectedChoice === "new" ? "choice-active" : ""
+                        }
+                        disabled={busy}
+                        onClick={() => void startNewTask()}
+                        type="button"
+                      >
+                        开始新任务
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {pendingWrite ? (
                   <p className="composer-hint">
                     提交结果尚未确认。请先查询这次请求的状态，不要重新发起。
                   </p>
-                ) : activeTask?.status === "awaiting_input" ? (
-                  <p className="composer-hint">补充信息会继续当前任务。</p>
-                ) : activeTask?.status === "awaiting_confirmation" ? (
+                ) : needsTaskChoice &&
+                  selectedChoice === "continue" &&
+                  activeTask?.status === "awaiting_confirmation" ? (
                   <p className="composer-hint">
-                    修改请求会取消当前确认，并重新核对操作内容。
+                    补充当前任务会使这次确认失效，操作内容需要重新核对。
                   </p>
-                ) : activeTask?.status === "failed" &&
-                  hasSuccessfulChange(activeTask) ? (
+                ) : needsTaskChoice &&
+                  !selectedChoice &&
+                  activeTask?.status === "awaiting_confirmation" ? (
                   <p className="composer-hint">
-                    已完成的操作不会重复执行；请核对状态后再继续。
+                    开始新任务会取消待确认操作；已执行的操作不会撤销。
+                  </p>
+                ) : needsTaskChoice &&
+                  !selectedChoice &&
+                  activeTask?.status === "awaiting_input" ? (
+                  <p className="composer-hint">
+                    开始新任务会结束当前请求；已执行的操作不会撤销。
+                  </p>
+                ) : needsTaskChoice &&
+                  !selectedChoice &&
+                  activeTask?.status === "failed" ? (
+                  <p className="composer-hint">
+                    已执行的操作不会因切换任务而撤销。
                   </p>
                 ) : null}
-                <label className="visually-hidden" htmlFor="agent-request">
-                  输入请求
-                </label>
-                <div className="composer-row">
-                  <textarea
-                    id="agent-request"
-                    disabled={Boolean(pendingWrite)}
-                    maxLength={1000}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === "Enter" &&
-                        !event.shiftKey &&
-                        !event.nativeEvent.isComposing
-                      ) {
-                        event.preventDefault();
-                        void sendMessage();
-                      }
-                    }}
-                    placeholder={
-                      activeTask?.status === "awaiting_input"
-                        ? "补充这项任务所需的信息"
-                        : "输入你需要查询或办理的事项"
-                    }
-                    rows={1}
-                    value={draft}
-                  />
-                  <button
-                    aria-label="发送请求"
-                    className="send-button"
-                    disabled={
-                      busy || Boolean(pendingWrite) || !draft.trim() || !session
-                    }
-                    type="submit"
-                  >
-                    <AppIcon name="send" size={19} />
-                  </button>
-                </div>
+                {!needsTaskChoice || selectedChoice ? (
+                  <>
+                    <label className="visually-hidden" htmlFor="agent-request">
+                      输入请求
+                    </label>
+                    <div className="composer-row">
+                      <textarea
+                        id="agent-request"
+                        disabled={
+                          Boolean(pendingWrite) ||
+                          (needsTaskChoice && !selectedChoice)
+                        }
+                        maxLength={1000}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey &&
+                            !event.nativeEvent.isComposing
+                          ) {
+                            event.preventDefault();
+                            void sendMessage();
+                          }
+                        }}
+                        placeholder={
+                          needsTaskChoice && !selectedChoice
+                            ? "先选择补充当前任务或开始新任务"
+                            : selectedChoice === "continue"
+                              ? "补充这项任务所需的信息"
+                              : "输入你需要查询或办理的事项"
+                        }
+                        rows={1}
+                        value={draft}
+                      />
+                      <button
+                        aria-label="发送请求"
+                        className="send-button"
+                        disabled={
+                          busy ||
+                          Boolean(pendingWrite) ||
+                          !draft.trim() ||
+                          !session ||
+                          (needsTaskChoice && !selectedChoice)
+                        }
+                        type="submit"
+                      >
+                        <AppIcon name="send" size={19} />
+                      </button>
+                    </div>
+                  </>
+                ) : null}
               </form>
             </section>
           )}
