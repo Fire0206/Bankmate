@@ -75,6 +75,40 @@ export function Navigation({
           </a>
         </nav>
       </aside>
+      <nav aria-label="手机端导航" className="mobile-tabs">
+        <a
+          aria-current={activeSection === "assistant" ? "page" : undefined}
+          className={
+            activeSection === "assistant"
+              ? "mobile-tab mobile-tab-active"
+              : "mobile-tab"
+          }
+          href="#assistant"
+          onClick={() => {
+            onSelect("assistant");
+            onClose();
+          }}
+        >
+          <AppIcon name="assistant" size={21} />
+          <span>智能助手</span>
+        </a>
+        <a
+          aria-current={activeSection === "cards" ? "page" : undefined}
+          className={
+            activeSection === "cards"
+              ? "mobile-tab mobile-tab-active"
+              : "mobile-tab"
+          }
+          href="#cards"
+          onClick={() => {
+            onSelect("cards");
+            onClose();
+          }}
+        >
+          <AppIcon name="cards" size={21} />
+          <span>银行卡</span>
+        </a>
+      </nav>
     </>
   );
 }

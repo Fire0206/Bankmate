@@ -92,12 +92,16 @@ export function ConfirmationCard({
   hasPreviousChanges,
   onConfirm,
   onCancel,
+  onRefresh,
+  refreshing,
 }: {
   confirmation: Confirmation;
   busy: boolean;
   hasPreviousChanges: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const details = confirmation.details;
   const action = actionName(confirmation);
@@ -167,7 +171,18 @@ export function ConfirmationCard({
   return (
     <section aria-labelledby="confirmation-title" className="confirmation-card">
       <div className="confirmation-heading">
-        <h3 id="confirmation-title">确认{action}</h3>
+        <div>
+          <span className="confirmation-kicker">待你确认</span>
+          <h3 id="confirmation-title">{action}</h3>
+        </div>
+        <button
+          className="confirmation-refresh"
+          disabled={refreshing || busy}
+          onClick={onRefresh}
+          type="button"
+        >
+          {refreshing ? "更新中…" : "刷新状态"}
+        </button>
       </div>
 
       <div className="confirmation-card-name">
@@ -201,7 +216,14 @@ export function ConfirmationCard({
         <dl className="confirmation-details">
           {detailsRows.map(([label, item]) =>
             item === null ? null : (
-              <div key={label}>
+              <div
+                className={
+                  label === "金额" || label === "总金额"
+                    ? "confirmation-amount-row"
+                    : undefined
+                }
+                key={label}
+              >
                 <dt>{label}</dt>
                 <dd>{item}</dd>
               </div>

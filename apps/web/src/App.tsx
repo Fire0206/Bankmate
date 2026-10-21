@@ -7,7 +7,7 @@ import type {
   CardListResponse,
   DemoSessionResponse,
 } from "./api/client";
-import { AppIcon } from "./components/AppIcon";
+import { AppIcon, type IconName } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
 import { ConfirmationCard } from "./components/ConfirmationCard";
 import { Navigation, type Section } from "./components/Navigation";
@@ -367,12 +367,20 @@ function StatusIndicator({ status }: { status: ApiState }) {
   );
 }
 
-function promptSuggestions(): string[] {
+function promptSuggestions(): Array<{
+  label: string;
+  prompt: string;
+  icon: IconName;
+}> {
   return [
-    "我这个月花了多少钱",
-    "我有哪些自动扣费",
-    "查看适合我的理财产品",
-    "我要转账",
+    { label: "查看本月收支", prompt: "我这个月花了多少钱", icon: "bill" },
+    {
+      label: "管理自动扣费",
+      prompt: "我有哪些自动扣费",
+      icon: "subscriptions",
+    },
+    { label: "查询理财产品", prompt: "查看适合我的理财产品", icon: "wealth" },
+    { label: "发起转账", prompt: "我要转账", icon: "transfer" },
   ];
 }
 
@@ -1055,22 +1063,28 @@ export default function App() {
               >
                 {showWelcome ? (
                   <div className="welcome-state">
-                    <h2>有什么可以帮你？</h2>
-                    <p>查询资金情况，或发起需要你确认的模拟操作。</p>
+                    <h2>今天想办理什么？</h2>
+                    <p>查询账户、管理订阅，或办理需要确认的操作。</p>
                     {!loading ? (
                       <div className="suggestion-group">
                         <div className="suggestions">
-                          {promptSuggestions().map((prompt) => (
+                          {promptSuggestions().map((suggestion) => (
                             <button
                               className="suggestion-button"
                               disabled={
                                 busy || Boolean(pendingWrite) || !session
                               }
-                              key={prompt}
-                              onClick={() => fillPrompt(prompt)}
+                              key={suggestion.label}
+                              onClick={() => fillPrompt(suggestion.prompt)}
                               type="button"
                             >
-                              {prompt}
+                              <span
+                                className="suggestion-icon"
+                                aria-hidden="true"
+                              >
+                                <AppIcon name={suggestion.icon} size={20} />
+                              </span>
+                              <span>{suggestion.label}</span>
                             </button>
                           ))}
                         </div>
@@ -1183,6 +1197,8 @@ export default function App() {
                               hasPreviousChanges={hasSuccessfulChange(task)}
                               onCancel={() => void cancelTask(task)}
                               onConfirm={() => void confirmTask(task)}
+                              onRefresh={() => void refreshTask()}
+                              refreshing={refreshingTask}
                             />
                           ) : null}
                           {task.status !== "completed" || !isCurrentTask ? (
@@ -1294,6 +1310,10 @@ export default function App() {
                         }
                         maxLength={1000}
                         onChange={(event) => setDraft(event.target.value)}
+                        onInput={(event) => {
+                          event.currentTarget.style.height = "auto";
+                          event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 150)}px`;
+                        }}
                         onKeyDown={(event) => {
                           if (
                             event.key === "Enter" &&

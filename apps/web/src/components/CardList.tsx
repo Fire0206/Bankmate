@@ -26,6 +26,7 @@ export function CardList({
       <div className="section-heading">
         <div>
           <h2 id="cards-title">我的银行卡</h2>
+          <p>冻结或解冻前需要在智能助手中确认。</p>
         </div>
         <button
           aria-label="刷新银行卡"
@@ -85,7 +86,7 @@ export function CardList({
                 }
                 type="button"
               >
-                {card.status === "active" ? "请求冻结" : "请求解冻"}
+                {card.status === "active" ? "办理冻结" : "办理解冻"}
               </button>
             </li>
           ))}
