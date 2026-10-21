@@ -1,7 +1,11 @@
 import type { components } from "../generated/api";
 import type { ApiError } from "../api/client";
 import { AppIcon } from "./AppIcon";
-import { hasSuccessfulChange, taskStatusLabel } from "./taskFormat";
+import {
+  hasSuccessfulChange,
+  taskStatusIcon,
+  taskStatusLabel,
+} from "./taskFormat";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type AuditEvent = components["schemas"]["AgentAuditEventResponse"];
@@ -143,6 +147,7 @@ export function TaskDetails({
             }
             role="status"
           >
+            <AppIcon name={taskStatusIcon(task.status)} size={15} />
             {taskStatusLabel(task)}
           </span>
           <div className="task-activity-actions">

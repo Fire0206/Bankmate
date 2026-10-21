@@ -1,3 +1,4 @@
+import { brand } from "../brand";
 import { AppIcon } from "./AppIcon";
 
 export type Section = "assistant" | "cards";
@@ -29,7 +30,7 @@ export function Navigation({
         id="main-navigation"
       >
         <a
-          aria-label="FinOrch 首页"
+          aria-label={`${brand.name} 首页`}
           className="brand-block"
           href="#assistant"
           onClick={() => {
@@ -38,9 +39,9 @@ export function Navigation({
           }}
         >
           <span aria-hidden="true" className="brand-symbol">
-            F
+            {brand.mark}
           </span>
-          <span className="brand-name">FinOrch</span>
+          <span className="brand-name">{brand.name}</span>
         </a>
 
         <nav aria-label="工作区导航" className="nav-list">

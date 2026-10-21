@@ -1,4 +1,5 @@
 import type { components } from "../generated/api";
+import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
 
 type Task = components["schemas"]["AgentTaskResponse"];
@@ -935,7 +936,11 @@ export function TaskResult({
               const summary = writeSummary(step);
               return (
                 <li key={step.id}>
-                  <span className="completed-change-mark" aria-hidden="true" />
+                  <AppIcon
+                    className="completed-change-mark"
+                    name="check"
+                    size={18}
+                  />
                   <span>
                     <strong>{summary.title}</strong>
                     {summary.detail ? <small>{summary.detail}</small> : null}

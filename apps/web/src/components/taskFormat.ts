@@ -1,4 +1,5 @@
 import type { components } from "../generated/api";
+import type { IconName } from "./AppIcon";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 
@@ -15,6 +16,14 @@ export const statusLabels: Record<Task["status"], string> = {
 
 export function statusLabel(status: Task["status"]): string {
   return statusLabels[status];
+}
+
+export function taskStatusIcon(status: Task["status"]): IconName {
+  if (status === "completed") return "check";
+  if (status === "failed" || status === "awaiting_confirmation") return "alert";
+  if (status === "cancelled") return "close";
+  if (status === "awaiting_input") return "info";
+  return "clock";
 }
 
 const changeTools = new Set([

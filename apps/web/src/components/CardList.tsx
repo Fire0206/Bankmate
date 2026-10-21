@@ -74,7 +74,10 @@ export function CardList({
                     : "status-label-frozen")
                 }
               >
-                <span aria-hidden="true" className="status-dot" />
+                <AppIcon
+                  name={card.status === "active" ? "check" : "lock"}
+                  size={15}
+                />
                 {card.status === "active" ? "正常" : "已冻结"}
               </span>
               <button

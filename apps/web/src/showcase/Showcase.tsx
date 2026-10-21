@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import { ApiError, apiClient } from "../api/client";
+import { brand } from "../brand";
 import type {
   AccountListResponse,
   AgentTaskResponse,
@@ -315,7 +316,7 @@ function useShowcaseData(month: string) {
 function LogoMark() {
   return (
     <span aria-hidden="true" className="showcase-logo-mark">
-      F
+      {brand.mark}
     </span>
   );
 }
@@ -370,7 +371,7 @@ function CardTile({ item }: { item: CardListResponse["items"][number] }) {
       className={`showcase-bank-card ${item.status === "frozen" ? "is-frozen" : ""}`}
     >
       <div className="showcase-bank-card-top">
-        <span>FINORCH</span>
+        <span>{brand.name.toUpperCase()}</span>
         <span>{item.status === "active" ? "借记卡" : "已冻结"}</span>
       </div>
       <div className="showcase-bank-card-chip" aria-hidden="true">
@@ -1320,7 +1321,7 @@ function AgentPanel({
         </p>
         <div aria-live="polite" className="showcase-task-stream">
           <div className="showcase-assistant-message">
-            <span>FinOrch</span>
+            <span>{brand.name}</span>
             <p>你好，我可以帮你查看账户信息，或准备一项需要确认的业务操作。</p>
           </div>
           {task ? (
@@ -1775,11 +1776,15 @@ export default function Showcase() {
   };
   const title = pageItems.find((item) => item.id === page)?.label ?? "账户总览";
 
+  useEffect(() => {
+    document.title = `${brand.name} · ${title}`;
+  }, [title]);
+
   return (
     <div className="showcase-shell">
       <header className="showcase-topbar">
         <a
-          aria-label="FinOrch 总览"
+          aria-label={`${brand.name} 总览`}
           className="showcase-brand"
           href="/showcase"
           onClick={(event) => {
@@ -1789,7 +1794,7 @@ export default function Showcase() {
         >
           <LogoMark />
           <span>
-            <strong>FinOrch</strong>
+            <strong>{brand.name}</strong>
             <small>个人金融助手</small>
           </span>
         </a>
@@ -1858,7 +1863,7 @@ export default function Showcase() {
           <div className="showcase-page-head">
             <div>
               <p className="showcase-breadcrumb">
-                FinOrch <span>/</span> {title}
+                {brand.name} <span>/</span> {title}
               </p>
               {page === "overview" ? null : <h1>{title}</h1>}
             </div>

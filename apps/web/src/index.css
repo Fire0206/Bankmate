@@ -5,28 +5,28 @@
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
     "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
     sans-serif;
-  color: #202c36;
-  background: #f7f9fb;
+  color: #111111;
+  background: #f7f7f7;
   font-size: 15px;
   font-synthesis: none;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
-  --canvas: #f7f9fb;
-  --surface: #fff;
-  --ink: #202c36;
-  --muted: #62717c;
-  --subtle: #82909a;
-  --line: #e2e9ed;
-  --line-soft: #edf1f3;
-  --accent: #176d80;
-  --accent-strong: #11586a;
-  --accent-soft: #eaf4f7;
-  --success: #286b49;
-  --success-bg: #eff7f2;
-  --warning: #8b5c14;
-  --warning-bg: #fbf5e9;
-  --danger: #a83e38;
-  --danger-bg: #fcf0ef;
+  --canvas: #f7f7f7;
+  --surface: #ffffff;
+  --ink: #111111;
+  --muted: #666666;
+  --subtle: #777777;
+  --line: #e8e8e8;
+  --line-soft: #eeeeee;
+  --accent: #111111;
+  --accent-strong: #111111;
+  --accent-soft: #f2f2f2;
+  --success: #111111;
+  --success-bg: #f7f7f7;
+  --warning: #111111;
+  --warning-bg: #f7f7f7;
+  --danger: #111111;
+  --danger-bg: #f7f7f7;
 }
 
 * {
@@ -72,7 +72,7 @@ button:focus-visible,
 a:focus-visible,
 summary:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgb(23 108 107 / 35%);
+  outline: 3px solid rgb(17 17 17 / 35%);
   outline-offset: 2px;
 }
 
@@ -98,7 +98,7 @@ button:disabled {
   min-height: 520px;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: #fff;
+  background: #ffffff;
   padding: 22px 13px;
 }
 
@@ -118,7 +118,7 @@ button:disabled {
   place-items: center;
   border-radius: 11px;
   background: var(--accent);
-  color: #fff;
+  color: #ffffff;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.06em;
@@ -147,7 +147,7 @@ button:disabled {
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: #53656d;
+  color: #666666;
   cursor: pointer;
   font-size: 14px;
   font-weight: 520;
@@ -159,7 +159,7 @@ button:disabled {
 }
 
 .nav-link:hover {
-  background: #f5f7f8;
+  background: #f7f7f7;
   color: var(--ink);
 }
 
@@ -225,6 +225,10 @@ button:disabled {
   letter-spacing: -0.02em;
 }
 
+.topbar-mobile-brand {
+  display: none;
+}
+
 .account-name {
   overflow: hidden;
   color: var(--muted);
@@ -238,7 +242,7 @@ button:disabled {
   min-height: 30px;
   align-items: center;
   gap: 7px;
-  color: #416966;
+  color: #444444;
   font-size: 13px;
   font-weight: 570;
   white-space: nowrap;
@@ -248,7 +252,7 @@ button:disabled {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #438c76;
+  background: #111111;
   content: "";
 }
 
@@ -292,7 +296,7 @@ button:disabled {
   border-radius: 8px;
   background: var(--surface);
   padding: 16px;
-  box-shadow: 0 10px 28px rgb(27 44 52 / 10%);
+  box-shadow: none;
 }
 
 .environment-popover h2 {
@@ -371,8 +375,8 @@ button:disabled {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 8px 30px rgb(30 50 66 / 3%);
+  background: #ffffff;
+  box-shadow: none;
   padding: 0;
 }
 
@@ -382,10 +386,10 @@ button:disabled {
   align-items: start;
   gap: 12px;
   margin-bottom: 14px;
-  border: 1px solid #ead2cf;
+  border: 1px solid #d0d0d0;
   border-left: 3px solid var(--danger);
   border-radius: 7px;
-  background: #fffafa;
+  background: #f7f7f7;
   padding: 13px 14px;
 }
 
@@ -518,7 +522,7 @@ button:disabled {
   gap: 13px;
   border: 1px solid var(--line);
   border-radius: 17px;
-  background: #fff;
+  background: #ffffff;
   color: var(--ink);
   cursor: pointer;
   font-size: 15px;
@@ -532,8 +536,8 @@ button:disabled {
 }
 
 .suggestion-button:hover:not(:disabled) {
-  border-color: #b9d7de;
-  background: #fbfdfe;
+  border-color: #cccccc;
+  background: #f7f7f7;
 }
 
 .suggestion-icon {
@@ -543,7 +547,7 @@ button:disabled {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
-  background: #e9f4fa;
+  background: #f2f2f2;
   color: var(--accent);
 }
 
@@ -570,14 +574,14 @@ button:disabled {
   max-width: min(84%, 620px);
   border: 1px solid var(--line-soft);
   border-radius: 17px;
-  background: #fff;
+  background: #ffffff;
   padding: 10px 13px;
 }
 
 .message-bubble p,
 .task-message {
   margin: 0;
-  color: #34464d;
+  color: #333333;
   font-size: 15px;
   line-height: 1.65;
   overflow-wrap: anywhere;
@@ -585,7 +589,7 @@ button:disabled {
 }
 
 .message-bubble-user {
-  border-color: #d7e9ee;
+  border-color: #e8e8e8;
   background: var(--accent-soft);
 }
 
@@ -594,13 +598,13 @@ button:disabled {
 }
 
 .task-message-error {
-  color: #873a35;
+  color: #111111;
 }
 
 .restored-task {
   width: min(100%, 690px);
   margin-bottom: 12px;
-  border-left: 2px solid #c8d6d6;
+  border-left: 2px solid #d8d8d8;
   padding-left: 11px;
 }
 
@@ -608,7 +612,7 @@ button:disabled {
   margin-top: 23px;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: #fbfcfd;
+  background: #f7f7f7;
   padding: 0 14px;
 }
 
@@ -637,7 +641,7 @@ button:disabled {
 
 .restored-task blockquote {
   margin: 0;
-  color: #34464d;
+  color: #333333;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -646,19 +650,11 @@ button:disabled {
   display: inline-flex;
   min-height: 24px;
   align-items: center;
-  color: #506269;
+  gap: 7px;
+  color: #666666;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.task-status::before {
-  width: 7px;
-  height: 7px;
-  margin-right: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
 }
 
 .task-status-awaiting_confirmation,
@@ -679,7 +675,7 @@ button:disabled {
 }
 
 .task-status-partial {
-  color: #765516;
+  color: #111111;
 }
 
 .task-activity {
@@ -718,7 +714,7 @@ button:disabled {
 }
 
 .cancel-task-button {
-  color: #83513b;
+  color: #444444;
 }
 
 .partial-completion-note {
@@ -794,7 +790,7 @@ button:disabled {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #89999f;
+  background: #999999;
 }
 
 .step-marker-succeeded {
@@ -805,7 +801,7 @@ button:disabled {
 .step-marker-planning,
 .step-marker-pending,
 .step-marker-running {
-  background: #aa7727;
+  background: #111111;
 }
 
 .step-marker-failed {
@@ -820,7 +816,7 @@ button:disabled {
 
 .step-copy strong,
 .audit-label {
-  color: #34464d;
+  color: #333333;
   font-size: 14px;
   font-weight: 560;
 }
@@ -883,11 +879,11 @@ button:disabled {
 .confirmation-card {
   width: min(100%, 760px);
   margin-top: 10px;
-  border: 1px solid #dbe7eb;
+  border: 1px solid #e8e8e8;
   border-radius: 20px;
-  background: #fff;
+  background: #ffffff;
   padding: 22px;
-  box-shadow: 0 10px 26px rgb(24 62 78 / 5%);
+  box-shadow: none;
 }
 
 .confirmation-heading {
@@ -939,7 +935,7 @@ button:disabled {
   height: 44px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #e9f4fa;
+  background: #f2f2f2;
   padding: 12px;
 }
 
@@ -999,7 +995,7 @@ button:disabled {
   gap: 8px;
   margin-top: 18px;
   border-radius: 13px;
-  background: #f7fafb;
+  background: #f7f7f7;
   padding: 13px 15px;
 }
 
@@ -1076,7 +1072,7 @@ button:disabled {
 .button-primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: #ffffff;
 }
 
 .button-primary:hover:not(:disabled) {
@@ -1086,13 +1082,13 @@ button:disabled {
 
 .button-secondary {
   border-color: var(--line);
-  background: #fff;
-  color: #3f535b;
+  background: #ffffff;
+  color: #333333;
 }
 
 .button-secondary:hover:not(:disabled) {
-  border-color: #b8c6ca;
-  background: #f7f9f9;
+  border-color: #cccccc;
+  background: #f7f7f7;
 }
 
 .task-result-summary {
@@ -1119,14 +1115,14 @@ button:disabled {
   min-width: 0;
   border: 1px solid var(--line-soft);
   border-radius: 15px;
-  background: #fafcfd;
+  background: #f7f7f7;
   padding: 14px 15px;
 }
 
 .result-summary h4,
 .full-result-item h4 {
   margin: 0 0 6px;
-  color: #34464d;
+  color: #333333;
   font-size: 14px;
   font-weight: 600;
 }
@@ -1158,20 +1154,17 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  border: 1px solid #dcece7;
+  border: 1px solid #e8e8e8;
   border-radius: 14px;
-  background: #f6faf8;
+  background: #f7f7f7;
   color: var(--ink);
   padding: 12px 14px;
 }
 
 .completed-change-mark {
-  width: 8px;
-  height: 8px;
   flex: 0 0 auto;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: var(--success);
+  margin-top: 2px;
+  color: var(--success);
 }
 
 .completed-change-list li > span:last-child {
@@ -1191,11 +1184,26 @@ button:disabled {
 
 .task-result-notice {
   margin: 8px 0 0;
-  border-left: 2px solid #d5a24c;
+  border-left: 2px solid #555555;
   color: var(--warning);
   font-size: 13px;
   line-height: 1.5;
   padding-left: 8px;
+}
+
+.task-result-notice::before,
+.task-result-warning::before {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  content: "!";
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  margin-right: 6px;
 }
 
 .full-result-details {
@@ -1224,7 +1232,7 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   border-top: 1px solid var(--line-soft);
-  color: #465a61;
+  color: #555555;
   cursor: pointer;
   font-size: 13px;
   line-height: 1.4;
@@ -1296,7 +1304,7 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   border: 1px solid var(--line-soft);
   border-radius: 6px;
-  background: #fff;
+  background: #ffffff;
   padding: 10px 12px;
 }
 
@@ -1325,7 +1333,7 @@ button:disabled {
 .task-result-row {
   min-height: 38px;
   border-bottom: 1px solid var(--line-soft);
-  color: #34464d;
+  color: #333333;
   font-size: 14px;
   padding: 6px 2px;
 }
@@ -1400,7 +1408,7 @@ button:disabled {
 .composer {
   flex: 0 0 auto;
   border-top: 1px solid var(--line-soft);
-  background: #fff;
+  background: #ffffff;
   padding: 14px clamp(16px, 4vw, 30px) 17px;
 }
 
@@ -1419,9 +1427,9 @@ button:disabled {
   align-items: center;
   gap: 10px;
   margin: 0 auto;
-  border: 1px solid #d1dfe5;
+  border: 1px solid #d0d0d0;
   border-radius: 17px;
-  background: #fff;
+  background: #ffffff;
   padding: 7px 8px 7px 16px;
 }
 
@@ -1446,7 +1454,7 @@ button:disabled {
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: #fff;
+  background: #ffffff;
   color: var(--accent-strong);
   cursor: pointer;
   font-size: 13px;
@@ -1455,13 +1463,13 @@ button:disabled {
 
 .composer-choice button:hover:not(:disabled),
 .composer-choice .choice-active {
-  border-color: #a9c8c6;
+  border-color: #bbbbbb;
   background: var(--accent-soft);
 }
 
 .composer-row:focus-within {
-  border-color: #7fb4c0;
-  box-shadow: 0 0 0 3px rgb(23 109 128 / 10%);
+  border-color: #777777;
+  box-shadow: 0 0 0 3px rgb(17 17 17 / 12%);
 }
 
 .composer-row textarea {
@@ -1481,7 +1489,7 @@ button:disabled {
 }
 
 .composer-row textarea::placeholder {
-  color: #859399;
+  color: #888888;
 }
 
 .send-button,
@@ -1501,7 +1509,7 @@ button:disabled {
 .send-button {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: #ffffff;
 }
 
 .send-button:hover:not(:disabled) {
@@ -1584,7 +1592,7 @@ button:disabled {
   gap: 14px;
   border: 1px solid var(--line);
   border-radius: 18px;
-  background: #fff;
+  background: #ffffff;
   padding: 15px 17px;
 }
 
@@ -1595,14 +1603,14 @@ button:disabled {
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: #e9f4fa;
+  background: #f2f2f2;
   color: var(--accent-strong);
 }
 
 .card-icon-frozen {
-  border-color: #eadfc8;
-  background: #fbf6ed;
-  color: #876426;
+  border-color: #e0e0e0;
+  background: #f7f7f7;
+  color: #444444;
 }
 
 .card-copy {
@@ -1641,19 +1649,11 @@ button:disabled {
   color: var(--warning);
 }
 
-.status-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: currentColor;
-}
-
 .card-action-button {
   min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: #fff;
+  background: #ffffff;
   color: var(--accent-strong);
   cursor: pointer;
   font-size: 14px;
@@ -1662,8 +1662,8 @@ button:disabled {
 }
 
 .card-action-button:hover {
-  border-color: #a9c8c6;
-  background: #f7faf9;
+  border-color: #bbbbbb;
+  background: #f7f7f7;
 }
 
 .icon-spinning {
@@ -1719,7 +1719,7 @@ button:disabled {
     inset: 0;
     display: block;
     border: 0;
-    background: rgb(16 32 38 / 42%);
+    background: rgb(0 0 0 / 42%);
     cursor: pointer;
   }
 
@@ -1736,7 +1736,7 @@ button:disabled {
   .app-main {
     height: calc(100dvh - 62px - env(safe-area-inset-bottom));
     flex: 0 0 calc(100dvh - 62px - env(safe-area-inset-bottom));
-    background: #fff;
+    background: #ffffff;
   }
 
   .sidebar,
@@ -1796,6 +1796,20 @@ button:disabled {
 
   .topbar-section-name {
     font-size: 15px;
+  }
+
+  .topbar-mobile-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: 4px;
+  }
+
+  .topbar-brand-symbol {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    font-size: 11px;
   }
 
   .account-name {
