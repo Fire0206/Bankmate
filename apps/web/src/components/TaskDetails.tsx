@@ -125,42 +125,46 @@ export function TaskDetails({
   const businessEvents = audit.filter((event) =>
     Object.hasOwn(businessEventLabels, event.event_type),
   );
+  const showProgress = task.status !== "completed";
+  const showRecord = hasSuccessfulChange(task) || task.status === "failed";
 
   return (
     <section className="task-activity" aria-label="处理进度与记录">
-      <div className="task-activity-head">
-        <span
-          className={
-            "task-status task-status-" +
-            (task.status === "failed" && hasSuccessfulChange(task)
-              ? "partial"
-              : task.status)
-          }
-          role="status"
-        >
-          {taskStatusLabel(task)}
-        </span>
-        <div className="task-activity-actions">
-          <button
-            className="text-button"
-            disabled={refreshing}
-            onClick={onRefresh}
-            type="button"
+      {showProgress ? (
+        <div className="task-activity-head">
+          <span
+            className={
+              "task-status task-status-" +
+              (task.status === "failed" && hasSuccessfulChange(task)
+                ? "partial"
+                : task.status)
+            }
+            role="status"
           >
-            {refreshing ? "正在刷新…" : "刷新状态"}
-          </button>
-          {cancellable && !task.confirmation ? (
+            {taskStatusLabel(task)}
+          </span>
+          <div className="task-activity-actions">
             <button
-              className="text-button cancel-task-button"
-              disabled={busy}
-              onClick={onCancel}
+              className="text-button"
+              disabled={refreshing}
+              onClick={onRefresh}
               type="button"
             >
-              取消任务
+              {refreshing ? "正在刷新…" : "刷新状态"}
             </button>
-          ) : null}
+            {cancellable && !task.confirmation ? (
+              <button
+                className="text-button cancel-task-button"
+                disabled={busy}
+                onClick={onCancel}
+                type="button"
+              >
+                取消任务
+              </button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {task.status === "failed" && hasSuccessfulChange(task) ? (
         <p className="partial-completion-note">
@@ -172,106 +176,112 @@ export function TaskDetails({
         </p>
       ) : null}
 
-      <details
-        className="task-details"
-        id="task-details"
-        onToggle={(event) => onOpenChange(event.currentTarget.open)}
-        open={open}
-      >
-        <summary>
-          <span>查看处理记录</span>
-          <AppIcon className="details-chevron" name="chevron-down" size={17} />
-        </summary>
-        <div className="details-content">
-          {visibleSteps.length ? (
-            <>
-              <h3 className="details-subheading">处理步骤</h3>
-              <ol className="step-list">
-                {visibleSteps.map((step) => (
-                  <li className="step-row" key={step.id}>
-                    <span
-                      aria-hidden="true"
-                      className={
-                        "step-marker step-marker-" +
-                        step.status.replaceAll("_", "-")
-                      }
-                    />
-                    <span className="step-copy">
-                      <strong>{stepLabel(step)}</strong>
-                      {step.status === "awaiting_confirmation" ? (
-                        <span>确认前不会变更业务状态。</span>
-                      ) : step.status === "failed" ? (
-                        <span>请刷新后核对当前状态，再决定下一步。</span>
-                      ) : null}
+      {showRecord ? (
+        <details
+          className="task-details"
+          id="task-details"
+          onToggle={(event) => onOpenChange(event.currentTarget.open)}
+          open={open}
+        >
+          <summary>
+            <span>查看操作记录</span>
+            <AppIcon
+              className="details-chevron"
+              name="chevron-down"
+              size={17}
+            />
+          </summary>
+          <div className="details-content">
+            {visibleSteps.length ? (
+              <>
+                <h3 className="details-subheading">处理步骤</h3>
+                <ol className="step-list">
+                  {visibleSteps.map((step) => (
+                    <li className="step-row" key={step.id}>
+                      <span
+                        aria-hidden="true"
+                        className={
+                          "step-marker step-marker-" +
+                          step.status.replaceAll("_", "-")
+                        }
+                      />
+                      <span className="step-copy">
+                        <strong>{stepLabel(step)}</strong>
+                        {step.status === "awaiting_confirmation" ? (
+                          <span>确认前不会变更业务状态。</span>
+                        ) : step.status === "failed" ? (
+                          <span>请刷新后核对当前状态，再决定下一步。</span>
+                        ) : null}
+                      </span>
+                      <span className="step-state">{stepStatus(step)}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            ) : null}
+
+            <h3 className="details-subheading audit-subheading">状态变更</h3>
+            {auditLoading ? (
+              <p className="inline-empty" role="status">
+                正在读取操作记录…
+              </p>
+            ) : auditError ? (
+              <p className="inline-empty" role="alert">
+                暂时无法读取操作记录，请稍后刷新。
+              </p>
+            ) : businessEvents.length === 0 ? (
+              <p className="inline-empty">这项请求没有产生业务状态变更。</p>
+            ) : (
+              <ol className="audit-list">
+                {businessEvents.map((event) => (
+                  <li className="audit-row" key={event.id}>
+                    <span className="audit-label">
+                      {businessEventLabels[event.event_type]}
                     </span>
-                    <span className="step-state">{stepStatus(step)}</span>
+                    <span className="audit-summary">{eventSummary(event)}</span>
+                    <time dateTime={event.occurred_at}>
+                      {dateTimeLabel(event.occurred_at)}
+                    </time>
                   </li>
                 ))}
               </ol>
-            </>
-          ) : null}
+            )}
 
-          <h3 className="details-subheading audit-subheading">状态变更</h3>
-          {auditLoading ? (
-            <p className="inline-empty" role="status">
-              正在读取操作记录…
-            </p>
-          ) : auditError ? (
-            <p className="inline-empty" role="alert">
-              暂时无法读取操作记录，请稍后刷新。
-            </p>
-          ) : businessEvents.length === 0 ? (
-            <p className="inline-empty">这项请求没有产生业务状态变更。</p>
-          ) : (
-            <ol className="audit-list">
-              {businessEvents.map((event) => (
-                <li className="audit-row" key={event.id}>
-                  <span className="audit-label">
-                    {businessEventLabels[event.event_type]}
-                  </span>
-                  <span className="audit-summary">{eventSummary(event)}</span>
-                  <time dateTime={event.occurred_at}>
-                    {dateTimeLabel(event.occurred_at)}
-                  </time>
-                </li>
-              ))}
-            </ol>
-          )}
-
-          {import.meta.env.DEV ? (
-            <details className="developer-diagnostics">
-              <summary>本地开发诊断</summary>
-              <dl className="task-metadata">
-                <div>
-                  <dt>任务编号</dt>
-                  <dd>
-                    <code>{task.id}</code>
-                  </dd>
-                </div>
-                {task.error_code ? (
+            {import.meta.env.DEV ? (
+              <details className="developer-diagnostics">
+                <summary>本地开发诊断</summary>
+                <dl className="task-metadata">
                   <div>
-                    <dt>错误代码</dt>
+                    <dt>任务编号</dt>
                     <dd>
-                      <code>{task.error_code}</code>
+                      <code>{task.id}</code>
                     </dd>
                   </div>
-                ) : null}
-                {task.steps.map((step) => (
-                  <div key={step.id}>
-                    <dt>步骤 {step.sequence}</dt>
-                    <dd>
-                      <code>
-                        {step.tool_name ?? step.step_type} · {step.status}
-                        {step.error_code ? ` · ${step.error_code}` : ""}
-                      </code>
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          ) : null}
-        </div>
-      </details>
+                  {task.error_code ? (
+                    <div>
+                      <dt>错误代码</dt>
+                      <dd>
+                        <code>{task.error_code}</code>
+                      </dd>
+                    </div>
+                  ) : null}
+                  {task.steps.map((step) => (
+                    <div key={step.id}>
+                      <dt>步骤 {step.sequence}</dt>
+                      <dd>
+                        <code>
+                          {step.tool_name ?? step.step_type} · {step.status}
+                          {step.error_code ? ` · ${step.error_code}` : ""}
+                        </code>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }

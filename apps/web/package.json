@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test:results": "node scripts/check-task-results.mjs",
     "typecheck": "tsc -b --pretty false",
     "generate:api-types": "openapi-typescript openapi.json -o src/generated/api.d.ts"
   },

@@ -10,12 +10,12 @@
     BlinkMacSystemFont,
     sans-serif;
   color: #1b2c34;
-  background: #f7f8f7;
+  background: #fff;
   font-size: 15px;
   font-synthesis: none;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
-  --canvas: #f7f8f7;
+  --canvas: #fff;
   --surface: #fff;
   --ink: #1b2c34;
   --muted: #5e7078;
@@ -89,7 +89,6 @@ button:disabled {
   display: grid;
   height: 100vh;
   height: 100dvh;
-  min-height: 100vh;
   grid-template-columns: 220px minmax(0, 1fr);
   overflow: hidden;
 }
@@ -103,7 +102,7 @@ button:disabled {
   min-height: 520px;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: var(--surface);
+  background: #f8faf9;
   padding: 20px 14px;
 }
 
@@ -370,12 +369,12 @@ button:disabled {
 
 .page-content {
   display: flex;
-  width: min(100%, 1120px);
+  width: min(100%, 1180px);
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
   margin: 0 auto;
-  padding: 20px 30px 16px;
+  padding: 0 30px 16px;
 }
 
 .error-banner {
@@ -445,6 +444,26 @@ button:disabled {
   background: transparent;
 }
 
+.assistant-panel-idle {
+  justify-content: center;
+  padding-bottom: clamp(24px, 8vh, 74px);
+}
+
+.assistant-panel-idle .conversation {
+  flex: 0 1 auto;
+  padding-bottom: 0;
+}
+
+.assistant-panel-idle .composer {
+  border-top: 0;
+  padding-top: 20px;
+}
+
+.assistant-panel-idle .composer-row,
+.assistant-panel-idle .composer-hint {
+  width: min(100%, 760px);
+}
+
 .conversation {
   display: flex;
   flex-direction: column;
@@ -453,24 +472,24 @@ button:disabled {
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 20px clamp(20px, 6vw, 70px) 24px;
+  padding: 30px clamp(20px, 6vw, 70px) 24px;
 }
 
 .welcome-state {
-  width: min(100%, 780px);
-  margin: auto;
+  width: min(100%, 760px);
+  margin: 0 auto;
 }
 
 .welcome-state h2 {
   margin: 0;
   color: var(--ink);
-  font-size: 24px;
-  font-weight: 660;
+  font-size: clamp(25px, 3vw, 31px);
+  font-weight: 650;
   letter-spacing: -0.03em;
 }
 
 .welcome-state > p {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 15px;
   line-height: 1.6;
@@ -482,34 +501,29 @@ button:disabled {
 }
 
 .suggestion-group {
-  margin-top: 27px;
-}
-
-.suggestion-label {
-  color: var(--subtle);
-  font-size: 13px;
+  margin-top: 25px;
 }
 
 .suggestions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+  gap: 9px;
+  margin-top: 0;
 }
 
 .suggestion-button {
   display: flex;
-  min-height: 43px;
+  min-height: 47px;
   align-items: center;
   justify-content: flex-start;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #fff;
+  border: 1px solid #e4ebe9;
+  border-radius: 7px;
+  background: #f9fbfa;
   color: #34464d;
   cursor: pointer;
   font-size: 14px;
   line-height: 1.4;
-  padding: 8px 11px;
+  padding: 9px 14px;
   text-align: left;
   transition:
     border-color 140ms ease,
@@ -523,9 +537,9 @@ button:disabled {
 
 .message-list {
   display: flex;
-  width: min(100%, 880px);
+  width: min(100%, 820px);
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
   margin: 0 auto;
 }
 
@@ -576,6 +590,22 @@ button:disabled {
   margin-bottom: 12px;
   border-left: 2px solid #c8d6d6;
   padding-left: 11px;
+}
+
+.recent-task {
+  margin-top: 23px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.recent-task .historical-task-result {
+  width: 100%;
+  margin: 0;
+}
+
+.recent-task .historical-task-result > summary {
+  min-height: 46px;
+  border-top: 0;
+  font-size: 14px;
 }
 
 .restored-task > span {
@@ -698,7 +728,7 @@ button:disabled {
   border-top: 1px solid var(--line-soft);
   color: var(--accent-strong);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   list-style: none;
   padding: 0 2px;
@@ -1158,6 +1188,11 @@ button:disabled {
   margin-top: 0;
 }
 
+.full-result-content {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+
 .full-result-item h4 {
   margin-top: 8px;
 }
@@ -1303,12 +1338,12 @@ button:disabled {
 .composer {
   flex: 0 0 auto;
   border-top: 1px solid var(--line);
-  background: var(--canvas);
+  background: #fff;
   padding: 12px clamp(16px, 4vw, 30px) 14px;
 }
 
 .composer-hint {
-  width: min(100%, 880px);
+  width: min(100%, 820px);
   margin: 0 auto 7px;
   color: var(--muted);
   font-size: 13px;
@@ -1317,15 +1352,49 @@ button:disabled {
 
 .composer-row {
   display: flex;
-  width: min(100%, 880px);
-  min-height: 54px;
+  width: min(100%, 820px);
+  min-height: 64px;
   align-items: center;
   gap: 10px;
   margin: 0 auto;
   border: 1px solid #ccd8dc;
-  border-radius: 7px;
+  border-radius: 9px;
   background: #fff;
-  padding: 5px 6px 5px 13px;
+  padding: 7px 8px 7px 16px;
+}
+
+.composer-choice {
+  display: flex;
+  width: min(100%, 820px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 auto 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.composer-choice > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.composer-choice button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 9px;
+}
+
+.composer-choice button:hover:not(:disabled),
+.composer-choice .choice-active {
+  border-color: #a9c8c6;
+  background: var(--accent-soft);
 }
 
 .composer-row:focus-within {
@@ -1637,7 +1706,15 @@ button:disabled {
   }
 
   .conversation {
-    padding: 16px 14px 12px;
+    padding: 20px 14px 12px;
+  }
+
+  .assistant-panel-idle {
+    padding-bottom: 12px;
+  }
+
+  .assistant-panel-idle .conversation {
+    padding-top: 12px;
   }
 
   .welcome-state h2 {
@@ -1699,6 +1776,11 @@ button:disabled {
     min-height: 50px;
     gap: 7px;
     padding-left: 10px;
+  }
+
+  .composer-choice {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .composer-row textarea {
