@@ -2,29 +2,25 @@
 
 :root {
   font-family:
-    "Segoe UI",
-    "Microsoft YaHei UI",
-    "Microsoft YaHei",
-    "Noto Sans CJK SC",
-    -apple-system,
-    BlinkMacSystemFont,
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
     sans-serif;
-  color: #1b2c34;
-  background: #fff;
+  color: #202c36;
+  background: #f7f9fb;
   font-size: 15px;
   font-synthesis: none;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
-  --canvas: #fff;
+  --canvas: #f7f9fb;
   --surface: #fff;
-  --ink: #1b2c34;
-  --muted: #5e7078;
-  --subtle: #77878e;
-  --line: #dbe3e6;
-  --line-soft: #e9eef0;
-  --accent: #176c6b;
-  --accent-strong: #105958;
-  --accent-soft: #edf5f4;
+  --ink: #202c36;
+  --muted: #62717c;
+  --subtle: #82909a;
+  --line: #e2e9ed;
+  --line-soft: #edf1f3;
+  --accent: #176d80;
+  --accent-strong: #11586a;
+  --accent-soft: #eaf4f7;
   --success: #286b49;
   --success-bg: #eff7f2;
   --warning: #8b5c14;
@@ -89,7 +85,7 @@ button:disabled {
   display: grid;
   height: 100vh;
   height: 100dvh;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 204px minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -102,8 +98,8 @@ button:disabled {
   min-height: 520px;
   flex-direction: column;
   border-right: 1px solid var(--line);
-  background: #f8faf9;
-  padding: 20px 14px;
+  background: #fff;
+  padding: 22px 13px;
 }
 
 .brand-block {
@@ -120,7 +116,7 @@ button:disabled {
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 11px;
   background: var(--accent);
   color: #fff;
   font-size: 16px;
@@ -138,18 +134,18 @@ button:disabled {
 .nav-list {
   display: grid;
   gap: 5px;
-  margin-top: 30px;
+  margin-top: 34px;
 }
 
 .nav-link {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 44px;
+  min-height: 46px;
   align-items: center;
   gap: 11px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 12px;
   background: transparent;
   color: #53656d;
   cursor: pointer;
@@ -174,14 +170,11 @@ button:disabled {
 }
 
 .nav-link-active::before {
-  position: absolute;
-  top: 9px;
-  bottom: 9px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--accent);
-  content: "";
+  content: none;
+}
+
+.mobile-tabs {
+  display: none;
 }
 
 .app-main {
@@ -192,6 +185,7 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  background: var(--canvas);
 }
 
 .topbar {
@@ -200,7 +194,7 @@ button:disabled {
   top: 0;
   height: 64px;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   background: var(--surface);
 }
 
@@ -369,12 +363,17 @@ button:disabled {
 
 .page-content {
   display: flex;
-  width: min(100%, 1180px);
+  width: min(calc(100% - 40px), 1230px);
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  margin: 0 auto;
-  padding: 0 30px 16px;
+  margin: 18px auto 20px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 8px 30px rgb(30 50 66 / 3%);
+  padding: 0;
 }
 
 .error-banner {
@@ -446,7 +445,7 @@ button:disabled {
 
 .assistant-panel-idle {
   justify-content: center;
-  padding-bottom: clamp(24px, 8vh, 74px);
+  padding-bottom: clamp(20px, 6vh, 58px);
 }
 
 .assistant-panel-idle .conversation {
@@ -472,7 +471,7 @@ button:disabled {
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 30px clamp(20px, 6vw, 70px) 24px;
+  padding: 30px clamp(22px, 6vw, 68px) 24px;
 }
 
 .welcome-state {
@@ -483,8 +482,8 @@ button:disabled {
 .welcome-state h2 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(25px, 3vw, 31px);
-  font-weight: 650;
+  font-size: clamp(27px, 3vw, 32px);
+  font-weight: 680;
   letter-spacing: -0.03em;
 }
 
@@ -501,29 +500,31 @@ button:disabled {
 }
 
 .suggestion-group {
-  margin-top: 25px;
+  margin-top: 28px;
 }
 
 .suggestions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  gap: 11px;
   margin-top: 0;
 }
 
 .suggestion-button {
   display: flex;
-  min-height: 47px;
+  min-height: 72px;
   align-items: center;
   justify-content: flex-start;
-  border: 1px solid #e4ebe9;
-  border-radius: 7px;
-  background: #f9fbfa;
-  color: #34464d;
+  gap: 13px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+  color: var(--ink);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 570;
   line-height: 1.4;
-  padding: 9px 14px;
+  padding: 10px 15px;
   text-align: left;
   transition:
     border-color 140ms ease,
@@ -531,15 +532,26 @@ button:disabled {
 }
 
 .suggestion-button:hover:not(:disabled) {
-  border-color: #a9c8c6;
-  background: #f7faf9;
+  border-color: #b9d7de;
+  background: #fbfdfe;
+}
+
+.suggestion-icon {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9f4fa;
+  color: var(--accent);
 }
 
 .message-list {
   display: flex;
   width: min(100%, 820px);
   flex-direction: column;
-  gap: 28px;
+  gap: 25px;
   margin: 0 auto;
 }
 
@@ -557,7 +569,7 @@ button:disabled {
 .message-bubble {
   max-width: min(84%, 620px);
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: 17px;
   background: #fff;
   padding: 10px 13px;
 }
@@ -573,7 +585,7 @@ button:disabled {
 }
 
 .message-bubble-user {
-  border-color: #d5e7e5;
+  border-color: #d7e9ee;
   background: var(--accent-soft);
 }
 
@@ -594,7 +606,10 @@ button:disabled {
 
 .recent-task {
   margin-top: 23px;
-  border-top: 1px solid var(--line-soft);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fbfcfd;
+  padding: 0 14px;
 }
 
 .recent-task .historical-task-result {
@@ -603,7 +618,7 @@ button:disabled {
 }
 
 .recent-task .historical-task-result > summary {
-  min-height: 46px;
+  min-height: 54px;
   border-top: 0;
   font-size: 14px;
 }
@@ -867,12 +882,12 @@ button:disabled {
 
 .confirmation-card {
   width: min(100%, 760px);
-  margin-top: 12px;
-  border: 1px solid #d8e2e3;
-  border-left: 3px solid var(--accent);
-  border-radius: 6px;
-  background: #f9fbfa;
-  padding: 16px;
+  margin-top: 10px;
+  border: 1px solid #dbe7eb;
+  border-radius: 20px;
+  background: #fff;
+  padding: 22px;
+  box-shadow: 0 10px 26px rgb(24 62 78 / 5%);
 }
 
 .confirmation-heading {
@@ -883,18 +898,49 @@ button:disabled {
 }
 
 .confirmation-heading h3 {
-  margin: 0;
+  margin: 5px 0 0;
   color: var(--ink);
-  font-size: 16px;
-  font-weight: 660;
+  font-size: 20px;
+  font-weight: 680;
+}
+
+.confirmation-kicker {
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.confirmation-refresh {
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 8px;
+}
+
+.confirmation-refresh:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 
 .confirmation-card-name {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 14px;
+  gap: 12px;
+  margin-top: 18px;
   color: var(--accent-strong);
+}
+
+.confirmation-card-name > svg {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #e9f4fa;
+  padding: 12px;
 }
 
 .confirmation-card-name > span {
@@ -904,7 +950,7 @@ button:disabled {
 
 .confirmation-card-name strong {
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 620;
 }
 
@@ -916,7 +962,7 @@ button:disabled {
 .confirmation-details {
   display: grid;
   gap: 7px;
-  margin: 12px 0 0;
+  margin: 18px 0 0;
   padding: 0;
 }
 
@@ -925,7 +971,7 @@ button:disabled {
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid var(--line-soft);
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .confirmation-details dt {
@@ -939,14 +985,22 @@ button:disabled {
   text-align: right;
 }
 
+.confirmation-amount-row dd {
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+  letter-spacing: -0.025em;
+}
+
 .state-change {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  margin-top: 14px;
-  border-block: 1px solid var(--line-soft);
-  padding: 10px 0;
+  margin-top: 18px;
+  border-radius: 13px;
+  background: #f7fafb;
+  padding: 13px 15px;
 }
 
 .state-change > div {
@@ -971,7 +1025,7 @@ button:disabled {
 }
 
 .confirmation-impact {
-  margin: 10px 0 0;
+  margin: 16px 0 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -1000,16 +1054,16 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 18px;
 }
 
 .button {
   display: inline-flex;
-  min-height: 42px;
+  min-height: 48px;
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 12px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 620;
@@ -1058,11 +1112,15 @@ button:disabled {
 .result-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 22px;
+  gap: 11px;
 }
 
 .result-summary {
   min-width: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 15px;
+  background: #fafcfd;
+  padding: 14px 15px;
 }
 
 .result-summary h4,
@@ -1100,7 +1158,11 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+  border: 1px solid #dcece7;
+  border-radius: 14px;
+  background: #f6faf8;
   color: var(--ink);
+  padding: 12px 14px;
 }
 
 .completed-change-mark {
@@ -1337,9 +1399,9 @@ button:disabled {
 
 .composer {
   flex: 0 0 auto;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
   background: #fff;
-  padding: 12px clamp(16px, 4vw, 30px) 14px;
+  padding: 14px clamp(16px, 4vw, 30px) 17px;
 }
 
 .composer-hint {
@@ -1353,12 +1415,12 @@ button:disabled {
 .composer-row {
   display: flex;
   width: min(100%, 820px);
-  min-height: 64px;
+  min-height: 66px;
   align-items: center;
   gap: 10px;
   margin: 0 auto;
-  border: 1px solid #ccd8dc;
-  border-radius: 9px;
+  border: 1px solid #d1dfe5;
+  border-radius: 17px;
   background: #fff;
   padding: 7px 8px 7px 16px;
 }
@@ -1381,14 +1443,14 @@ button:disabled {
 }
 
 .composer-choice button {
-  min-height: 32px;
+  min-height: 40px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 11px;
   background: #fff;
   color: var(--accent-strong);
   cursor: pointer;
   font-size: 13px;
-  padding: 0 9px;
+  padding: 0 12px;
 }
 
 .composer-choice button:hover:not(:disabled),
@@ -1398,21 +1460,21 @@ button:disabled {
 }
 
 .composer-row:focus-within {
-  border-color: #6caaa7;
-  box-shadow: 0 0 0 3px rgb(23 108 107 / 10%);
+  border-color: #7fb4c0;
+  box-shadow: 0 0 0 3px rgb(23 109 128 / 10%);
 }
 
 .composer-row textarea {
   width: 100%;
   min-width: 0;
   min-height: 40px;
-  max-height: 124px;
+  max-height: 150px;
   flex: 1;
-  resize: vertical;
+  resize: none;
   border: 0;
   background: transparent;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
   outline: none;
   padding: 8px 0;
@@ -1430,7 +1492,7 @@ button:disabled {
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 12px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1448,20 +1510,19 @@ button:disabled {
 
 .cards-page {
   display: grid;
-  width: min(100%, 790px);
+  width: min(100%, 900px);
   min-height: 0;
   flex: 1 1 auto;
   align-content: start;
   overflow-y: auto;
   gap: 13px;
+  margin: 0 auto;
+  padding: 36px 30px;
 }
 
 .card-management-section {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  padding: 19px;
+  padding: 0;
 }
 
 .section-heading {
@@ -1470,24 +1531,31 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 22px;
 }
 
 .section-heading h2 {
   margin: 0;
   color: var(--ink);
-  font-size: 16px;
-  font-weight: 650;
+  font-size: 25px;
+  font-weight: 670;
+}
+
+.section-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .quiet-button {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 11px;
   background: transparent;
   color: var(--accent-strong);
   cursor: pointer;
@@ -1502,7 +1570,7 @@ button:disabled {
 
 .card-list {
   display: grid;
-  gap: 8px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1510,22 +1578,24 @@ button:disabled {
 
 .card-row {
   display: grid;
-  min-height: 70px;
-  grid-template-columns: 38px minmax(0, 1fr) auto auto;
+  min-height: 88px;
+  grid-template-columns: 50px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid var(--line-soft);
-  padding: 10px 3px;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+  padding: 15px 17px;
 }
 
 .card-icon {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
   place-items: center;
-  border: 1px solid #d4e3e1;
-  border-radius: 7px;
-  background: #f0f6f5;
+  border: 0;
+  border-radius: 50%;
+  background: #e9f4fa;
   color: var(--accent-strong);
 }
 
@@ -1544,7 +1614,7 @@ button:disabled {
 .card-name {
   overflow: hidden;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1580,15 +1650,15 @@ button:disabled {
 }
 
 .card-action-button {
-  min-height: 36px;
+  min-height: 42px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 11px;
   background: #fff;
   color: var(--accent-strong);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  padding: 0 10px;
+  padding: 0 13px;
 }
 
 .card-action-button:hover {
@@ -1658,12 +1728,58 @@ button:disabled {
   }
 
   .page-content {
-    padding-right: 22px;
-    padding-left: 22px;
+    padding: 0;
   }
 }
 
 @media (max-width: 600px) {
+  .app-main {
+    height: calc(100dvh - 62px - env(safe-area-inset-bottom));
+    flex: 0 0 calc(100dvh - 62px - env(safe-area-inset-bottom));
+    background: #fff;
+  }
+
+  .sidebar,
+  .nav-backdrop,
+  .icon-button.mobile-menu-button {
+    display: none;
+  }
+
+  .mobile-tabs {
+    position: fixed;
+    z-index: 40;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: grid;
+    height: calc(62px + env(safe-area-inset-bottom));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid var(--line);
+    background: rgb(255 255 255 / 97%);
+    padding: 5px 14px env(safe-area-inset-bottom);
+  }
+
+  .mobile-tab {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border-radius: 13px;
+    color: var(--subtle);
+    font-size: 12px;
+    font-weight: 580;
+  }
+
+  .mobile-tab-active {
+    color: var(--accent-strong);
+  }
+
+  .mobile-tab-active svg {
+    stroke-width: 2.2;
+  }
+
   .topbar {
     height: 58px;
   }
@@ -1683,8 +1799,7 @@ button:disabled {
   }
 
   .account-name {
-    max-width: 78px;
-    font-size: 12px;
+    display: none;
   }
 
   .demo-badge {
@@ -1698,7 +1813,12 @@ button:disabled {
   }
 
   .page-content {
-    padding: 12px 12px 10px;
+    width: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
   }
 
   .assistant-panel {
@@ -1706,11 +1826,11 @@ button:disabled {
   }
 
   .conversation {
-    padding: 20px 14px 12px;
+    padding: 20px 16px 18px;
   }
 
   .assistant-panel-idle {
-    padding-bottom: 12px;
+    padding-bottom: 20px;
   }
 
   .assistant-panel-idle .conversation {
@@ -1718,20 +1838,31 @@ button:disabled {
   }
 
   .welcome-state h2 {
-    font-size: 22px;
+    font-size: 26px;
   }
 
   .suggestion-group {
-    margin-top: 22px;
+    margin-top: 24px;
   }
 
   .suggestions {
-    grid-template-columns: 1fr;
-    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
   .suggestion-button {
-    min-height: 40px;
+    min-height: 104px;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 8px;
+    font-size: 14px;
+    padding: 11px 13px;
+  }
+
+  .suggestion-icon {
+    width: 40px;
+    height: 40px;
   }
 
   .message-list {
@@ -1756,11 +1887,17 @@ button:disabled {
   }
 
   .confirmation-card {
-    padding: 13px;
+    width: 100%;
+    border-radius: 19px;
+    padding: 17px;
   }
 
   .confirmation-heading h3 {
-    font-size: 16px;
+    font-size: 19px;
+  }
+
+  .confirmation-refresh {
+    min-height: 38px;
   }
 
   .result-summary-grid {
@@ -1769,13 +1906,13 @@ button:disabled {
   }
 
   .composer {
-    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+    padding: 10px 14px 12px;
   }
 
   .composer-row {
-    min-height: 50px;
+    min-height: 56px;
     gap: 7px;
-    padding-left: 10px;
+    padding-left: 14px;
   }
 
   .composer-choice {
@@ -1784,22 +1921,32 @@ button:disabled {
   }
 
   .composer-row textarea {
-    min-height: 38px;
-    font-size: 14px;
+    min-height: 42px;
+    font-size: 16px;
   }
 
   .send-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 
-  .card-management-section {
-    padding: 15px 12px;
+  .cards-page {
+    width: 100%;
+    padding: 26px 16px;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+  }
+
+  .section-heading h2 {
+    font-size: 23px;
   }
 
   .card-row {
-    grid-template-columns: 36px minmax(0, 1fr) auto;
-    gap: 8px;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 15px;
   }
 
   .card-action-button {
@@ -1816,7 +1963,7 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .confirmation-actions .button-primary {
+  .confirmation-actions .button {
     flex: 1 1 100%;
   }
 }

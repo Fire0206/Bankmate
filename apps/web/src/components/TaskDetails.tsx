@@ -125,8 +125,10 @@ export function TaskDetails({
   const businessEvents = audit.filter((event) =>
     Object.hasOwn(businessEventLabels, event.event_type),
   );
-  const showProgress = task.status !== "completed";
+  const showProgress = task.status !== "completed" && !task.confirmation;
   const showRecord = hasSuccessfulChange(task) || task.status === "failed";
+
+  if (!showProgress && !showRecord) return null;
 
   return (
     <section className="task-activity" aria-label="处理进度与记录">
