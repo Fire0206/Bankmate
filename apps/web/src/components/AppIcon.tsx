@@ -17,7 +17,9 @@ export type IconName =
   | "clock"
   | "chevron-down"
   | "info"
-  | "check";
+  | "check"
+  | "alert"
+  | "lock";
 
 const drawings: Record<IconName, ReactNode> = {
   assistant: (
@@ -94,6 +96,18 @@ const drawings: Record<IconName, ReactNode> = {
     </>
   ),
   check: <path d="m5 12 4 4L19 6" />,
+  alert: (
+    <>
+      <path d="m12 3 10 18H2L12 3Z" />
+      <path d="M12 9v5M12 17h.01" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="5" y="10" width="14" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2" />
+    </>
+  ),
 };
 
 export function AppIcon({

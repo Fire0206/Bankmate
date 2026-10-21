@@ -7,6 +7,7 @@ import type {
   CardListResponse,
   DemoSessionResponse,
 } from "./api/client";
+import { brand } from "./brand";
 import { AppIcon, type IconName } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
 import { ConfirmationCard } from "./components/ConfirmationCard";
@@ -16,6 +17,7 @@ import { TaskDetails } from "./components/TaskDetails";
 import {
   hasSuccessfulChange,
   taskMessage,
+  taskStatusIcon,
   taskStatusLabel,
 } from "./components/taskFormat";
 
@@ -232,7 +234,7 @@ function ErrorBanner({
   return (
     <section aria-live="assertive" className="error-banner" role="alert">
       <span aria-hidden="true" className="error-mark">
-        <AppIcon name="info" size={17} />
+        <AppIcon name="alert" size={17} />
       </span>
       <div className="error-copy">
         <strong>{error.title}</strong>
@@ -610,6 +612,7 @@ export default function App() {
     const nextHash = activeSection === "cards" ? "#cards" : "#assistant";
     if (window.location.hash !== nextHash)
       window.history.replaceState(null, "", nextHash);
+    document.title = `${brand.name} · ${activeSection === "cards" ? "银行卡" : "智能助手"}`;
   }, [activeSection]);
 
   useEffect(() => {
@@ -978,6 +981,15 @@ export default function App() {
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
               <h1 className="topbar-section-name">
+                <span className="topbar-mobile-brand">
+                  <span
+                    aria-hidden="true"
+                    className="brand-symbol topbar-brand-symbol"
+                  >
+                    {brand.mark}
+                  </span>
+                  {brand.name} ·
+                </span>
                 {activeSection === "cards" ? "银行卡" : "智能助手"}
               </h1>
             </div>
@@ -1187,6 +1199,10 @@ export default function App() {
                                   : task.status)
                               }
                             >
+                              <AppIcon
+                                name={taskStatusIcon(task.status)}
+                                size={15}
+                              />
                               {taskStatusLabel(task)}
                             </span>
                           ) : null}
