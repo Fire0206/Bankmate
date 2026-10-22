@@ -24,6 +24,7 @@ from finorch_api.infrastructure.models import (
     utc_now,
 )
 from finorch_api.main import app
+from finorch_api.security.circuit import active_write_hold
 from finorch_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
@@ -263,6 +264,68 @@ def test_concurrent_high_risk_confirmation_has_one_financial_effect(banking_api)
             )
             == 2
         )
+
+
+def test_repeated_bad_verification_holds_writes_but_not_owned_reads(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+    future = (utc_now() + timedelta(days=2)).replace(microsecond=0)
+    scheduled = submit(
+        client,
+        f"请在 {future:%Y-%m-%d %H:%M} 给小林定时转 50 元",
+        "scheduled-before-hold",
+    )
+    assert confirm(client, scheduled).status_code == 200
+    with database.session_factory.begin() as session:
+        due_transfer = session.scalar(select(Transfer).where(Transfer.status == "scheduled"))
+        assert due_transfer is not None
+        due_transfer.scheduled_at = utc_now() - timedelta(minutes=1)
+    task = submit(client, "给小林转 2000 元", "bad-code-hold")
+    challenge = task["confirmation"]
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+    wrong = "000000" if code != "000000" else "999999"
+    for _ in range(3):
+        response = client.post(
+            f"/api/v1/agent/tasks/{task['id']}/confirm",
+            json={
+                "challenge_id": challenge["id"],
+                "parameters_hash": challenge["parameters_hash"],
+                "verification_code": wrong,
+            },
+            headers={"Idempotency-Key": challenge["idempotency_key"]},
+        )
+        assert response.status_code == 409
+    with database.session_factory() as session:
+        assert active_write_hold(session, actor_id=DEMO_USER_ONE_ID) is not None
+        assert active_write_hold(session, actor_id=DEMO_USER_TWO_ID) is None
+
+    assert client.get("/api/v1/cards").status_code == 200
+    read_task = submit(client, "查看我的银行卡", "read-during-hold")
+    assert read_task["status"] == "completed"
+    blocked = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json={
+            "challenge_id": challenge["id"],
+            "parameters_hash": challenge["parameters_hash"],
+            "verification_code": code,
+        },
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "safety_hold_active"
+    assert balances(database) == before
+    due_response = client.post("/api/v1/simulate-due")
+    assert due_response.status_code == 200
+    assert due_response.json()["executed_count"] == 0
+    with database.session_factory() as session:
+        assert session.scalar(select(Transfer).where(Transfer.status == "scheduled")) is not None
 
 
 def test_transfer_insufficient_funds_and_actor_scoped_reads(banking_api) -> None:

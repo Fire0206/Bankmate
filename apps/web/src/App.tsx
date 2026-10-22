@@ -140,6 +140,8 @@ const apiErrorCopy: Record<string, string> = {
   verification_invalidated: "风险或操作内容已变化，请取消并重新发起。",
   verification_locked: "验证码尝试次数已用尽，请取消并重新发起。",
   verification_unavailable: "这次验证已失效，请刷新任务状态。",
+  safety_hold_active:
+    "模拟安全限制暂时阻止写操作。查询仍可使用，请稍后重新发起。",
 };
 
 const verificationErrors = new Set([

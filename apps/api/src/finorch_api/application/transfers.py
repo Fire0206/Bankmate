@@ -21,6 +21,7 @@ from finorch_api.infrastructure.models import (
     Transfer,
     utc_now,
 )
+from finorch_api.security.circuit import active_write_hold
 from finorch_api.security.risk_policy import decide_risk, executed_transfer_total
 
 POLICY_VERSION = "transfer-confirmation-v1"
@@ -563,6 +564,21 @@ def simulate_due_transfers(
 ) -> tuple[TransferView, ...]:
     now = utc_now()
     with write_transaction(session, immediate=True):
+        hold_until = active_write_hold(session, actor_id=actor_id, now=now)
+        if hold_until is not None:
+            session.add(
+                AuditEvent(
+                    actor_id=actor_id,
+                    event_type="security.write_hold_enforced",
+                    resource_type="demo_user",
+                    resource_id=actor_id,
+                    request_id=request_id,
+                    task_id=task_id,
+                    outcome="blocked",
+                    after_state={"expires_at": hold_until.isoformat(), "scope": "scheduled_write"},
+                )
+            )
+            return ()
         rows = list(
             session.scalars(
                 select(Transfer)
