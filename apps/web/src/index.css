@@ -27,6 +27,8 @@
   --warning-bg: #f7f7f7;
   --danger: #111111;
   --danger-bg: #f7f7f7;
+  --radius-control: 12px;
+  --radius-surface: 16px;
 }
 
 * {
@@ -116,7 +118,7 @@ button:disabled {
   height: 32px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   color: #ffffff;
   font-size: 16px;
@@ -145,7 +147,7 @@ button:disabled {
   align-items: center;
   gap: 11px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: #666666;
   cursor: pointer;
@@ -185,7 +187,7 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--canvas);
+  background: var(--surface);
 }
 
 .topbar {
@@ -293,7 +295,7 @@ button:disabled {
   right: 0;
   width: min(340px, calc(100vw - 28px));
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   padding: 16px;
   box-shadow: none;
@@ -367,14 +369,14 @@ button:disabled {
 
 .page-content {
   display: flex;
-  width: min(calc(100% - 40px), 1230px);
+  width: 100%;
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  margin: 18px auto 20px;
+  margin: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 22px;
+  border: 0;
+  border-radius: 0;
   background: #ffffff;
   box-shadow: none;
   padding: 0;
@@ -388,7 +390,7 @@ button:disabled {
   margin-bottom: 14px;
   border: 1px solid #d0d0d0;
   border-left: 3px solid var(--danger);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: #f7f7f7;
   padding: 13px 14px;
 }
@@ -459,7 +461,7 @@ button:disabled {
 
 .assistant-panel-idle .composer {
   border-top: 0;
-  padding-top: 20px;
+  padding-top: 22px;
 }
 
 .assistant-panel-idle .composer-row,
@@ -475,7 +477,7 @@ button:disabled {
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 30px clamp(22px, 6vw, 68px) 24px;
+  padding: 30px clamp(22px, 6vw, 68px) 20px;
 }
 
 .welcome-state {
@@ -504,50 +506,46 @@ button:disabled {
 }
 
 .suggestion-group {
-  margin-top: 28px;
+  margin-top: 26px;
 }
 
 .suggestions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 11px;
+  column-gap: 24px;
+  row-gap: 4px;
   margin-top: 0;
 }
 
 .suggestion-button {
   display: flex;
-  min-height: 72px;
+  min-height: 58px;
   align-items: center;
   justify-content: flex-start;
-  gap: 13px;
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  background: #ffffff;
+  gap: 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--ink);
   cursor: pointer;
   font-size: 15px;
   font-weight: 570;
   line-height: 1.4;
-  padding: 10px 15px;
+  padding: 10px 12px;
   text-align: left;
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease;
+  transition: background-color 140ms ease;
 }
 
 .suggestion-button:hover:not(:disabled) {
-  border-color: #cccccc;
   background: #f7f7f7;
 }
 
 .suggestion-icon {
   display: inline-grid;
-  width: 42px;
-  height: 42px;
+  width: 24px;
+  height: 24px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 50%;
-  background: #f2f2f2;
   color: var(--accent);
 }
 
@@ -572,8 +570,8 @@ button:disabled {
 
 .message-bubble {
   max-width: min(84%, 620px);
-  border: 1px solid var(--line-soft);
-  border-radius: 17px;
+  border: 0;
+  border-radius: var(--radius-control);
   background: #ffffff;
   padding: 10px 13px;
 }
@@ -609,11 +607,9 @@ button:disabled {
 }
 
 .recent-task {
-  margin-top: 23px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #f7f7f7;
-  padding: 0 14px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line-soft);
+  padding: 0;
 }
 
 .recent-task .historical-task-result {
@@ -878,11 +874,11 @@ button:disabled {
 
 .confirmation-card {
   width: min(100%, 760px);
-  margin-top: 10px;
+  margin-top: 8px;
   border: 1px solid #e8e8e8;
-  border-radius: 20px;
+  border-radius: var(--radius-surface);
   background: #ffffff;
-  padding: 22px;
+  padding: 24px;
   box-shadow: none;
 }
 
@@ -894,7 +890,7 @@ button:disabled {
 }
 
 .confirmation-heading h3 {
-  margin: 5px 0 0;
+  margin: 6px 0 0;
   color: var(--ink);
   font-size: 20px;
   font-weight: 680;
@@ -909,7 +905,7 @@ button:disabled {
 .confirmation-refresh {
   min-height: 40px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--accent-strong);
   cursor: pointer;
@@ -925,18 +921,15 @@ button:disabled {
 .confirmation-card-name {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 18px;
+  gap: 9px;
+  margin-top: 20px;
   color: var(--accent-strong);
 }
 
 .confirmation-card-name > svg {
-  width: 44px;
-  height: 44px;
+  width: 22px;
+  height: 22px;
   flex: 0 0 auto;
-  border-radius: 50%;
-  background: #f2f2f2;
-  padding: 12px;
 }
 
 .confirmation-card-name > span {
@@ -957,7 +950,7 @@ button:disabled {
 
 .confirmation-details {
   display: grid;
-  gap: 7px;
+  gap: 2px;
   margin: 18px 0 0;
   padding: 0;
 }
@@ -966,8 +959,7 @@ button:disabled {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--line-soft);
-  padding: 8px 0;
+  padding: 6px 0;
 }
 
 .confirmation-details dt {
@@ -990,18 +982,18 @@ button:disabled {
 
 .state-change {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  grid-template-columns: max-content 18px max-content;
   align-items: center;
-  gap: 8px;
-  margin-top: 18px;
-  border-radius: 13px;
-  background: #f7f7f7;
-  padding: 13px 15px;
+  gap: 10px;
+  margin-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  padding: 14px 0 0;
 }
 
 .state-change > div {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .state-change span {
@@ -1011,7 +1003,7 @@ button:disabled {
 
 .state-change strong {
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
 }
 
@@ -1021,7 +1013,7 @@ button:disabled {
 }
 
 .confirmation-impact {
-  margin: 16px 0 0;
+  margin: 14px 0 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -1050,7 +1042,7 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .button {
@@ -1059,7 +1051,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 14px;
   font-weight: 620;
@@ -1108,15 +1100,14 @@ button:disabled {
 .result-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 11px;
+  column-gap: 22px;
+  row-gap: 12px;
 }
 
 .result-summary {
   min-width: 0;
-  border: 1px solid var(--line-soft);
-  border-radius: 15px;
-  background: #f7f7f7;
-  padding: 14px 15px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 8px 0 14px;
 }
 
 .result-summary h4,
@@ -1154,11 +1145,9 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  border: 1px solid #e8e8e8;
-  border-radius: 14px;
-  background: #f7f7f7;
+  border-bottom: 1px solid var(--line-soft);
   color: var(--ink);
-  padding: 12px 14px;
+  padding: 9px 0 12px;
 }
 
 .completed-change-mark {
@@ -1302,10 +1291,8 @@ button:disabled {
 .bill-total-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid var(--line-soft);
-  border-radius: 6px;
-  background: #ffffff;
-  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 10px 0 14px;
 }
 
 .bill-total-row > div {
@@ -1409,7 +1396,7 @@ button:disabled {
   flex: 0 0 auto;
   border-top: 1px solid var(--line-soft);
   background: #ffffff;
-  padding: 14px clamp(16px, 4vw, 30px) 17px;
+  padding: 12px clamp(16px, 4vw, 30px) 16px;
 }
 
 .composer-hint {
@@ -1428,7 +1415,7 @@ button:disabled {
   gap: 10px;
   margin: 0 auto;
   border: 1px solid #d0d0d0;
-  border-radius: 17px;
+  border-radius: var(--radius-control);
   background: #ffffff;
   padding: 7px 8px 7px 16px;
 }
@@ -1439,7 +1426,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 0 auto 9px;
+  margin: 0 auto 5px;
   color: var(--muted);
   font-size: 13px;
 }
@@ -1447,23 +1434,22 @@ button:disabled {
 .composer-choice > div {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 2px;
 }
 
 .composer-choice button {
-  min-height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #ffffff;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--accent-strong);
   cursor: pointer;
   font-size: 13px;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .composer-choice button:hover:not(:disabled),
 .composer-choice .choice-active {
-  border-color: #bbbbbb;
   background: var(--accent-soft);
 }
 
@@ -1500,7 +1486,7 @@ button:disabled {
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -1563,7 +1549,7 @@ button:disabled {
   justify-content: center;
   gap: 6px;
   border: 0;
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--accent-strong);
   cursor: pointer;
@@ -1578,7 +1564,7 @@ button:disabled {
 
 .card-list {
   display: grid;
-  gap: 12px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1586,30 +1572,29 @@ button:disabled {
 
 .card-row {
   display: grid;
-  min-height: 88px;
-  grid-template-columns: 50px minmax(0, 1fr) auto auto;
+  min-height: 82px;
+  grid-template-columns: 32px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
   background: #ffffff;
-  padding: 15px 17px;
+  padding: 14px 4px;
 }
 
 .card-icon {
   display: grid;
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border: 0;
-  border-radius: 50%;
-  background: #f2f2f2;
+  border-radius: 0;
+  background: transparent;
   color: var(--accent-strong);
 }
 
 .card-icon-frozen {
-  border-color: #e0e0e0;
-  background: #f7f7f7;
   color: #444444;
 }
 
@@ -1652,7 +1637,7 @@ button:disabled {
 .card-action-button {
   min-height: 42px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: var(--radius-control);
   background: #ffffff;
   color: var(--accent-strong);
   cursor: pointer;
@@ -1766,7 +1751,7 @@ button:disabled {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    border-radius: 13px;
+    border-radius: var(--radius-control);
     color: var(--subtle);
     font-size: 12px;
     font-weight: 580;
@@ -1856,27 +1841,28 @@ button:disabled {
   }
 
   .suggestion-group {
-    margin-top: 24px;
+    margin-top: 18px;
   }
 
   .suggestions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    column-gap: 8px;
+    row-gap: 2px;
   }
 
   .suggestion-button {
-    min-height: 104px;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: center;
-    gap: 8px;
+    min-height: 58px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
     font-size: 14px;
-    padding: 11px 13px;
+    padding: 8px 6px;
   }
 
   .suggestion-icon {
-    width: 40px;
-    height: 40px;
+    width: 22px;
+    height: 22px;
   }
 
   .message-list {
@@ -1902,8 +1888,31 @@ button:disabled {
 
   .confirmation-card {
     width: 100%;
-    border-radius: 19px;
-    padding: 17px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    padding: 14px 0 0;
+  }
+
+  .confirmation-card-name {
+    margin-top: 14px;
+  }
+
+  .confirmation-details {
+    margin-top: 12px;
+  }
+
+  .state-change {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+
+  .confirmation-impact {
+    margin-top: 12px;
+  }
+
+  .confirmation-actions {
+    margin-top: 16px;
   }
 
   .confirmation-heading h3 {
@@ -1920,7 +1929,7 @@ button:disabled {
   }
 
   .composer {
-    padding: 10px 14px 12px;
+    padding: 8px 14px 10px;
   }
 
   .composer-row {
@@ -1932,6 +1941,7 @@ button:disabled {
   .composer-choice {
     align-items: flex-start;
     flex-direction: column;
+    gap: 1px;
   }
 
   .composer-row textarea {
@@ -1958,9 +1968,9 @@ button:disabled {
   }
 
   .card-row {
-    grid-template-columns: 48px minmax(0, 1fr) auto;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
     gap: 10px;
-    padding: 15px;
+    padding: 14px 4px;
   }
 
   .card-action-button {
