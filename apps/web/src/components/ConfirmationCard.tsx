@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { components } from "../generated/api";
 import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
@@ -98,11 +100,13 @@ export function ConfirmationCard({
   confirmation: Confirmation;
   busy: boolean;
   hasPreviousChanges: boolean;
-  onConfirm: () => void;
+  onConfirm: (code?: string) => void;
   onCancel: () => void;
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const [verificationCode, setVerificationCode] = useState("");
+  const needsVerification = confirmation.confirmation_method === "demo_otp";
   const details = confirmation.details;
   const action = actionName(confirmation);
   const resourceLabels: Record<Confirmation["resource_type"], string> = {
@@ -259,11 +263,36 @@ export function ConfirmationCard({
         </span>
       </p>
 
+      {needsVerification ? (
+        <div className="confirmation-verification">
+          <label htmlFor="demo-verification-code">模拟二次验证</label>
+          <p>此操作风险较高。请从独立的本地演示验证通道获取六位验证码。</p>
+          <input
+            id="demo-verification-code"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            maxLength={6}
+            pattern="[0-9]{6}"
+            type="text"
+            value={verificationCode}
+            onChange={(event) =>
+              setVerificationCode(
+                event.target.value.replace(/\D/g, "").slice(0, 6),
+              )
+            }
+          />
+        </div>
+      ) : null}
+
       <div className="confirmation-actions">
         <button
           className="button button-primary"
-          disabled={busy}
-          onClick={onConfirm}
+          disabled={
+            busy || (needsVerification && !/^[0-9]{6}$/.test(verificationCode))
+          }
+          onClick={() =>
+            onConfirm(needsVerification ? verificationCode : undefined)
+          }
           type="button"
         >
           {busy ? "正在处理…" : `确认${action}`}

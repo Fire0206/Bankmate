@@ -104,6 +104,8 @@ pnpm --filter @finorch/web dev
 
 打开 Vite 显示的本地地址即可进入现有 Agent 工作界面；访问 `/showcase` 可打开独立的六场景产品展示工作台。默认 Fake Provider 使用确定性模拟规则，不调用外部模型；页面会读取实际 API 状态、账单、账户和持仓数据。所有资金或状态变更均先生成服务端确认卡片；跨场景操作按步骤逐项确认，任务刷新后可从服务端恢复。定时转账只由本地模拟器执行，不连接银行或支付网络。API 文档位于 `http://127.0.0.1:8000/docs`。
 
+转账单笔或当日累计超过 ¥1,000，以及 R4/R5 模拟产品申购，还需本地模拟二次验证。在独立终端运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest` 获取一次性六位码，再在确认卡输入。验证码只用于本地演示，不是生产级身份验证；完整约束见[开发指南](docs/development.md)。
+
 可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。`FINORCH_LLM_TEMPERATURE` 默认 `0.2`，降低工具选择的随机性。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金、适当性和权限校验及确认均由服务端执行。
 
 ## 测试与检查

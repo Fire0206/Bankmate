@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -7,11 +8,13 @@ from fastapi.testclient import TestClient
 from finorch_api.agent.providers import ProviderSelection
 from finorch_api.agent.runtime import FakeProvider, LLMProvider, ModelToolCall, ModelTurn
 from finorch_api.api.v1.agent import get_provider_selection
+from finorch_api.application.transactions import write_transaction
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.infrastructure.models import (
     Account,
     AuditEvent,
     ConfirmationChallenge,
+    DemoUser,
     InvestmentHolding,
     InvestmentOrder,
     SplitBill,
@@ -27,6 +30,7 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
+from finorch_api.security.verification import issue_demo_code
 from sqlalchemy import func, select
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
@@ -132,6 +136,135 @@ def test_transfer_requires_confirmation_and_writes_balanced_transactions(banking
         )
 
 
+def test_high_value_transfer_requires_simulated_second_verification(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+    task = submit(client, "给小林转 2000 元", "high-value-verification")
+    challenge = task["confirmation"]
+    assert challenge["risk_level"] == "red"
+    assert challenge["confirmation_method"] == "demo_otp"
+
+    missing = confirm(client, task)
+    assert missing.status_code == 409
+    assert missing.json()["error"]["code"] == "strong_verification_required"
+    assert balances(database) == before
+
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+    wrong = "000000" if code != "000000" else "999999"
+    for _ in range(2):
+        rejected = client.post(
+            f"/api/v1/agent/tasks/{task['id']}/confirm",
+            json={
+                "challenge_id": challenge["id"],
+                "parameters_hash": challenge["parameters_hash"],
+                "verification_code": wrong,
+            },
+            headers={"Idempotency-Key": challenge["idempotency_key"]},
+        )
+        assert rejected.status_code == 409
+        assert rejected.json()["error"]["code"] == "verification_incorrect"
+    assert balances(database) == before
+
+    approved = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json={
+            "challenge_id": challenge["id"],
+            "parameters_hash": challenge["parameters_hash"],
+            "verification_code": code,
+        },
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "completed"
+    assert balances(database)[ALICE_SOURCE_ACCOUNT] == before[ALICE_SOURCE_ACCOUNT] - 200_000
+    assert confirm(client, task).status_code == 200
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Transfer).where(Transfer.status == "executed")
+            )
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(AuditEvent.event_type == "security.risk_decision")
+            )
+            >= 4
+        )
+
+
+def test_daily_cumulative_transfer_escalates_before_second_execution(banking_api) -> None:
+    client, _actor, database = banking_api
+    first = submit(client, "给小林转 600 元", "daily-first")
+    assert first["confirmation"]["risk_level"] == "yellow"
+    second = submit(client, "给小林转 500 元", "daily-second")
+    assert second["confirmation"]["risk_level"] == "yellow"
+    assert confirm(client, first).status_code == 200
+    after_first = balances(database)
+    refreshed = client.get(f"/api/v1/agent/tasks/{second['id']}")
+    assert refreshed.status_code == 200
+    assert refreshed.json()["confirmation"]["risk_level"] == "red"
+    refused = confirm(client, second)
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "strong_verification_required"
+    assert balances(database) == after_first
+
+
+def test_concurrent_high_risk_confirmation_has_one_financial_effect(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+    task = submit(client, "给小林转 2000 元", "concurrent-high-risk")
+    challenge = task["confirmation"]
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+
+    def send_confirmation(_index: int):
+        return client.post(
+            f"/api/v1/agent/tasks/{task['id']}/confirm",
+            json={
+                "challenge_id": challenge["id"],
+                "parameters_hash": challenge["parameters_hash"],
+                "verification_code": code,
+            },
+            headers={"Idempotency-Key": challenge["idempotency_key"]},
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        responses = list(pool.map(send_confirmation, range(2)))
+    assert [response.status_code for response in responses] == [200, 200]
+    assert balances(database)[ALICE_SOURCE_ACCOUNT] == before[ALICE_SOURCE_ACCOUNT] - 200_000
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count()).select_from(Transfer).where(Transfer.status == "executed")
+            )
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Transaction)
+                .where(Transaction.synthetic_ref.like("transfer:%"))
+            )
+            == 2
+        )
+
+
 def test_transfer_insufficient_funds_and_actor_scoped_reads(banking_api) -> None:
     client, actor, database = banking_api
     task = submit(client, "给小林转 99999999 元", "transfer-insufficient")
@@ -194,6 +327,37 @@ def test_scheduled_transfer_is_confirmed_then_simulated_only_when_due(banking_ap
     assert balances(database) == after_execution
     with database.session_factory() as session:
         assert session.scalar(select(Transfer).where(Transfer.status == "cancelled")) is not None
+
+
+def test_scheduled_transfer_rechecks_risk_at_execution(banking_api) -> None:
+    client, _actor, database = banking_api
+    future = (utc_now() + timedelta(days=2)).replace(microsecond=0)
+    scheduled = submit(
+        client,
+        f"请在 {future:%Y-%m-%d %H:%M} 给小林定时转 600 元",
+        "scheduled-risk",
+    )
+    assert confirm(client, scheduled).status_code == 200
+    immediate = submit(client, "给小林转 600 元", "immediate-before-due")
+    assert confirm(client, immediate).status_code == 200
+    before_due = balances(database)
+    with database.session_factory.begin() as session:
+        transfer = session.scalar(select(Transfer).where(Transfer.status == "scheduled"))
+        assert transfer is not None
+        transfer.scheduled_at = utc_now() - timedelta(minutes=1)
+
+    response = client.post("/api/v1/simulate-due")
+    assert response.status_code == 200
+    assert response.json()["executed_count"] == 0
+    assert balances(database) == before_due
+    with database.session_factory() as session:
+        failed = session.scalar(select(Transfer).where(Transfer.status == "failed"))
+        assert failed is not None
+        audit = session.scalar(
+            select(AuditEvent).where(AuditEvent.event_type == "transfer.simulated_execution_failed")
+        )
+        assert audit is not None
+        assert audit.after_state["error_code"] == "strong_verification_required"
 
 
 def test_scheduled_transfer_one_year_limit_handles_leap_day(banking_api, monkeypatch) -> None:
@@ -468,6 +632,23 @@ def test_risk_mismatch_never_creates_an_investment_order(banking_api) -> None:
     assert balances(database) == before
     with database.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+
+
+def test_high_risk_suitable_investment_still_requires_second_verification(banking_api) -> None:
+    client, _actor, database = banking_api
+    with database.session_factory.begin() as session:
+        user = session.get(DemoUser, DEMO_USER_ONE_ID)
+        assert user is not None
+        user.risk_level = 4
+    before = balances(database)
+    task = submit(client, "申购成长指数模拟 1000 元", "high-risk-investment")
+    assert task["status"] == "awaiting_confirmation", task
+    assert task["confirmation"]["risk_level"] == "red"
+    assert confirm(client, task).status_code == 409
+    assert balances(database) == before
+    with database.session_factory() as session:
+        order = session.scalar(select(InvestmentOrder))
+        assert order is not None and order.status == "awaiting_confirmation"
 
 
 def test_investment_purchase_without_task_suitability_result_is_rejected(banking_api) -> None:

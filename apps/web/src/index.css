@@ -1038,6 +1038,41 @@ button:disabled {
   font-weight: 600;
 }
 
+.confirmation-verification {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.confirmation-verification label {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.confirmation-verification p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.confirmation-verification input {
+  width: min(100%, 220px);
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: white;
+  color: var(--ink);
+  font-size: 20px;
+  letter-spacing: 0.2em;
+  padding: 0 14px;
+}
+
+.confirmation-verification input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .confirmation-actions {
   display: flex;
   flex-wrap: wrap;

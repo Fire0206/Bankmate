@@ -23,6 +23,8 @@
 
 ## 当前实体与后续规划
 
+Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定现有确认、actor 与参数/策略摘要。只保存带盐验证码摘要、尝试次数、有效期和生命周期状态；不保存明文 OTP。最终业务执行必须在同一 SQLite 写事务中重新判断风险并消费验证；尚未完成执行入口接入前，不视为已启用强验证。
+
 首批已实现实体及字段以 ORM 模型和 Alembic 迁移为准：
 
 - `demo_users`：固定合成用户及 `dataset_version`，不含真实登录资料。

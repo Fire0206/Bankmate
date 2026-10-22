@@ -557,6 +557,8 @@ export interface components {
             challenge_id: string;
             /** Parameters Hash */
             parameters_hash: string;
+            /** Verification Code */
+            verification_code?: string | null;
         };
         /** AgentTaskCreateRequest */
         AgentTaskCreateRequest: {
@@ -836,6 +838,20 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Risk Level
+             * @default yellow
+             * @enum {string}
+             */
+            risk_level: "yellow" | "red";
+            /**
+             * Confirmation Method
+             * @default explicit
+             * @enum {string}
+             */
+            confirmation_method: "explicit" | "demo_otp";
+            /** Risk Rules */
+            risk_rules?: string[];
         };
         /** DemoSessionResponse */
         DemoSessionResponse: {

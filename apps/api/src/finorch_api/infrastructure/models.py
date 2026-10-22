@@ -654,6 +654,37 @@ class ToolExecution(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class StrongVerification(Base):
+    __tablename__ = "strong_verifications"
+    __table_args__ = (
+        CheckConstraint("attempts >= 0 and attempts <= 5", name="verification_attempts_range"),
+        CheckConstraint(
+            "status in ('pending', 'verified', 'consumed', 'locked', 'expired', 'invalidated')",
+            name="verification_status_allowed",
+        ),
+        UniqueConstraint("confirmation_id", name="uq_verification_confirmation"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    confirmation_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("confirmation_challenges.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("demo_users.id"),
+        nullable=False,
+    )
+    binding_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ConfirmationChallenge(Base):
     __tablename__ = "confirmation_challenges"
     __table_args__ = (

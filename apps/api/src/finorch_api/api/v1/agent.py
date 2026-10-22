@@ -221,6 +221,7 @@ def confirm_task_operation(
             parameters_hash=body.parameters_hash,
             idempotency_key=idempotency_key,
             request_id=request.state.request_id,
+            verification_code=body.verification_code,
         )
     except AgentTaskNotFoundError:
         raise _not_found() from None
@@ -245,6 +246,15 @@ def confirm_task_operation(
         )
     if task.error_code == "confirmation_expired":
         raise _conflict("Confirmation expired; no business state changed.", "confirmation_expired")
+    if task.error_code in {
+        "strong_verification_required",
+        "verification_unavailable",
+        "verification_expired",
+        "verification_invalidated",
+        "verification_incorrect",
+        "verification_locked",
+    }:
+        raise _conflict("Simulated second verification was not accepted.", task.error_code)
     if task.error_code in {
         "card_version_conflict",
         "subscription_version_conflict",
