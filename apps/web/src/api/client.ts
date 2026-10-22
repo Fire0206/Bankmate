@@ -180,10 +180,12 @@ export const apiClient = {
     challengeId: string,
     parametersHash: string,
     key: string,
+    verificationCode?: string,
   ) => {
     const body: ConfirmationRequest = {
       challenge_id: challengeId,
       parameters_hash: parametersHash,
+      verification_code: verificationCode,
     };
     return request<AgentTaskResponse>(
       "/api/v1/agent/tasks/" + encodeURIComponent(taskId) + "/confirm",

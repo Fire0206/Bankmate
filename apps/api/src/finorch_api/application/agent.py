@@ -1,7 +1,7 @@
 import hashlib
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -80,6 +80,7 @@ from finorch_api.infrastructure.models import (
     utc_now,
 )
 from finorch_api.infrastructure.persistence.cards import get_owned_card
+from finorch_api.security.verification import challenge_risk, consume_demo_code
 
 logger = logging.getLogger("finorch.agent")
 
@@ -143,6 +144,9 @@ class ConfirmationView:
     merchant: str | None = None
     subscription_version: int | None = None
     details: dict[str, Any] | None = None
+    risk_level: str = "yellow"
+    confirmation_method: str = "explicit"
+    risk_rules: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -914,6 +918,14 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                         "account_label": account.label if account else "模拟账户",
                     },
                 )
+    if confirmation is not None and challenge is not None:
+        decision = challenge_risk(session, challenge, utc_now())
+        confirmation = replace(
+            confirmation,
+            risk_level=decision.level,
+            confirmation_method=decision.confirmation_method,
+            risk_rules=decision.rules,
+        )
     return AgentTaskView(
         id=task.id,
         conversation_id=task.conversation_id,
@@ -1930,6 +1942,7 @@ def confirm_task_operation(
     parameters_hash: str,
     idempotency_key: str,
     request_id: str,
+    verification_code: str | None = None,
 ) -> AgentTaskView:
     stale_error: Exception | None = None
     try:
@@ -1979,6 +1992,42 @@ def confirm_task_operation(
                 )
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
+
+            decision = challenge_risk(session, challenge, utc_now())
+            verification_error = None
+            if decision.level == "red":
+                verification_error = consume_demo_code(
+                    session,
+                    challenge=challenge,
+                    decision=decision,
+                    code=verification_code,
+                    now=utc_now(),
+                )
+            _audit(
+                session,
+                actor_id=actor_id,
+                event_type="security.risk_decision",
+                resource_type="confirmation",
+                resource_id=challenge.id,
+                request_id=request_id,
+                task_id=task.id,
+                tool_execution_id=execution.id,
+                outcome="rejected" if verification_error else "authorized",
+                before_state=None,
+                after_state={
+                    "level": decision.level,
+                    "rules": list(decision.rules),
+                    "method": decision.confirmation_method,
+                    "policy_version": decision.policy_version,
+                    "verification_result": verification_error or "accepted",
+                },
+            )
+            if verification_error:
+                task.error_code = verification_error
+                task.message = "此操作需要完成模拟二次验证。"
+                session.flush()
+                return _task_view(session, actor_id=actor_id, task_id=task.id)
+            task.error_code = None
 
             if challenge.subscription_id is not None:
                 subscription = get_owned_subscription(

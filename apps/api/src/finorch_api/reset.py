@@ -21,6 +21,7 @@ from finorch_api.infrastructure.models import (
     Payee,
     SplitBill,
     SplitParticipant,
+    StrongVerification,
     Subscription,
     TaskStep,
     ToolExecution,
@@ -62,6 +63,7 @@ def validate_reset_target(*, environment: str, database_url: str, repository_roo
 def reset_demo_data(session: Session) -> None:
     """Clear the synthetic dataset and reseed it; the caller owns the transaction."""
     session.execute(delete(AuditEvent))
+    session.execute(delete(StrongVerification))
     session.execute(delete(ConfirmationChallenge))
     session.execute(delete(ToolExecution))
     session.execute(delete(TaskStep))

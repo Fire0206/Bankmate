@@ -23,6 +23,7 @@ class AgentConfirmationRequest(BaseModel):
 
     challenge_id: UUID
     parameters_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    verification_code: str | None = Field(default=None, pattern=r"^[0-9]{6}$")
 
 
 class AgentTaskStepResponse(BaseModel):
@@ -63,6 +64,9 @@ class ConfirmationResponse(BaseModel):
     merchant: str | None = None
     subscription_version: int | None = None
     details: dict[str, Any] | None = None
+    risk_level: Literal["yellow", "red"] = "yellow"
+    confirmation_method: Literal["explicit", "demo_otp"] = "explicit"
+    risk_rules: list[str] = Field(default_factory=list)
 
 
 class AgentTaskResponse(BaseModel):

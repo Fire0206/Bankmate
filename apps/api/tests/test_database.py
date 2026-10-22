@@ -36,6 +36,7 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
         "task_steps",
         "tool_executions",
         "confirmation_challenges",
+        "strong_verifications",
         "payees",
         "transfers",
         "split_bills",
@@ -46,7 +47,7 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0005_repeat_charge_evidence"
+        assert revision == "0006_strong_verifications"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
 
 

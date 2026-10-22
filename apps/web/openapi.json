@@ -3324,6 +3324,18 @@
             "type": "string",
             "pattern": "^[a-f0-9]{64}$",
             "title": "Parameters Hash"
+          },
+          "verification_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Code"
           }
         },
         "additionalProperties": false,
@@ -4060,6 +4072,31 @@
               }
             ],
             "title": "Details"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": [
+              "yellow",
+              "red"
+            ],
+            "title": "Risk Level",
+            "default": "yellow"
+          },
+          "confirmation_method": {
+            "type": "string",
+            "enum": [
+              "explicit",
+              "demo_otp"
+            ],
+            "title": "Confirmation Method",
+            "default": "explicit"
+          },
+          "risk_rules": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Risk Rules"
           }
         },
         "additionalProperties": false,

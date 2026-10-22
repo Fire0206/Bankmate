@@ -134,7 +134,22 @@ const apiErrorCopy: Record<string, string> = {
   not_found: "没有找到这项任务，或你无权查看它。",
   task_state_conflict: "任务状态已变化，请查看最新处理进度。",
   tool_input_invalid: "银行卡信息无法识别，请重新描述。",
+  strong_verification_required: "请先完成模拟二次验证。",
+  verification_incorrect: "验证码不正确，请核对后重试。",
+  verification_expired: "验证码已过期，请取消并重新发起操作。",
+  verification_invalidated: "风险或操作内容已变化，请取消并重新发起。",
+  verification_locked: "验证码尝试次数已用尽，请取消并重新发起。",
+  verification_unavailable: "这次验证已失效，请刷新任务状态。",
 };
+
+const verificationErrors = new Set([
+  "strong_verification_required",
+  "verification_incorrect",
+  "verification_expired",
+  "verification_invalidated",
+  "verification_locked",
+  "verification_unavailable",
+]);
 
 function toUiError(error: unknown): UiError {
   if (error instanceof ApiError) {
@@ -555,6 +570,19 @@ export default function App() {
             if (recovered.task) applyTask(recovered.task, true);
             if (recovered.resolved) {
               storePendingWrite(null);
+            } else if (
+              savedWrite.kind === "confirm" &&
+              recovered.task?.confirmation?.confirmation_method === "demo_otp"
+            ) {
+              storePendingWrite(null);
+              setRequestError({
+                title: "确认尚未完成",
+                message: "服务端仍在等待确认。请重新输入本地模拟验证码。",
+                code: null,
+                status: null,
+                requestId: null,
+                fieldDetails: [],
+              });
             } else {
               setRequestError({
                 title: "提交状态尚未确认",
@@ -712,7 +740,10 @@ export default function App() {
     }
   }
 
-  async function executeWrite(write: PendingWrite): Promise<AgentTaskResponse> {
+  async function executeWrite(
+    write: PendingWrite,
+    verificationCode?: string,
+  ): Promise<AgentTaskResponse> {
     if (write.kind === "create") {
       return apiClient.createTask(
         {
@@ -735,6 +766,7 @@ export default function App() {
         write.challengeId,
         write.parametersHash,
         write.key,
+        verificationCode,
       );
     }
     return apiClient.cancelTask(write.taskId, write.key);
@@ -742,12 +774,13 @@ export default function App() {
 
   async function submitWrite(
     write: PendingWrite,
+    verificationCode?: string,
   ): Promise<AgentTaskResponse | null> {
     storePendingWrite(write);
     setBusy(true);
     setRequestError(null);
     try {
-      const task = await executeWrite(write);
+      const task = await executeWrite(write, verificationCode);
       applyTask(task);
       storePendingWrite(null);
       if (
@@ -762,6 +795,20 @@ export default function App() {
         await refreshCards();
       return task;
     } catch (error) {
+      if (
+        write.kind === "confirm" &&
+        error instanceof ApiError &&
+        verificationErrors.has(error.code)
+      ) {
+        storePendingWrite(null);
+        try {
+          applyTask(await apiClient.readTask(write.taskId));
+        } catch {
+          // The definitive verification rejection is still shown below.
+        }
+        setRequestError(toUiError(error));
+        return null;
+      }
       try {
         const recovered = await lookupPendingWrite(write);
         if (recovered.task) applyTask(recovered.task);
@@ -800,6 +847,22 @@ export default function App() {
       if (recovered.resolved) {
         storePendingWrite(null);
         if (recovered.task?.status === "completed") await refreshCards();
+        return;
+      }
+      if (
+        pendingWrite.kind === "confirm" &&
+        recovered.task?.confirmation?.confirmation_method === "demo_otp"
+      ) {
+        storePendingWrite(null);
+        setRequestError({
+          title: "确认尚未完成",
+          message:
+            "服务端仍在等待确认。请重新输入本地模拟验证码，再确认这项操作。",
+          code: null,
+          status: null,
+          requestId: null,
+          fieldDetails: [],
+        });
         return;
       }
       if (!allowResubmit) {
@@ -924,16 +987,22 @@ export default function App() {
     document.getElementById("agent-request")?.focus();
   }
 
-  async function confirmTask(task: AgentTaskResponse) {
+  async function confirmTask(
+    task: AgentTaskResponse,
+    verificationCode?: string,
+  ) {
     if (!task.confirmation || busy) return;
-    await submitWrite({
-      kind: "confirm",
-      key: task.confirmation.idempotency_key,
-      conversationId: task.conversation_id,
-      taskId: task.id,
-      challengeId: task.confirmation.id,
-      parametersHash: task.confirmation.parameters_hash,
-    });
+    await submitWrite(
+      {
+        kind: "confirm",
+        key: task.confirmation.idempotency_key,
+        conversationId: task.conversation_id,
+        taskId: task.id,
+        challengeId: task.confirmation.id,
+        parametersHash: task.confirmation.parameters_hash,
+      },
+      verificationCode,
+    );
   }
 
   async function cancelTask(task: AgentTaskResponse) {
@@ -1212,7 +1281,7 @@ export default function App() {
                               confirmation={task.confirmation}
                               hasPreviousChanges={hasSuccessfulChange(task)}
                               onCancel={() => void cancelTask(task)}
-                              onConfirm={() => void confirmTask(task)}
+                              onConfirm={(code) => void confirmTask(task, code)}
                               onRefresh={() => void refreshTask()}
                               refreshing={refreshingTask}
                             />

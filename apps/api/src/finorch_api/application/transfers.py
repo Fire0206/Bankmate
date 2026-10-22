@@ -21,6 +21,7 @@ from finorch_api.infrastructure.models import (
     Transfer,
     utc_now,
 )
+from finorch_api.security.risk_policy import decide_risk, executed_transfer_total
 
 POLICY_VERSION = "transfer-confirmation-v1"
 TOOL_VERSION = "1.0"
@@ -577,6 +578,21 @@ def simulate_due_transfers(
         executed: list[Transfer] = []
         for transfer in rows:
             try:
+                # A scheduled authorization cannot silently bypass a risk increase
+                # on execution day. This local demo has no unattended OTP channel.
+                decision = decide_risk(
+                    operation="transfer",
+                    amount_minor=transfer.amount_minor,
+                    currency=transfer.currency,
+                    daily_executed_minor=executed_transfer_total(
+                        session, actor_id=actor_id, now=now
+                    ),
+                )
+                if decision.level == "red":
+                    raise BankingRuleError(
+                        "strong_verification_required",
+                        "定时转账在执行时达到高风险阈值，需重新授权。",
+                    )
                 _execute_money_transfer(
                     session,
                     transfer=transfer,

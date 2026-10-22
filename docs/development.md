@@ -44,6 +44,8 @@ pnpm --filter @finorch/web dev
 
 Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银行卡、账单、订阅、转账、AA 分账和理财。浏览器访问 `http://127.0.0.1:5173/showcase` 打开独立六场景工作台；默认根路径仍保留 Agent 工作界面。转账及申购/赎回会先生成服务端确认挑战，确认后才更新模拟账户余额、交易、持仓和审计；定时转账只由显式本地模拟工具执行。账单与投资产品数据是合成/确定性模拟数据。Swagger UI 位于 `http://127.0.0.1:8000/docs`，健康端点为 `http://127.0.0.1:8000/api/v1/health`。
 
+Phase 3 本地模拟二次验证：单笔或当日累计转账超过 ¥1,000，以及 R4/R5 模拟产品申购，需要在普通确认外输入随机六位验证码。保持同一仓库根目录和同一个本地开发数据库，在**另一个本机终端**运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest`；该终端显示的验证码只在本地使用，最多有效三分钟，不能复制进聊天、Issue 或日志。`--latest` 只选当前配置的演示用户最新待确认操作；并行演示多个任务时使用 `--confirmation-id <ID>` 指定挑战。错误尝试最多五次。没有本地终端就不能完成红色操作；此机制不是短信、人脸或生产级多因素认证。定时转账到期时再次按当日累计金额评估；若升为红色则失败并留下审计，必须重新发起授权，不会静默扣款。
+
 工作台还提供只读 `GET /api/v1/financial-insights/recommendations` 和 `POST /api/v1/cashflow/payday-plan-preview`，前者基于模拟流水规则生成提示，后者预览不同资金分配输入；两者不创建转账或理财订单。任何实际写操作仍应从 Agent 任务发起，并遵循服务端确认。
 
 Windows 可用根目录 `scripts/demo.ps1` 固定启动参数：`-Mode reset` 重置仓库 `.data/finorch.db` 中的合成数据，`-Mode api` 启动 API，`-Mode web` 启动 Vite。首次运行前安装依赖并完成迁移；重置只限本地开发数据库，不要将该命令用于保留中的数据库。
