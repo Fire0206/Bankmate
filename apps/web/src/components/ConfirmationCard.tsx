@@ -130,6 +130,7 @@ export function ConfirmationCard({
       ["收款人", text(details, "payee_name")],
       ["付款账户", text(details, "source_account_label")],
       ["金额", amount(details, "amount_minor")],
+      ["备注", text(details, "remark")],
       [
         "执行时间",
         text(details, "scheduled_at")

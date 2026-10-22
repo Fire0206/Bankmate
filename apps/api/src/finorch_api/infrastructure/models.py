@@ -163,6 +163,7 @@ class Payee(Base):
     __table_args__ = (
         UniqueConstraint("actor_id", "normalized_name", name="uq_payees_actor_name"),
         Index("ix_payees_actor_name", "actor_id", "normalized_name"),
+        Index("uq_payees_actor_phone", "actor_id", "phone_number", unique=True),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -180,6 +181,7 @@ class Payee(Base):
     )
     display_name: Mapped[str] = mapped_column(String(80), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    phone_number: Mapped[str | None] = mapped_column(String(11), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
@@ -232,6 +234,7 @@ class Transfer(Base):
         nullable=False,
     )
     payee_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    remark: Mapped[str | None] = mapped_column(String(120), nullable=True)
     amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     transfer_type: Mapped[str] = mapped_column(String(16), nullable=False)

@@ -1145,6 +1145,8 @@ export interface components {
              * Format: uuid
              */
             destination_account_id: string;
+            /** Phone Number */
+            phone_number?: string | null;
         };
         /** PayeeListResponse */
         PayeeListResponse: {
@@ -1169,6 +1171,8 @@ export interface components {
             destination_account_label: string;
             /** Currency */
             currency: string;
+            /** Phone Masked */
+            phone_masked: string | null;
         };
         /** RiskProfileResponse */
         RiskProfileResponse: {
@@ -1317,6 +1321,8 @@ export interface components {
             destination_account_id: string;
             /** Payee Name */
             payee_name: string;
+            /** Remark */
+            remark: string | null;
             /** Amount Minor */
             amount_minor: number;
             /** Currency */

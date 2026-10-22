@@ -33,13 +33,13 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 - `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
-- `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；转账/收款执行由 Application 用例在事务内更新余额与关联流水。
+- `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；`payees.phone_number` 可空且每 actor 唯一，仅精确匹配当前用户的模拟收款人，对外只返回掩码；`transfers.remark` 可空，作为不可信用户数据存储并参与确认参数摘要。转账/收款执行由 Application 用例在事务内更新余额与关联流水。
 - `investment_products`、`investment_holdings`、`investment_orders`：确定性模拟产品和价格、风险等级、用户持仓及申购/赎回订单；不代表真实理财产品或收益。
 - `confirmation_challenges`：一次性绑定 actor、单一目标资源（银行卡、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
 - `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。可选 `card_id` 将来源卡与交易关联，以支持可解释的重复扣费证据。
 - `audit_events`：通用 actor、event type、resource、request/task/tool execution ID、outcome、可选前后状态摘要和 UTC 时间；兼容既有卡片状态语义。正常业务路径只追加，不覆盖或删除历史。不得在审计事件中存密钥、原始敏感数据或完整 Prompt。
 
-`seed` 会按固定 UUID 幂等插入合成样例。当前数据集版本为 `phase1e-v1`，包含两位模拟用户、账户、卡片、收款人、理财产品、合成流水和订阅，并含一组同日重复收费记录用于验证规则提示。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
+`seed` 会按固定 UUID 幂等插入合成样例。当前数据集版本为 `phase3-v1`，包含两位模拟用户、账户、卡片、模拟收款手机号、理财产品、合成流水和订阅，并含一组同日重复收费记录用于验证规则提示。显式 `reset --confirm` 仅允许 development 环境的仓库 `.data/finorch.db` 或 test 环境中的临时 `finorch-test*.sqlite3` 文件，并清除业务、Agent Workflow、确认及审计记录后重建合成样例。禁止将重置指向其他 SQLite 文件。
 
 下表为后续场景实体草图，不代表已实现：
 

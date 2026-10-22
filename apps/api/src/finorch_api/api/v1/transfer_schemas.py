@@ -25,6 +25,7 @@ class PayeeCreateRequest(BaseModel):
 
     display_name: str = Field(min_length=1, max_length=80)
     destination_account_id: UUID
+    phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
 
 
 class PayeeResponse(BaseModel):
@@ -35,6 +36,7 @@ class PayeeResponse(BaseModel):
     destination_account_id: UUID
     destination_account_label: str
     currency: str
+    phone_masked: str | None
 
 
 class PayeeListResponse(BaseModel):
@@ -51,6 +53,7 @@ class TransferResponse(BaseModel):
     source_account_label: str
     destination_account_id: UUID
     payee_name: str
+    remark: str | None
     amount_minor: int
     currency: str
     transfer_type: Literal["immediate", "scheduled"]

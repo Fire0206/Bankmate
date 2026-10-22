@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -43,6 +44,7 @@ class PayeeView:
     destination_account_id: UUID
     destination_account_label: str
     currency: str
+    phone_masked: str | None
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,7 @@ class TransferView:
     source_account_label: str
     destination_account_id: UUID
     payee_name: str
+    remark: str | None
     amount_minor: int
     currency: str
     transfer_type: str
@@ -120,7 +123,14 @@ def list_payees(session: Session, *, actor_id: UUID) -> tuple[PayeeView, ...]:
         .order_by(Payee.normalized_name)
     )
     return tuple(
-        PayeeView(payee.id, payee.display_name, account.id, account.label, account.currency)
+        PayeeView(
+            payee.id,
+            payee.display_name,
+            account.id,
+            account.label,
+            account.currency,
+            _mask_phone(payee.phone_number),
+        )
         for payee, account in rows
     )
 
@@ -131,17 +141,24 @@ def create_payee(
     actor_id: UUID,
     display_name: str,
     destination_account_id: UUID,
+    phone_number: str | None = None,
 ) -> PayeeView:
     name = display_name.strip()
     normalized = _normal_name(name)
     if not normalized or len(name) > 80:
         raise BankingRuleError("invalid_payee", "收款人名称不能为空且不能超过 80 个字符。")
+    if phone_number is not None and not re.fullmatch(r"1[3-9]\d{9}", phone_number):
+        raise BankingRuleError("invalid_phone", "模拟收款手机号须为 11 位数字。")
     with write_transaction(session, immediate=True):
         duplicate = session.scalar(
             select(Payee).where(Payee.actor_id == actor_id, Payee.normalized_name == normalized)
         )
         if duplicate is not None:
             raise BankingRuleError("payee_exists", "这个收款人名称已存在。")
+        if phone_number and session.scalar(
+            select(Payee.id).where(Payee.actor_id == actor_id, Payee.phone_number == phone_number)
+        ):
+            raise BankingRuleError("payee_phone_exists", "这个模拟手机号已绑定其他收款人。")
         account = session.get(Account, destination_account_id)
         if account is None:
             raise BankingRuleError("destination_not_found", "没有找到指定的模拟收款账户。")
@@ -151,10 +168,18 @@ def create_payee(
             destination_account_id=account.id,
             display_name=name,
             normalized_name=normalized,
+            phone_number=phone_number,
         )
         session.add(payee)
         session.flush()
-        return PayeeView(payee.id, payee.display_name, account.id, account.label, account.currency)
+        return PayeeView(
+            payee.id,
+            payee.display_name,
+            account.id,
+            account.label,
+            account.currency,
+            _mask_phone(payee.phone_number),
+        )
 
 
 def delete_payee(session: Session, *, actor_id: UUID, payee_id: UUID) -> None:
@@ -177,6 +202,7 @@ def _transfer_view(session: Session, transfer: Transfer) -> TransferView:
         source_account_label=source.label if source else "模拟账户",
         destination_account_id=transfer.destination_account_id,
         payee_name=transfer.payee_name,
+        remark=transfer.remark,
         amount_minor=transfer.amount_minor,
         currency=transfer.currency,
         transfer_type=transfer.transfer_type,
@@ -220,20 +246,44 @@ def _payee_by_name(session: Session, *, actor_id: UUID, name: str) -> Payee:
     return rows[0]
 
 
+def _mask_phone(value: str | None) -> str | None:
+    return f"{value[:3]}****{value[-4:]}" if value else None
+
+
+def _payee_by_phone(session: Session, *, actor_id: UUID, phone_number: str) -> Payee:
+    payee = session.scalar(
+        select(Payee).where(Payee.actor_id == actor_id, Payee.phone_number == phone_number)
+    )
+    if payee is None:
+        raise BankingRuleError("payee_not_found", "没有找到这个手机号绑定的模拟收款人。")
+    return payee
+
+
 def propose_transfer(
     session: Session,
     *,
     context: ToolCallContext,
-    payee_name: str,
     amount_minor: int,
+    payee_name: str | None = None,
+    payee_phone: str | None = None,
+    remark: str | None = None,
     currency: str = "CNY",
     source_account_label: str | None = None,
     scheduled_at: datetime | None = None,
 ) -> dict[str, object]:
     if amount_minor <= 0:
         raise BankingRuleError("invalid_amount", "转账金额必须大于零。")
+    if (payee_name is None) == (payee_phone is None):
+        raise BankingRuleError("transfer_target_required", "请选择一位已保存的收款人姓名或手机号。")
+    if remark is not None and (not remark.strip() or len(remark) > 120):
+        raise BankingRuleError("invalid_remark", "转账备注不能为空或超过 120 个字符。")
+    remark = remark.strip() if remark else None
     account = _owned_account(session, actor_id=context.actor_id, label=source_account_label)
-    payee = _payee_by_name(session, actor_id=context.actor_id, name=payee_name)
+    payee = (
+        _payee_by_phone(session, actor_id=context.actor_id, phone_number=payee_phone)
+        if payee_phone is not None
+        else _payee_by_name(session, actor_id=context.actor_id, name=payee_name)
+    )
     destination = session.get(Account, payee.destination_account_id)
     if destination is None or account.id == destination.id:
         raise BankingRuleError("invalid_destination", "收款账户无效，或不能转给同一账户。")
@@ -256,6 +306,7 @@ def propose_transfer(
         destination_account_id=destination.id,
         payee_id=payee.id,
         payee_name=payee.display_name,
+        remark=remark,
         amount_minor=amount_minor,
         currency=currency,
         transfer_type=transfer_type,
@@ -274,6 +325,7 @@ def propose_transfer(
         "source_account_id": str(account.id),
         "destination_account_id": str(destination.id),
         "payee_id": str(payee.id),
+        "remark": remark,
         "amount_minor": amount_minor,
         "currency": currency,
         "transfer_type": transfer_type,
@@ -304,6 +356,7 @@ def propose_transfer(
         "transfer_id": transfer.id,
         "source_account_label": account.label,
         "payee_name": payee.display_name,
+        "remark": remark,
         "amount_minor": amount_minor,
         "currency": currency,
         "transfer_type": transfer_type,

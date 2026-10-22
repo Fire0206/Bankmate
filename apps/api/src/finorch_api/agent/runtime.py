@@ -200,9 +200,9 @@ class AgentRuntime:
                     "investment.buy. Never emit investment.buy in the same tool-call response as "
                     "investment.products; inspect the returned suitability result first. "
                     "Before proposing a transfer, read transfer.payees and match the requested "
-                    "recipient to an exact saved recipient; if transfer.payees does not contain "
-                    "an exact display_name match, stop and ask which listed recipient to use; "
-                    "never call transfer.create with a missing or approximate recipient. For a "
+                    "recipient to an exact saved name, or pass the exact user-supplied phone "
+                    "number for server-side lookup. If no exact saved match exists, stop and ask "
+                    "which recipient to use; never guess an account or phone number. For a "
                     "transfer with a known recipient and explicit amount, create the transfer "
                     "proposal even when the amount may exceed the balance; the server must return "
                     "the authoritative insufficient-funds result rather than silently dropping "
@@ -212,7 +212,8 @@ class AgentRuntime:
                     "Never propose a write for an unknown recipient or an unsuitable product. "
                     "Money amounts sent to transfer tools use integer fen; convert each yuan by "
                     "multiplying by 100 (999999 yuan is 99999900 fen). For transfer.create use "
-                    "the exact recipient_name and amount_minor fields, with no extra fields. "
+                    "exactly one of recipient_name or recipient_phone plus amount_minor; include "
+                    "remark only when the user explicitly supplies it. "
                     "For an explicit suspicious-charge request that asks to freeze a card and "
                     "pause the matching subscription, read bill.anomalies and subscription.list. "
                     "When a repeated-charge result provides a source card suffix and an active "
@@ -860,6 +861,15 @@ class FakeProvider(LLMProvider):
             amount_minor = int(Decimal(amount_match.group(1)) * 100)
 
         payee_name = next((name for name in ("小林", "储蓄账户") if name in request), None)
+        phone_match = re.search(r"(?<!\d)(1[3-9]\d{9})(?!\d)", request)
+        recipient_phone = phone_match.group(1) if phone_match else None
+        remark_match = re.search(r"(?:备注|附言)[：:\s]*([^，。；;]+)", request)
+        remark = remark_match.group(1).strip() if remark_match else None
+        recipient_target = (
+            {"recipient_phone": recipient_phone}
+            if recipient_phone
+            else {"recipient_name": payee_name}
+        )
         transfer_intent = (
             any(
                 word in request
@@ -876,7 +886,7 @@ class FakeProvider(LLMProvider):
                     "余额",
                 )
             )
-            or re.search(r"给.{1,12}转", request) is not None
+            or re.search(r"给.{1,24}转", request) is not None
             or is_split_creation_request(split_request)
             or (
                 any(word in full_request for word in ("最近", "状态", "是什么"))
@@ -943,7 +953,7 @@ class FakeProvider(LLMProvider):
             if any(word in request for word in ("执行到期", "执行定时", "模拟执行")):
                 return call("transfer.simulate_due", {})
             if "定时" in request or "预约转" in request:
-                if payee_name is None:
+                if payee_name is None and recipient_phone is None:
                     return ModelTurn("请说明要转给哪位已保存的收款人。")
                 if amount_minor is None:
                     return ModelTurn("请告诉我定时转账金额。")
@@ -957,19 +967,24 @@ class FakeProvider(LLMProvider):
                 return call(
                     "transfer.schedule",
                     {
-                        "recipient_name": payee_name,
+                        **recipient_target,
                         "amount_minor": amount_minor,
                         "scheduled_at": scheduled_at,
+                        **({"remark": remark} if remark else {}),
                     },
                 )
-            if "转账" in request or "转给" in request or re.search(r"给.{1,12}转", request):
-                if payee_name is None:
+            if "转账" in request or "转给" in request or re.search(r"给.{1,24}转", request):
+                if payee_name is None and recipient_phone is None:
                     return ModelTurn("请指定一位已保存的收款人，例如小林。")
                 if amount_minor is None:
                     return ModelTurn("请告诉我转账金额。")
                 return call(
                     "transfer.create",
-                    {"recipient_name": payee_name, "amount_minor": amount_minor},
+                    {
+                        **recipient_target,
+                        "amount_minor": amount_minor,
+                        **({"remark": remark} if remark else {}),
+                    },
                 )
             return call("transfer.accounts", {})
 

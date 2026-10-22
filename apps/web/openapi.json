@@ -4931,6 +4931,18 @@
             "type": "string",
             "format": "uuid",
             "title": "Destination Account Id"
+          },
+          "phone_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^1[3-9]\\d{9}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Number"
           }
         },
         "additionalProperties": false,
@@ -4981,6 +4993,17 @@
           "currency": {
             "type": "string",
             "title": "Currency"
+          },
+          "phone_masked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone Masked"
           }
         },
         "additionalProperties": false,
@@ -4990,7 +5013,8 @@
           "display_name",
           "destination_account_id",
           "destination_account_label",
-          "currency"
+          "currency",
+          "phone_masked"
         ],
         "title": "PayeeResponse"
       },
@@ -5328,6 +5352,17 @@
             "type": "string",
             "title": "Payee Name"
           },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark"
+          },
           "amount_minor": {
             "type": "integer",
             "title": "Amount Minor"
@@ -5392,6 +5427,7 @@
           "source_account_label",
           "destination_account_id",
           "payee_name",
+          "remark",
           "amount_minor",
           "currency",
           "transfer_type",
