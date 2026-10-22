@@ -80,7 +80,13 @@ from finorch_api.infrastructure.models import (
     utc_now,
 )
 from finorch_api.infrastructure.persistence.cards import get_owned_card
+from finorch_api.security.circuit import (
+    active_write_hold,
+    record_safety_signal,
+    signal_category,
+)
 from finorch_api.security.verification import challenge_risk, consume_demo_code
+from finorch_api.security.write_intent import user_authorized_write
 
 logger = logging.getLogger("finorch.agent")
 
@@ -313,6 +319,14 @@ def _record_tool_failure(
             "tool_error_code": code,
         },
     )
+    record_safety_signal(
+        session,
+        actor_id=actor_id,
+        code=code,
+        request_id=request_id,
+        task_id=task.id,
+        tool_execution_id=execution.id,
+    )
     return ToolDispatchResult("failed", execution.result_data, message, code)
 
 
@@ -541,6 +555,21 @@ def _dispatch_tool(
         session.add(execution)
         session.flush()
 
+        if spec is not None and spec.permission_level != "read_only":
+            hold_until = active_write_hold(session, actor_id=actor_id)
+            if hold_until is not None:
+                return _record_tool_failure(
+                    session,
+                    task=task,
+                    step=step,
+                    execution=execution,
+                    actor_id=actor_id,
+                    request_id=request_id,
+                    error=ToolExecutionError(
+                        "safety_hold_active", "模拟安全限制暂时阻止写操作，请稍后再试。"
+                    ),
+                )
+
         error = validation_error
         if error is None and (spec is None or parsed is None):
             error = ToolExecutionError("unknown_tool", "The requested tool is not registered.")
@@ -567,6 +596,21 @@ def _dispatch_tool(
                     request_id=request_id,
                     error=ToolExecutionError("tool_input_invalid", mismatch),
                 )
+
+        if spec.permission_level != "read_only" and not user_authorized_write(
+            task.request_text, spec.name
+        ):
+            return _record_tool_failure(
+                session,
+                task=task,
+                step=step,
+                execution=execution,
+                actor_id=actor_id,
+                request_id=request_id,
+                error=ToolExecutionError(
+                    "write_not_requested", "用户没有授权这项写操作，未创建确认请求。"
+                ),
+            )
 
         if spec.permission_level != "read_only" and parsed is not None:
             block = _workflow_write_block_reason(
@@ -1058,6 +1102,14 @@ def _finalize_run(
                 outcome="failed" if error_code else "succeeded",
                 before_state={"status": before},
                 after_state={"status": task.status, "error_code": error_code},
+            )
+        if error_code and signal_category(error_code) == "provider_failure":
+            record_safety_signal(
+                session,
+                actor_id=actor_id,
+                code=error_code,
+                request_id=request_id,
+                task_id=task.id,
             )
 
 
@@ -1993,6 +2045,25 @@ def confirm_task_operation(
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
 
+            hold_until = active_write_hold(session, actor_id=actor_id)
+            if hold_until is not None:
+                task.error_code = "safety_hold_active"
+                task.message = "模拟安全限制暂时阻止写操作；已完成的操作不会撤销。"
+                _audit(
+                    session,
+                    actor_id=actor_id,
+                    event_type="security.write_hold_enforced",
+                    resource_type="confirmation",
+                    resource_id=challenge.id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                    outcome="blocked",
+                    after_state={"expires_at": hold_until.isoformat()},
+                )
+                session.flush()
+                return _task_view(session, actor_id=actor_id, task_id=task.id)
+
             decision = challenge_risk(session, challenge, utc_now())
             verification_error = None
             if decision.level == "red":
@@ -2023,6 +2094,14 @@ def confirm_task_operation(
                 },
             )
             if verification_error:
+                record_safety_signal(
+                    session,
+                    actor_id=actor_id,
+                    code=verification_error,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                )
                 task.error_code = verification_error
                 task.message = "此操作需要完成模拟二次验证。"
                 session.flush()

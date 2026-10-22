@@ -107,7 +107,7 @@ def _active_action_match(text: str, pattern: re.Pattern[str]) -> re.Match[str] |
     """Find an action verb not used as a negation, historical state, or query."""
     for match in pattern.finditer(text):
         before = text[max(0, match.start() - 20) : match.start()]
-        before_clause = re.split(r"[，,。；;！？!?\n]|然后|随后|接着|再|并且|同时", before)[-1]
+        before_clause = re.split(r"[，,。；;！？!?\n]|然后|随后|接着|再|并且|并|同时", before)[-1]
         if re.search(r"(?:不要|别|不必|无需|不需要|保持|维持|继续|已经|已|被|处于)\s*$", before):
             continue
         if re.search(
@@ -162,7 +162,9 @@ def requested_card_tool(request_text: str) -> str | None:
 def requested_subscription_tool(request_text: str) -> str | None:
     """Return a direct subscription operation, ignoring past state and future options."""
     request = request_text.casefold()
-    if not any(phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费")):
+    if not any(
+        phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣")
+    ):
         return None
     if is_planning_only_request(request):
         return None
@@ -194,8 +196,8 @@ def requested_subscription_tool(request_text: str) -> str | None:
         return "subscription.resume"
 
     pause_pattern = re.compile(
-        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款)"
-        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款)(?:.{0,12})(?:暂停|暂时停|临时停|先停一下)"
+        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)"
+        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)(?:[^，,。；;！？!?\n]{0,12})(?:暂停|暂时停|临时停|先停一下)"
     )
     pause = _active_action_match(request, pause_pattern)
     if pause is not None and not re.search(r"暂停(?:中|状态|过|后|之后)", request):

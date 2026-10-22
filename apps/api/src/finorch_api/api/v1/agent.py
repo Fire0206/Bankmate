@@ -246,6 +246,11 @@ def confirm_task_operation(
         )
     if task.error_code == "confirmation_expired":
         raise _conflict("Confirmation expired; no business state changed.", "confirmation_expired")
+    if task.error_code == "safety_hold_active":
+        raise _conflict(
+            "A temporary demo safety hold blocks write operations; read access remains available.",
+            "safety_hold_active",
+        )
     if task.error_code in {
         "strong_verification_required",
         "verification_unavailable",

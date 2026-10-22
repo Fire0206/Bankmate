@@ -587,10 +587,8 @@ def test_plan_only_server_guard_rejects_model_generated_write_confirmation(
         )
 
     assert task["confirmation"] is None
-    assert task["error_code"] in {"agent_step_limit_exceeded", "agent_required_tool_not_called"}
-    assert any(
-        step.get("error_code") == "workflow_write_not_authorized" for step in task["steps"]
-    ), task
+    assert task["error_code"] == "write_not_requested"
+    assert any(step.get("error_code") == "write_not_requested" for step in task["steps"]), task
     assert not any(
         step.get("status") in {"succeeded", "awaiting_confirmation"} for step in task["steps"]
     )
