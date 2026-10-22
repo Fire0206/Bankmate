@@ -5,8 +5,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from finorch_api.api.errors import ContractHTTPException
-from finorch_api.api.v1.bill_schemas import BillSummaryResponse, TransactionPageResponse
-from finorch_api.application.bills import get_monthly_summary, list_transactions
+from finorch_api.api.v1.bill_schemas import (
+    AnnualBillResponse,
+    BillSummaryResponse,
+    TransactionPageResponse,
+)
+from finorch_api.application.bills import get_annual_report, get_monthly_summary, list_transactions
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.security.demo_identity import DemoActor, get_current_demo_actor
 
@@ -61,3 +65,17 @@ def read_bill_summary(
     except ValueError as exc:
         raise ContractHTTPException(422, "invalid_month", str(exc)) from None
     return BillSummaryResponse.model_validate(asdict(summary))
+
+
+@router.get(
+    "/bills/annual",
+    response_model=AnnualBillResponse,
+    summary="Read an annual synthetic bill report",
+)
+def read_annual_bill(
+    session: DatabaseSession,
+    actor: CurrentDemoActor,
+    year: Annotated[int, Query(ge=2000, le=2100)],
+) -> AnnualBillResponse:
+    report = get_annual_report(session, actor_id=actor.user_id, year=year)
+    return AnnualBillResponse.model_validate(asdict(report))

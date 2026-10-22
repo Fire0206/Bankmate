@@ -60,3 +60,17 @@ class BillSummaryResponse(BaseModel):
     categories: list[BillCategoryResponse]
     trends: list[BillTrendResponse]
     anomalies: list[BillTransactionResponse]
+
+
+class AnnualBillResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    currency: str
+    income_minor: int
+    expense_minor: int
+    net_minor: int
+    monthly_totals: list[BillTrendResponse]
+    categories: list[BillCategoryResponse]
+    top_expense_category: str | None
+    anomalies: list[BillTransactionResponse]

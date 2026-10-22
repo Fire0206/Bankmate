@@ -11,6 +11,8 @@ from finorch_api.agent.context import ToolCallContext
 from finorch_api.agent.investment_tools import investment_tool_specs
 from finorch_api.agent.runtime import ToolRegistry, ToolSpec
 from finorch_api.agent.tools import (
+    BillAnnualInput,
+    BillAnnualOutput,
     BillAnomaliesOutput,
     BillMonthInput,
     BillSummaryInput,
@@ -30,6 +32,7 @@ from finorch_api.agent.tools import (
 )
 from finorch_api.agent.transfer_tools import transfer_tool_specs
 from finorch_api.application.bills import (
+    get_annual_report,
     get_month_anomalies,
     get_monthly_summary,
     list_transactions,
@@ -245,6 +248,13 @@ def build_tool_registry() -> ToolRegistry:
         data["anomalies"] = [_bill_transaction_output(item) for item in view.anomalies]
         return BillSummaryOutput.model_validate(data)
 
+    def bill_annual_handler(arguments: BaseModel, context: ToolCallContext) -> BillAnnualOutput:
+        typed = BillAnnualInput.model_validate(arguments)
+        view = get_annual_report(context.session, actor_id=context.actor_id, year=typed.year)
+        data = asdict(view)
+        data["anomalies"] = [_bill_transaction_output(item) for item in view.anomalies]
+        return BillAnnualOutput.model_validate(data)
+
     def bill_transactions_handler(
         arguments: BaseModel, context: ToolCallContext
     ) -> BillTransactionsOutput:
@@ -381,6 +391,20 @@ def build_tool_registry() -> ToolRegistry:
                 risk_level="low",
                 confirmation_requirement="never",
                 handler=bill_summary_handler,
+            ),
+            ToolSpec(
+                name="bill.annual_report",
+                description=(
+                    "Calculate a full calendar year's synthetic income, expenses, twelve monthly "
+                    "totals, category spending and deterministic anomaly notices."
+                ),
+                version=TOOL_VERSION,
+                input_model=BillAnnualInput,
+                output_model=BillAnnualOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=bill_annual_handler,
             ),
             ToolSpec(
                 name="bill.transactions",

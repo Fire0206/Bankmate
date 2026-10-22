@@ -1077,6 +1077,20 @@ class FakeProvider(LLMProvider):
             name = "subscription.list"
             return ModelTurn("", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, "{}"),))
 
+        if any(word in request for word in ("年度账单", "年度报告", "全年收支", "全年账单")):
+            year_match = re.search(r"(?<!\d)(20\d{2})(?:年)?(?!\d)", full_request)
+            year = int(year_match.group(1)) if year_match else datetime.now(UTC).year
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "fake-bill-annual-report",
+                        "bill.annual_report",
+                        json.dumps({"year": year}),
+                    ),
+                ),
+            )
+
         if any(word in request for word in ("异常", "可疑", "不正常")):
             name = "bill.anomalies"
             args = {"month": month}

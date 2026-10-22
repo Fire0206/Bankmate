@@ -61,6 +61,68 @@ class BillSummaryView:
     anomalies: tuple[TransactionView, ...]
 
 
+@dataclass(frozen=True)
+class AnnualBillView:
+    year: int
+    currency: str
+    income_minor: int
+    expense_minor: int
+    net_minor: int
+    monthly_totals: tuple[MonthlyTrendView, ...]
+    categories: tuple[CategorySpendView, ...]
+    top_expense_category: str | None
+    anomalies: tuple[TransactionView, ...]
+
+
+def get_annual_report(session: Session, *, actor_id: UUID, year: int) -> AnnualBillView:
+    if year < 2000 or year > 2100:
+        raise ValueError("Year must be between 2000 and 2100.")
+    rows = _owned_transactions(
+        session,
+        actor_id=actor_id,
+        start=datetime(year, 1, 1, tzinfo=UTC),
+        end=datetime(year + 1, 1, 1, tzinfo=UTC),
+    )
+    income = sum(item.amount_minor for item in rows if item.direction == "income")
+    expense = sum(item.amount_minor for item in rows if item.direction == "expense")
+    months = {month: [0, 0] for month in range(1, 13)}
+    categories: dict[str, list[int]] = {}
+    for item in rows:
+        values = months[_utc(item.occurred_at).month]
+        values[0 if item.direction == "income" else 1] += item.amount_minor
+        if item.direction == "expense":
+            category_values = categories.setdefault(item.category, [0, 0])
+            category_values[0] += item.amount_minor
+            category_values[1] += 1
+    category_views = tuple(
+        CategorySpendView(category=name, amount_minor=values[0], transaction_count=values[1])
+        for name, values in sorted(categories.items(), key=lambda pair: (-pair[1][0], pair[0]))
+    )
+    anomaly_reasons = detect_anomaly_reasons(rows)
+    return AnnualBillView(
+        year=year,
+        currency="CNY",
+        income_minor=income,
+        expense_minor=expense,
+        net_minor=income - expense,
+        monthly_totals=tuple(
+            MonthlyTrendView(
+                month=f"{year}-{month:02d}",
+                income_minor=values[0],
+                expense_minor=values[1],
+            )
+            for month, values in months.items()
+        ),
+        categories=category_views,
+        top_expense_category=category_views[0].category if category_views else None,
+        anomalies=tuple(
+            _view(session, item, anomaly_reasons[item.id])
+            for item in rows
+            if item.id in anomaly_reasons
+        ),
+    )
+
+
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 

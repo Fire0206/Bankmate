@@ -6,29 +6,29 @@
 
 状态：F = Fully Implemented；P = Partially Implemented；M = Missing；N = Not Applicable。列分别表示模型、业务、API、工具、安全、自然语言、前端、自动化测试、本轮真实模型验证。已有能力的 F 仅指该列有实现；最终全链路验收仍须本轮模型与数据库证据。
 
-| 子功能         | 模型 | 业务 | API | 工具 | 安全 | 自然语言 | 前端 | 测试 | 本轮模型 | 主要实现/缺口                        |
-| -------------- | ---- | ---- | --- | ---- | ---- | -------- | ---- | ---- | -------- | ------------------------------------ |
-| 姓名转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | application/transfers.py；缺三级策略 |
-| 手机号转账     | M    | M    | M   | M    | M    | M        | M    | M    | M        | payees 尚无手机号                    |
-| 转账备注       | M    | M    | M   | M    | M    | M        | M    | M    | M        | 备注需保存并按不可信文本处理         |
-| 定时转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | 显式模拟到期执行；需执行日风险复核   |
-| AA 拆分/收款   | F    | F    | F   | F    | P    | P        | F    | F    | M        | transfers.py；口语参数仍需验证       |
-| 分类/月度账单  | F    | F    | F   | F    | F    | F        | F    | F    | M        | bills.py；真实流水聚合               |
-| 异常提示       | F    | F    | F   | F    | F    | F        | F    | F    | M        | 金额及重复扣费规则，非欺诈判定       |
-| 年度报告       | P    | M    | M   | M    | M    | M        | M    | M    | M        | 有流水，无年度聚合契约               |
-| 产品匹配/比较  | F    | F    | F   | F    | F    | F        | F    | F    | M        | investments.py                       |
-| 问卷风险评估   | P    | M    | M   | M    | M    | M        | M    | M    | M        | 仅固定画像和适当性校验               |
-| 申购/赎回      | F    | F    | F   | F    | P    | F        | F    | F    | M        | 缺强验证策略                         |
-| 临时冻结/解冻  | F    | F    | F   | F    | P    | F        | F    | F    | M        | cards.py；并非挂失恢复               |
-| 卡申请/状态    | M    | M    | M   | M    | M    | M        | M    | M    | M        | 不具备信用审核，不宣称授信           |
-| 借记卡限额     | M    | M    | M   | M    | M    | M        | M    | M    | M        | 区分单笔/单日，不等于信用额度        |
-| 交易限制       | M    | M    | M   | M    | M    | M        | M    | M    | M        | 需执行路径真实校验                   |
-| 挂失/恢复      | M    | M    | M   | M    | M    | M        | M    | M    | M        | 与临时冻结独立语义                   |
-| 周期识别/取消  | F    | F    | F   | F    | P    | F        | F    | F    | M        | subscriptions.py                     |
-| 可配置续费提醒 | P    | M    | M   | M    | M    | M        | M    | M    | M        | 已有下次扣费日期，无周期去重提醒     |
-| 可疑扣款处置   | F    | F    | F   | F    | P    | F        | F    | F    | M        | agent_workflow.py；逐步确认          |
-| 发薪日调度     | F    | F    | F   | F    | P    | F        | F    | F    | M        | cashflow.py；需累计金额策略          |
-| 生日预算/预订  | M    | M    | M   | M    | M    | M        | M    | M    | M        | 预留、预约、扣款须分别建模           |
+| 子功能         | 模型 | 业务 | API | 工具 | 安全 | 自然语言 | 前端 | 测试 | 本轮模型 | 主要实现/缺口                             |
+| -------------- | ---- | ---- | --- | ---- | ---- | -------- | ---- | ---- | -------- | ----------------------------------------- |
+| 姓名转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | application/transfers.py；缺三级策略      |
+| 手机号转账     | M    | M    | M   | M    | M    | M        | M    | M    | M        | payees 尚无手机号                         |
+| 转账备注       | M    | M    | M   | M    | M    | M        | M    | M    | M        | 备注需保存并按不可信文本处理              |
+| 定时转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | 显式模拟到期执行；需执行日风险复核        |
+| AA 拆分/收款   | F    | F    | F   | F    | P    | P        | F    | F    | M        | transfers.py；口语参数仍需验证            |
+| 分类/月度账单  | F    | F    | F   | F    | F    | F        | F    | F    | M        | bills.py；真实流水聚合                    |
+| 异常提示       | F    | F    | F   | F    | F    | F        | F    | F    | M        | 金额及重复扣费规则，非欺诈判定            |
+| 年度报告       | F    | F    | F   | F    | F    | F        | F    | F    | M        | 按 actor 聚合全年合成流水；真实模型待验收 |
+| 产品匹配/比较  | F    | F    | F   | F    | F    | F        | F    | F    | M        | investments.py                            |
+| 问卷风险评估   | P    | M    | M   | M    | M    | M        | M    | M    | M        | 仅固定画像和适当性校验                    |
+| 申购/赎回      | F    | F    | F   | F    | P    | F        | F    | F    | M        | 缺强验证策略                              |
+| 临时冻结/解冻  | F    | F    | F   | F    | P    | F        | F    | F    | M        | cards.py；并非挂失恢复                    |
+| 卡申请/状态    | M    | M    | M   | M    | M    | M        | M    | M    | M        | 不具备信用审核，不宣称授信                |
+| 借记卡限额     | M    | M    | M   | M    | M    | M        | M    | M    | M        | 区分单笔/单日，不等于信用额度             |
+| 交易限制       | M    | M    | M   | M    | M    | M        | M    | M    | M        | 需执行路径真实校验                        |
+| 挂失/恢复      | M    | M    | M   | M    | M    | M        | M    | M    | M        | 与临时冻结独立语义                        |
+| 周期识别/取消  | F    | F    | F   | F    | P    | F        | F    | F    | M        | subscriptions.py                          |
+| 可配置续费提醒 | P    | M    | M   | M    | M    | M        | M    | M    | M        | 已有下次扣费日期，无周期去重提醒          |
+| 可疑扣款处置   | F    | F    | F   | F    | P    | F        | F    | F    | M        | agent_workflow.py；逐步确认               |
+| 发薪日调度     | F    | F    | F   | F    | P    | F        | F    | F    | M        | cashflow.py；需累计金额策略               |
+| 生日预算/预订  | M    | M    | M   | M    | M    | M        | M    | M    | M        | 预留、预约、扣款须分别建模                |
 
 主要代码前缀为 `apps/api/src/finorch_api/`；API 位于 `api/v1/`，工具位于 `agent/`，集成测试位于 `apps/api/tests/`。前端通用确认和结果分别位于 `apps/web/src/components/ConfirmationCard.tsx`、`TaskResult.tsx`。
 

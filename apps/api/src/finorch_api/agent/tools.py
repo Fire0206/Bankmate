@@ -124,6 +124,26 @@ class BillSummaryOutput(BaseModel):
     anomalies: list[BillTransactionOutput]
 
 
+class BillAnnualInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int = Field(ge=2000, le=2100, description="Calendar year in UTC, for example 2026.")
+
+
+class BillAnnualOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    year: int
+    currency: str
+    income_minor: int
+    expense_minor: int
+    net_minor: int
+    monthly_totals: list[BillTrendOutput]
+    categories: list[BillCategoryOutput]
+    top_expense_category: str | None
+    anomalies: list[BillTransactionOutput]
+
+
 class BillTransactionsOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

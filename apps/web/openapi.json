@@ -637,6 +637,110 @@
         }
       }
     },
+    "/api/v1/bills/annual": {
+      "get": {
+        "tags": [
+          "bills"
+        ],
+        "summary": "Read an annual synthetic bill report",
+        "operationId": "read_annual_bill_api_v1_bills_annual_get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2100,
+              "minimum": 2000,
+              "title": "Year"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnnualBillResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request conflicts with current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo identity is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subscriptions": {
       "get": {
         "tags": [
@@ -3569,6 +3673,76 @@
           "result_data"
         ],
         "title": "AgentTaskStepResponse"
+      },
+      "AnnualBillResponse": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          },
+          "income_minor": {
+            "type": "integer",
+            "title": "Income Minor"
+          },
+          "expense_minor": {
+            "type": "integer",
+            "title": "Expense Minor"
+          },
+          "net_minor": {
+            "type": "integer",
+            "title": "Net Minor"
+          },
+          "monthly_totals": {
+            "items": {
+              "$ref": "#/components/schemas/BillTrendResponse"
+            },
+            "type": "array",
+            "title": "Monthly Totals"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/BillCategoryResponse"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "top_expense_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Expense Category"
+          },
+          "anomalies": {
+            "items": {
+              "$ref": "#/components/schemas/BillTransactionResponse"
+            },
+            "type": "array",
+            "title": "Anomalies"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "year",
+          "currency",
+          "income_minor",
+          "expense_minor",
+          "net_minor",
+          "monthly_totals",
+          "categories",
+          "top_expense_category",
+          "anomalies"
+        ],
+        "title": "AnnualBillResponse"
       },
       "ApiError": {
         "properties": {

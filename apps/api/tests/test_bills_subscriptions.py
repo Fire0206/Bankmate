@@ -104,6 +104,34 @@ def test_monthly_summary_and_category_totals_are_calculated_from_owned_rows(bill
         assert owned_transactions > 0
 
 
+def test_annual_report_aggregates_owned_transactions_and_agent_reads_it(bill_agent_context):
+    client, actor, database = bill_agent_context
+    response = client.get("/api/v1/bills/annual", params={"year": 2026})
+    assert response.status_code == 200
+    annual = response.json()
+    assert len(annual["monthly_totals"]) == 12
+    assert annual["monthly_totals"][9]["month"] == "2026-10"
+    assert annual["monthly_totals"][9]["expense_minor"] == 2_003_500
+    assert annual["income_minor"] == sum(
+        month["income_minor"] for month in annual["monthly_totals"]
+    )
+    assert annual["expense_minor"] == sum(
+        month["expense_minor"] for month in annual["monthly_totals"]
+    )
+    assert annual["expense_minor"] == sum(item["amount_minor"] for item in annual["categories"])
+    assert annual["top_expense_category"] == annual["categories"][0]["category"]
+    assert annual["anomalies"]
+    task = submit(client, "查看 2026 年度账单", "annual-bill-agent")
+    assert task["status"] == "completed"
+    assert tool_result(task, "bill.annual_report")["expense_minor"] == annual["expense_minor"]
+
+    actor[0] = DEMO_USER_TWO_ID
+    other = client.get("/api/v1/bills/annual", params={"year": 2026})
+    assert other.status_code == 200
+    assert other.json()["expense_minor"] != annual["expense_minor"]
+    assert client.get("/api/v1/bills/annual?year=1999").status_code == 422
+
+
 def test_transaction_filters_and_demo_actor_scope(bill_agent_context):
     client, actor, _database = bill_agent_context
     response = client.get(
