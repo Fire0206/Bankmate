@@ -139,6 +139,63 @@ function BillSummary({ data }: { data: JsonObject }) {
   );
 }
 
+function AnnualBill({ data }: { data: JsonObject }) {
+  const months = objectArray(data.monthly_totals);
+  const categories = objectArray(data.categories);
+  const anomalies = objectArray(data.anomalies);
+  return (
+    <section aria-label="年度账单" className="task-result">
+      <div className="task-result-heading">
+        <strong>{stringValue(data.year)} 年度账单</strong>
+      </div>
+      <div className="bill-total-row">
+        <div>
+          <span>总收入</span>
+          <strong>{formatAmount(data.income_minor)}</strong>
+        </div>
+        <div>
+          <span>总支出</span>
+          <strong>{formatAmount(data.expense_minor)}</strong>
+        </div>
+        <div>
+          <span>收支差额</span>
+          <strong>{formatAmount(data.net_minor)}</strong>
+        </div>
+      </div>
+      {data.top_expense_category ? (
+        <p>主要支出类别：{stringValue(data.top_expense_category)}</p>
+      ) : null}
+      <div className="task-result-list">
+        {months.map((item) => (
+          <div className="task-result-row" key={stringValue(item.month)}>
+            <span>{stringValue(item.month)}</span>
+            <span>
+              收入 {formatAmount(item.income_minor)} · 支出{" "}
+              {formatAmount(item.expense_minor)}
+            </span>
+          </div>
+        ))}
+      </div>
+      {categories.length ? (
+        <p>
+          支出分类：
+          {categories
+            .map(
+              (item) =>
+                `${stringValue(item.category)} ${formatAmount(item.amount_minor)}`,
+            )
+            .join("、")}
+        </p>
+      ) : null}
+      {anomalies.length ? (
+        <p className="task-result-notice">
+          {anomalies.length} 笔交易符合演示提示规则；这不是欺诈结论。
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function TransactionList({
   data,
   anomaliesOnly = false,
@@ -662,6 +719,8 @@ function resultForTool(toolName: string, data: JsonObject) {
       return <PaydayPlan data={data} />;
     case "bill.monthly_summary":
       return <BillSummary data={data} />;
+    case "bill.annual_report":
+      return <AnnualBill data={data} />;
     case "bill.transactions":
       return <TransactionList data={data} />;
     case "bill.anomalies":
@@ -683,6 +742,7 @@ const resultTitles: Record<string, string> = {
   "card.list": "银行卡",
   "card.get": "银行卡状态",
   "bill.monthly_summary": "月度账单",
+  "bill.annual_report": "年度账单",
   "bill.transactions": "交易明细",
   "bill.anomalies": "异常消费提示",
   "subscription.list": "自动扣费",
@@ -725,6 +785,7 @@ function readIntentScore(toolName: string, request: string): number {
     return 2;
   if (toolName === "bill.anomalies" && /异常|可疑|重复扣费/.test(request))
     return 2;
+  if (toolName === "bill.annual_report" && /年度|全年/.test(request)) return 2;
   if (toolName === "bill.transactions" && /流水|明细|交易/.test(request))
     return 2;
   if (
@@ -766,6 +827,13 @@ function conciseValue(step: Step): string[] {
           ),
       ];
     }
+    case "bill.annual_report":
+      return [
+        `${stringValue(data.year)} 年支出 ${formatAmount(data.expense_minor)} · 收入 ${formatAmount(data.income_minor)}`,
+        data.top_expense_category
+          ? `主要支出：${stringValue(data.top_expense_category)}`
+          : "本年暂无支出",
+      ];
     case "bill.anomalies":
       return items.length
         ? items

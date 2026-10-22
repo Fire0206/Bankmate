@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bills/annual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an annual synthetic bill report */
+        get: operations["read_annual_bill_api_v1_bills_annual_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -644,6 +661,27 @@ export interface components {
             result_data: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** AnnualBillResponse */
+        AnnualBillResponse: {
+            /** Year */
+            year: number;
+            /** Currency */
+            currency: string;
+            /** Income Minor */
+            income_minor: number;
+            /** Expense Minor */
+            expense_minor: number;
+            /** Net Minor */
+            net_minor: number;
+            /** Monthly Totals */
+            monthly_totals: components["schemas"]["BillTrendResponse"][];
+            /** Categories */
+            categories: components["schemas"]["BillCategoryResponse"][];
+            /** Top Expense Category */
+            top_expense_category: string | null;
+            /** Anomalies */
+            anomalies: components["schemas"]["BillTransactionResponse"][];
         };
         /** ApiError */
         ApiError: {
@@ -1672,6 +1710,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BillSummaryResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_annual_bill_api_v1_bills_annual_get: {
+        parameters: {
+            query: {
+                year: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnnualBillResponse"];
                 };
             };
             /** @description Authentication required. */
