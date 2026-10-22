@@ -348,7 +348,12 @@ function PayeeList({ data }: { data: JsonObject }) {
           {items.map((item) => (
             <div className="task-result-row" key={stringValue(item.id)}>
               <span>{stringValue(item.display_name)}</span>
-              <small>{stringValue(item.destination_account_label)}</small>
+              <small>
+                {stringValue(item.destination_account_label)}
+                {item.phone_masked
+                  ? ` · ${stringValue(item.phone_masked)}`
+                  : ""}
+              </small>
             </div>
           ))}
         </div>
@@ -383,6 +388,9 @@ function TransferList({ data }: { data: JsonObject }) {
             >
               <div>
                 <strong>{stringValue(item.payee_name)}</strong>
+                {item.remark ? (
+                  <small>备注：{stringValue(item.remark)}</small>
+                ) : null}
                 <small>
                   {labels[stringValue(item.status)] ?? stringValue(item.status)}
                   {item.transfer_type === "scheduled" ? " · 定时转账" : ""}
@@ -418,6 +426,9 @@ function TransferResult({ data }: { data: JsonObject }) {
         {stringValue(transfer.payee_name)} ·{" "}
         {formatAmount(transfer.amount_minor)}
       </span>
+      {transfer.remark ? (
+        <span>备注：{stringValue(transfer.remark)}</span>
+      ) : null}
       {transfer.scheduled_at ? (
         <span>计划时间：{dateLabel(transfer.scheduled_at)}</span>
       ) : null}

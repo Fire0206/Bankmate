@@ -47,8 +47,14 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0006_strong_verifications"
+        assert revision == "0007_transfer_phone_remark"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
+    assert "phone_number" in {
+        column["name"] for column in inspect(database.engine).get_columns("payees")
+    }
+    assert "remark" in {
+        column["name"] for column in inspect(database.engine).get_columns("transfers")
+    }
 
 
 def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
@@ -82,6 +88,18 @@ def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
 
     assert second_state == first_state == (2, 3, 3, 0, 31, 3, 3, 3, DATASET_VERSION)
     with seeded_database.session_factory() as session:
+        assert (
+            session.scalar(select(Payee.phone_number).where(Payee.display_name == "储蓄账户"))
+            is None
+        )
+        assert (
+            session.scalar(
+                select(Payee.phone_number).where(
+                    Payee.id == UUID("30000000-0000-4000-8000-000000000001")
+                )
+            )
+            == "19900001042"
+        )
         seeded_bills = list(
             session.scalars(select(Transaction).where(Transaction.entry_kind == "bill"))
         )
@@ -99,6 +117,86 @@ def test_seed_updates_dataset_version_for_existing_demo_users(seeded_database) -
         versions = set(session.scalars(select(DemoUser.dataset_version)))
 
     assert versions == {DATASET_VERSION}
+
+
+def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path) -> None:
+    path = tmp_path / "migration-transfer.sqlite3"
+    url = URL.create("sqlite", database=str(path)).render_as_string(hide_password=False)
+    config = Config(str(REPOSITORY_ROOT / "apps" / "api" / "alembic.ini"))
+    config.attributes["database_url"] = url
+    engine = build_engine(url)
+    try:
+        command.upgrade(config, "0006_strong_verifications")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO demo_users (id, display_name, dataset_version, created_at) "
+                    "VALUES ('00000000000040008000000000000001', 'Prior Demo', 'old', '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id, demo_user_id, label, currency, "
+                    "opening_balance_minor, created_at) VALUES "
+                    "('10000000000040008000000000000001', "
+                    "'00000000000040008000000000000001', 'Prior Account', 'CNY', "
+                    "100000, '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id, demo_user_id, label, currency, "
+                    "opening_balance_minor, created_at) VALUES "
+                    "('10000000000040008000000000000002', "
+                    "'00000000000040008000000000000001', 'Prior Destination', 'CNY', "
+                    "100000, '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO payees (id, actor_id, destination_account_id, "
+                    "display_name, normalized_name, created_at) VALUES "
+                    "('30000000000040008000000000000001', "
+                    "'00000000000040008000000000000001', "
+                    "'10000000000040008000000000000002', 'Prior Payee', "
+                    "'prior payee', '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO transfers (id, actor_id, source_account_id, "
+                    "destination_account_id, payee_id, payee_name, amount_minor, "
+                    "currency, transfer_type, status, idempotency_key, version, "
+                    "created_at, updated_at) VALUES "
+                    "('50000000000040008000000000000001', "
+                    "'00000000000040008000000000000001', "
+                    "'10000000000040008000000000000001', "
+                    "'10000000000040008000000000000002', "
+                    "'30000000000040008000000000000001', 'Prior Payee', 1000, "
+                    "'CNY', 'immediate', 'executed', 'prior-key', 1, "
+                    "'2026-10-01', '2026-10-01')"
+                )
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT display_name, phone_number FROM payees WHERE display_name='Prior Payee'"
+                )
+            ).one()
+            assert row == ("Prior Payee", None)
+            transfer = connection.execute(
+                text(
+                    "SELECT amount_minor, remark FROM transfers "
+                    "WHERE id='50000000000040008000000000000001'"
+                )
+            ).one()
+            assert transfer == (1000, None)
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "0007_transfer_phone_remark"
+            )
+    finally:
+        engine.dispose()
 
 
 def test_phase1a_card_audit_data_survives_generic_audit_migration(tmp_path: Path) -> None:

@@ -18,7 +18,7 @@ from finorch_api.infrastructure.models import (
 )
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 
-DATASET_VERSION = "phase1e-v1"
+DATASET_VERSION = "phase3-v1"
 _SYNTHETIC_NAMESPACE = UUID("a0000000-0000-4000-8000-000000000001")
 
 _USERS = (
@@ -80,18 +80,21 @@ _PAYEES = (
         DEMO_USER_ONE_ID,
         UUID("10000000-0000-4000-8000-000000000003"),
         "小林",
+        "19900001042",
     ),
     (
         UUID("30000000-0000-4000-8000-000000000002"),
         DEMO_USER_ONE_ID,
         UUID("10000000-0000-4000-8000-000000000002"),
         "储蓄账户",
+        None,
     ),
     (
         UUID("30000000-0000-4000-8000-000000000003"),
         DEMO_USER_TWO_ID,
         UUID("10000000-0000-4000-8000-000000000001"),
         "小林",
+        "19900002729",
     ),
 )
 
@@ -279,7 +282,7 @@ def seed_demo_data(session: Session) -> None:
         )
     session.flush()
 
-    for payee_id, user_id, destination_account_id, display_name in _PAYEES:
+    for payee_id, user_id, destination_account_id, display_name, phone_number in _PAYEES:
         _add_missing(
             session,
             Payee,
@@ -288,7 +291,19 @@ def seed_demo_data(session: Session) -> None:
             destination_account_id=destination_account_id,
             display_name=display_name,
             normalized_name="".join(display_name.split()).casefold(),
+            phone_number=phone_number,
         )
+        saved_payee = session.get(Payee, payee_id)
+        if saved_payee is not None and saved_payee.phone_number is None and phone_number:
+            bound = session.scalar(
+                select(Payee.id).where(
+                    Payee.actor_id == user_id,
+                    Payee.phone_number == phone_number,
+                    Payee.id != payee_id,
+                )
+            )
+            if bound is None:
+                saved_payee.phone_number = phone_number
     for (
         product_id,
         code,

@@ -86,7 +86,10 @@ from finorch_api.security.circuit import (
     signal_category,
 )
 from finorch_api.security.verification import challenge_risk, consume_demo_code
-from finorch_api.security.write_intent import user_authorized_write
+from finorch_api.security.write_intent import (
+    transfer_phone_matches_request,
+    user_authorized_write,
+)
 
 logger = logging.getLogger("finorch.agent")
 
@@ -612,6 +615,23 @@ def _dispatch_tool(
                 ),
             )
 
+        if spec.name in {"transfer.create", "transfer.schedule"} and not (
+            transfer_phone_matches_request(
+                task.request_text, getattr(parsed, "recipient_phone", None)
+            )
+        ):
+            return _record_tool_failure(
+                session,
+                task=task,
+                step=step,
+                execution=execution,
+                actor_id=actor_id,
+                request_id=request_id,
+                error=ToolExecutionError(
+                    "transfer_target_mismatch", "收款手机号与用户请求不一致，未创建确认请求。"
+                ),
+            )
+
         if spec.permission_level != "read_only" and parsed is not None:
             block = _workflow_write_block_reason(
                 session, task=task, tool_name=spec.name, parsed=parsed
@@ -886,6 +906,7 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                         else None,
                         "source_account_label": source.label if source else "模拟账户",
                         "payee_name": transfer.payee_name,
+                        "remark": transfer.remark,
                     },
                 )
         elif challenge.split_bill_id is not None:
@@ -2260,6 +2281,7 @@ def confirm_task_operation(
                         "source_account_id": str(transfer.source_account_id),
                         "destination_account_id": str(transfer.destination_account_id),
                         "payee_id": str(transfer.payee_id),
+                        "remark": transfer.remark,
                         "amount_minor": transfer.amount_minor,
                         "currency": transfer.currency,
                         "transfer_type": transfer.transfer_type,

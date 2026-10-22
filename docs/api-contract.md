@@ -95,6 +95,7 @@ Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
 | `GET /api/v1/investments/orders`                                       | 当前 actor 的模拟申购/赎回历史。                |
 
 普通转账、定时转账、AA 分账收付、理财申购和赎回没有绕过确认的独立写 API；只能经 Agent Task proposal 和确认 API 执行。定时任务仅支持开发/测试环境的显式本地模拟执行，不是后台自动调度。
+`POST /api/v1/payees` 可选填写合成 `phone_number`，每位 actor 的手机号唯一；`GET /api/v1/payees` 仅返回掩码。转账 Tool 传精确 `recipient_phone` 或 `recipient_name`，不能两者兼传。转账查询返回可空 `remark`；备注不被执行为指令，确认时须保持一致。
 Demo Session 与 Agent Task 端点：
 
 | 方法与路径                                                                                       | 说明                                                                                                                                    |

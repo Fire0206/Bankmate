@@ -81,6 +81,7 @@ def add_payee(
             actor_id=actor.user_id,
             display_name=body.display_name,
             destination_account_id=body.destination_account_id,
+            phone_number=body.phone_number,
         )
     except BankingRuleError as exc:
         _raise_business_error(exc)

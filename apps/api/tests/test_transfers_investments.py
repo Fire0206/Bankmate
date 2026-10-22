@@ -32,7 +32,7 @@ from finorch_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from finorch_api.security.verification import issue_demo_code
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
 ALICE_SAVINGS_ACCOUNT = UUID("10000000-0000-4000-8000-000000000002")
@@ -135,6 +135,105 @@ def test_transfer_requires_confirmation_and_writes_balanced_transactions(banking
             )
             == 2
         )
+
+
+def test_phone_transfer_remark_is_confirmed_persisted_and_actor_scoped(banking_api) -> None:
+    client, actor, database = banking_api
+    before = balances(database)
+    payees = client.get("/api/v1/payees").json()["items"]
+    assert any(item["phone_masked"] == "199****1042" for item in payees)
+    assert all("phone_number" not in item for item in payees)
+
+    task = submit(client, "给手机号19900001042转100元，备注午餐", "phone-transfer-note")
+    assert task["status"] == "awaiting_confirmation", task
+    assert task["confirmation"]["details"]["payee_name"] == "小林"
+    assert task["confirmation"]["details"]["remark"] == "午餐"
+    assert balances(database) == before
+    result = confirm(client, task)
+    assert result.status_code == 200, result.text
+    assert result.json()["status"] == "completed"
+    assert balances(database)[ALICE_SOURCE_ACCOUNT] == before[ALICE_SOURCE_ACCOUNT] - 10_000
+    history = client.get("/api/v1/transfers").json()["items"]
+    assert history[0]["remark"] == "午餐"
+    with database.session_factory() as session:
+        transfer = session.scalar(select(Transfer).where(Transfer.id == UUID(history[0]["id"])))
+        assert transfer is not None and transfer.remark == "午餐"
+        assert transfer.payee_name == "小林"
+
+    actor[0] = DEMO_USER_TWO_ID
+    foreign = submit(client, "给手机号19900001042转10元", "foreign-phone-transfer")
+    assert foreign["status"] == "failed"
+    assert foreign["error_code"] == "payee_not_found"
+    assert foreign["confirmation"] is None
+
+
+def test_phone_transfer_rejects_missing_or_different_target(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+    missing = submit(client, "给手机号19900009999转10元", "missing-phone-payee")
+    assert missing["status"] == "failed"
+    assert missing["error_code"] == "payee_not_found"
+
+    class DifferentPhoneProvider(LLMProvider):
+        def complete(self, messages, tools):
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "wrong-phone",
+                        "transfer.create",
+                        json.dumps({"recipient_phone": "19900001042", "amount_minor": 1000}),
+                    ),
+                ),
+            )
+
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        DifferentPhoneProvider(), "openai-compatible"
+    )
+    changed = submit(client, "给手机号19900002729转10元", "changed-phone-target")
+    assert changed["status"] == "failed"
+    assert changed["error_code"] == "transfer_target_mismatch"
+    assert changed["confirmation"] is None
+    assert balances(database) == before
+
+
+def test_remark_change_invalidates_pending_confirmation(banking_api) -> None:
+    client, _actor, database = banking_api
+    before = balances(database)
+    task = submit(client, "给小林转10元，备注原用途", "remark-tamper")
+    assert task["status"] == "awaiting_confirmation"
+    assert task["confirmation"]["details"]["remark"] == "原用途"
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            session.execute(
+                update(Transfer)
+                .where(Transfer.id == UUID(task["confirmation"]["resource_id"]))
+                .values(remark="被改动的用途")
+            )
+    response = confirm(client, task)
+    assert response.status_code == 409, response.text
+    assert response.json()["error"]["code"] == "transfer_version_conflict"
+    assert balances(database) == before
+
+
+def test_saved_payee_phone_validation_and_uniqueness(banking_api) -> None:
+    client, _actor, _database = banking_api
+    body = {
+        "display_name": "测试收款人",
+        "destination_account_id": str(BOB_ACCOUNT),
+        "phone_number": "19900008888",
+    }
+    saved = client.post("/api/v1/payees", json=body)
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["phone_masked"] == "199****8888"
+    assert "phone_number" not in saved.json()
+    duplicate = client.post("/api/v1/payees", json={**body, "display_name": "另一位"})
+    assert duplicate.status_code == 422
+    assert duplicate.json()["error"]["code"] == "payee_phone_exists"
+    invalid = client.post(
+        "/api/v1/payees", json={**body, "display_name": "错误号码", "phone_number": "123"}
+    )
+    assert invalid.status_code == 422
 
 
 def test_high_value_transfer_requires_simulated_second_verification(banking_api) -> None:

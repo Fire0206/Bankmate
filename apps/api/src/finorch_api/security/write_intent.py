@@ -18,6 +18,15 @@ _COERCION = re.compile(
     r"安全账户|被催|催着|逼我|威胁|保密|不要告诉|不用核实|跳过确认|绕过确认|"
     r"陌生投资顾问|网恋对象"
 )
+_PHONE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+
+
+def transfer_phone_matches_request(request_text: str, proposed_phone: str | None) -> bool:
+    """A tool cannot substitute a different saved recipient for an explicit user phone."""
+    phones = set(_PHONE.findall(_UNTRUSTED_FIELD.sub("", request_text)))
+    if phones:
+        return len(phones) == 1 and proposed_phone in phones
+    return proposed_phone is None
 
 
 def user_authorized_write(request_text: str, tool_name: str) -> bool:
