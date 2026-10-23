@@ -53,6 +53,7 @@ function statusLabel(value: unknown): string {
     cancelled: "已取消",
     frozen: "已冻结",
     lost: "已挂失",
+    replaced: "已补卡停用",
     awaiting_confirmation: "等待确认",
     scheduled: "待执行",
     executed: "已执行",
@@ -923,6 +924,7 @@ const writeTitles: Record<string, string> = {
   "card.freeze": "银行卡已冻结",
   "card.unfreeze": "银行卡已解冻",
   "card.report_lost": "银行卡已挂失",
+  "card.replace": "模拟补卡已创建",
   "subscription.pause": "自动续费已暂停",
   "subscription.resume": "自动续费已恢复",
   "subscription.cancel": "自动续费已取消",
@@ -1093,9 +1095,14 @@ function writeSummary(step: Step): { title: string; detail: string } {
   const data = isObjectResult(step) ? step.result_data : {};
   if (toolName.startsWith("card.")) {
     const card = isObject(data.card) ? data.card : data;
+    const replacement = isObject(data.replacement_card)
+      ? data.replacement_card
+      : null;
     return {
       title: writeTitles[toolName] ?? "银行卡状态已更新",
-      detail: `尾号 ${stringValue(card.card_suffix)}`,
+      detail: replacement
+        ? `旧卡尾号 ${stringValue(card.card_suffix)} 已停用 · 新卡尾号 ${stringValue(replacement.card_suffix)}`
+        : `尾号 ${stringValue(card.card_suffix)}`,
     };
   }
   if (toolName.startsWith("subscription.")) {

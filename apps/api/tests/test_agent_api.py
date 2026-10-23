@@ -92,6 +92,68 @@ def confirm(client: TestClient, task: dict, *, key: str | None = None, digest: s
     )
 
 
+def test_lost_card_replacement_is_confirmed_owned_and_idempotent(api_context) -> None:
+    client, actor, database = api_context
+    with database.session_factory.begin() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None
+        card.status = CardStatus.LOST
+
+    task = submit(client, "为尾号 1042 的已挂失银行卡申请模拟补卡", key="replace-proposal")
+    assert task["status"] == "awaiting_confirmation", task
+    challenge = task["confirmation"]
+    assert challenge["tool_name"] == "card.replace"
+    assert challenge["confirmation_method"] == "demo_otp"
+    assert confirm(client, task).status_code == 409
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+
+    actor[0] = DEMO_USER_TWO_ID
+    assert confirm(client, task).status_code == 404
+    actor[0] = DEMO_USER_ONE_ID
+    payload = {
+        "challenge_id": challenge["id"],
+        "parameters_hash": challenge["parameters_hash"],
+        "verification_code": code,
+    }
+    response = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json=payload,
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "completed"
+    assert confirm(client, task).status_code == 200
+    with database.session_factory() as session:
+        old = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert old is not None and old.status is CardStatus.REPLACED
+        assert old.replaced_by_card_id is not None
+        new = session.get(Card, old.replaced_by_card_id)
+        assert new is not None and new.status is CardStatus.ACTIVE
+        assert new.account_id == old.account_id and new.card_suffix != old.card_suffix
+        assert session.scalar(select(func.count()).select_from(Card)) == 4
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.event_type == "card.replaced",
+                    AuditEvent.card_id == old.id,
+                )
+            )
+            == 1
+        )
+    unfreeze = submit(client, "解冻尾号 1042 的银行卡", key="unfreeze-replaced")
+    assert unfreeze["status"] != "awaiting_confirmation"
+
+
 def test_fake_provider_lists_real_owned_cards_and_persists_task(api_context) -> None:
     client, _actor, database = api_context
     task = submit(client, "查看我的银行卡")

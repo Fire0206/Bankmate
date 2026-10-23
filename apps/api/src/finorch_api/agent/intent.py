@@ -129,6 +129,13 @@ def requested_card_tool(request_text: str) -> str | None:
     if is_planning_only_request(request):
         return None
 
+    replacement_match = _active_action_match(
+        request,
+        re.compile(r"(?:补卡|补发(?:一张|新)?卡|重新发卡|申请新卡|换(?:一张|张)?新卡)"),
+    )
+    if replacement_match is not None:
+        return "card.replace"
+
     # Reporting a card lost is a separate irreversible simulated state. A
     # generic request to unfreeze must never be interpreted as lost-card recovery.
     lost_match = _active_action_match(

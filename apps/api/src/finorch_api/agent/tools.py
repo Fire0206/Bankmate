@@ -24,8 +24,9 @@ class CardToolItem(BaseModel):
     account_id: UUID
     label: str
     card_suffix: str
-    status: Literal["active", "frozen", "lost"]
+    status: Literal["active", "frozen", "lost", "replaced"]
     version: int = Field(ge=1)
+    replaced_by_card_id: UUID | None = None
 
 
 class CardListOutput(BaseModel):
@@ -48,8 +49,8 @@ class CardChangeProposalOutput(BaseModel):
     card_id: UUID
     card_suffix: str
     card_label: str
-    current_status: Literal["active", "frozen", "lost"]
-    target_status: Literal["active", "frozen", "lost"]
+    current_status: Literal["active", "frozen", "lost", "replaced"]
+    target_status: Literal["active", "frozen", "lost", "replaced"]
     card_version: int
     parameters_hash: str
     idempotency_key: str

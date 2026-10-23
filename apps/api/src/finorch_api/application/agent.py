@@ -48,6 +48,7 @@ from finorch_api.application.cards import (
     CardNotFoundError,
     CardWriteConflictError,
     freeze_card,
+    replace_lost_card,
     report_card_lost,
     unfreeze_card,
 )
@@ -2667,6 +2668,7 @@ def confirm_task_operation(
                 CardStatus.FROZEN.value: "card.freeze",
                 CardStatus.ACTIVE.value: "card.unfreeze",
                 CardStatus.LOST.value: "card.report_lost",
+                CardStatus.REPLACED.value: "card.replace",
             }.get(challenge.target_status)
             if (
                 card.version != challenge.card_version
@@ -2695,6 +2697,7 @@ def confirm_task_operation(
             execution.status = "running"
             challenge.status = "consumed"
             challenge.consumed_at = utc_now()
+            replacement = None
             if challenge.target_status == CardStatus.FROZEN.value:
                 changed = freeze_card(
                     session,
@@ -2722,6 +2725,15 @@ def confirm_task_operation(
                     task_id=task.id,
                     tool_execution_id=execution.id,
                 )
+            elif challenge.target_status == CardStatus.REPLACED.value:
+                changed, replacement = replace_lost_card(
+                    session,
+                    actor_id=actor_id,
+                    card_id=challenge.card_id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                )
             else:
                 raise AgentTaskStateConflictError
             execution.status = "succeeded"
@@ -2730,6 +2742,8 @@ def confirm_task_operation(
                 "card_suffix": changed.card_suffix,
                 "status": "succeeded",
             }
+            if replacement is not None:
+                execution.result_data["replacement_card"] = card_result_payload(replacement)
             execution.result_summary = (
                 f"Card {changed.card_suffix} status changed to {changed.status.value}."
             )
@@ -2743,8 +2757,14 @@ def confirm_task_operation(
                 CardStatus.FROZEN: "冻结",
                 CardStatus.ACTIVE: "解冻",
                 CardStatus.LOST: "挂失",
+                CardStatus.REPLACED: "补卡停用",
             }[changed.status]
-            task.message = f"尾号 {changed.card_suffix} 的卡片已{action}。"
+            task.message = (
+                f"尾号 {changed.card_suffix} 的旧卡已停用，"
+                f"模拟补卡尾号 {replacement.card_suffix} 已创建。"
+                if replacement is not None
+                else f"尾号 {changed.card_suffix} 的卡片已{action}。"
+            )
             task.error_code = None
             _audit(
                 session,

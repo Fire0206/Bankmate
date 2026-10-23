@@ -33,7 +33,7 @@ def aware(value: datetime) -> datetime:
 def challenge_risk(
     session: Session, challenge: ConfirmationChallenge, now: datetime
 ) -> RiskDecision:
-    if challenge.tool_name == "card.report_lost":
+    if challenge.tool_name in {"card.report_lost", "card.replace"}:
         return decide_risk(operation="sensitive_card")
     if challenge.transfer_id and challenge.target_status != "cancelled":
         transfer = session.get(Transfer, challenge.transfer_id)

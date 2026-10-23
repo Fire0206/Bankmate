@@ -23,7 +23,7 @@
 | 卡申请/状态    | M    | M    | M   | M    | M    | M        | M    | M    | M        | 不具备信用审核，不宣称授信                                                         |
 | 借记卡限额     | M    | M    | M   | M    | M    | M        | M    | M    | M        | 区分单笔/单日，不等于信用额度                                                      |
 | 交易限制       | M    | M    | M   | M    | M    | M        | M    | M    | M        | 需执行路径真实校验                                                                 |
-| 挂失/恢复      | P    | P    | P   | P    | P    | P        | P    | P    | M        | 独立 lost 状态、确认及模拟强验证；补卡/恢复流程仍缺失                              |
+| 挂失/补卡      | F    | F    | F   | F    | F    | F        | F    | F    | M        | 独立 lost/replaced 状态；补卡经确认及本地模拟验证码生成新卡，旧卡不复用            |
 | 周期识别/取消  | F    | F    | F   | F    | P    | F        | F    | F    | M        | subscriptions.py                                                                   |
 | 可配置续费提醒 | F    | F    | F   | P    | F    | P        | F    | F    | M        | 应用内按扣款周期去重；Agent 可只读查询，设置通过前端/API，未接自动调度或模型写工具 |
 | 可疑扣款处置   | F    | F    | F   | F    | P    | F        | F    | F    | M        | agent_workflow.py；逐步确认                                                        |

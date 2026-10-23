@@ -15,6 +15,7 @@ class CardResponse(BaseModel):
     card_suffix: str = Field(pattern=r"^\d{4}$")
     status: CardStatus
     version: int = Field(ge=1)
+    replaced_by_card_id: UUID | None
     created_at: datetime
     updated_at: datetime
 

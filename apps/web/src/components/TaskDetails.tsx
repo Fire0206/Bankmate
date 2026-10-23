@@ -51,6 +51,7 @@ function plainStatus(value: unknown): string | null {
   const labels: Record<string, string> = {
     active: "正常",
     frozen: "已冻结",
+    replaced: "已补卡停用",
     paused: "已暂停",
     cancelled: "已取消",
     planning: "正在处理",
@@ -78,6 +79,7 @@ function stepLabel(step: Task["steps"][number]): string {
     "card.list": "查询银行卡",
     "card.get": "查询卡片状态",
     "card.freeze": "冻结银行卡",
+    "card.replace": "模拟补卡",
     "card.unfreeze": "解冻银行卡",
     "bill.monthly_summary": "查询月度账单",
     "bill.transactions": "查询交易明细",
@@ -133,6 +135,7 @@ function stepSummary(step: Task["steps"][number]): string {
     "card.list": "银行卡信息已读取，卡片状态未变更。",
     "card.get": "卡片状态已查询。",
     "card.freeze": "银行卡已冻结。",
+    "card.replace": "旧卡已停用，新模拟卡已创建。",
     "card.unfreeze": "银行卡已解冻。",
     "bill.monthly_summary": "账单统计已读取。",
     "bill.transactions": "交易明细已读取。",

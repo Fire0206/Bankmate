@@ -49,7 +49,7 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0011_human_handoffs"
+        assert revision == "0012_card_replacement"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
@@ -199,7 +199,7 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0011_human_handoffs"
+                "0012_card_replacement"
             )
     finally:
         engine.dispose()
