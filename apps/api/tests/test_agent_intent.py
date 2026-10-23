@@ -29,6 +29,12 @@ from finorch_api.agent.intent import is_split_creation_request, parse_split_inte
             30_000,
             ("小林", "小王"),
         ),
+        (
+            "按原样使用活动名称“书友AA”创建120元AA分账，参与人是小林和小王",
+            "书友AA",
+            12_000,
+            ("小林", "小王"),
+        ),
     ],
 )
 def test_split_intent_extracts_variable_event_names_and_people(

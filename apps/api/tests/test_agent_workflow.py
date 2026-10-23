@@ -350,6 +350,12 @@ def test_card_lock_synonyms_and_incomplete_split_are_clarified_preflight() -> No
     assert "参与人姓名" in missing_explicit_write_parameters_message(
         "创建一笔火锅AA分账，总金额180元"
     )
+    assert (
+        missing_explicit_write_parameters_message(
+            "检查有没有重复的音乐会员扣款。若确定来自这张卡，就冻结卡并暂停扣费。"
+        )
+        is None
+    )
 
 
 def test_clarification_can_resolve_a_previously_ambiguous_card() -> None:

@@ -17,7 +17,9 @@ class SplitIntent:
 _SPLIT_MARKER = re.compile(r"(?:aa\s*)?分账", re.IGNORECASE)
 _MONEY = re.compile(r"(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*(?:元|块钱|块)")
 _TITLE_DECLARATION = re.compile(
-    r"(?:标题|名称|活动名)\s*(?:是|为|叫|[:：])\s*[\"'“「『]?([^，,。；;！？!?\"'”」』]+)"
+    r"(?:标题|活动名(?:称)?|名称)\s*"
+    r"(?:(?:是|为|叫|[:：])\s*[\"'“「『]?|[\"'“「『])"
+    r"([^，,。；;！？!?\"'”」』]+)"
 )
 _TITLE_PREFIX = re.compile(
     r"^(?:(?:麻烦|请)?(?:帮我|给我)?(?:创建|新建|建立|发起|安排|做|开|收取|收款|催收)"
@@ -279,7 +281,7 @@ def parse_split_intent(request_text: str) -> SplitIntent:
     title_match = _TITLE_DECLARATION.search(request_text)
     title: str | None = None
     if title_match is not None:
-        title = _clean_title(title_match.group(1))
+        title = _clean_title(title_match.group(1), explicit=True)
     else:
         prefix = request_text[: marker.start()]
         money_before = [item for item in _MONEY.finditer(prefix)]
@@ -331,11 +333,11 @@ def parse_split_intent(request_text: str) -> SplitIntent:
     return SplitIntent(title, amount_minor, participant_names)
 
 
-def _clean_title(value: str) -> str | None:
+def _clean_title(value: str, *, explicit: bool = False) -> str | None:
     title = value.strip(" \t\r\n:：,，、-—的\"'“”‘’「」『』")
     title = re.sub(r"\s+", " ", title)
     if not title or len(title) > 120:
         return None
-    if re.search(r"(?:分账|平分|均分|对半|各出|AA)$", title, re.IGNORECASE):
+    if not explicit and re.search(r"(?:分账|平分|均分|对半|各出|AA)$", title, re.IGNORECASE):
         return None
     return title

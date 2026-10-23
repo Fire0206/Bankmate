@@ -366,7 +366,7 @@ def missing_explicit_write_parameters_message(request_text: str) -> str | None:
                         "重复扣费",
                         "可疑扣款",
                     )
-                ):
+                ) or ("重复" in request and any(word in request for word in ("扣款", "收费"))):
                     return None
                 return "请提供要操作的银行卡尾号。"
             return "请明确选择一张银行卡，并提供唯一的尾号。"
