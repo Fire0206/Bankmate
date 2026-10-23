@@ -15,6 +15,7 @@ from finorch_api.api.v1.bills import router as bills_router
 from finorch_api.api.v1.cards import router as cards_router
 from finorch_api.api.v1.demo_session import router as demo_session_router
 from finorch_api.api.v1.financial_insights import router as financial_insights_router
+from finorch_api.api.v1.handoffs import router as handoffs_router
 from finorch_api.api.v1.health import router as health_router
 from finorch_api.api.v1.investments import router as investments_router
 from finorch_api.api.v1.subscriptions import router as subscriptions_router
@@ -50,6 +51,7 @@ app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(transfers_router, prefix="/api/v1")
 app.include_router(investments_router, prefix="/api/v1")
 app.include_router(agent_router, prefix="/api/v1")
+app.include_router(handoffs_router, prefix="/api/v1")
 app.include_router(demo_session_router, prefix="/api/v1")
 app.include_router(financial_insights_router, prefix="/api/v1")
 

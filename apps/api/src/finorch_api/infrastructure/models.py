@@ -613,6 +613,34 @@ class AgentTask(Base):
     __mapper_args__ = {"version_id_col": version}
 
 
+class HumanHandoff(Base):
+    """A local demo support ticket, never a banking authorization."""
+
+    __tablename__ = "human_handoffs"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('pending', 'in_progress', 'resolved')",
+            name="human_handoff_status_allowed",
+        ),
+        UniqueConstraint("task_id", name="uq_human_handoff_task"),
+        Index("ix_human_handoffs_actor_id", "actor_id"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("demo_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    task_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("agent_tasks.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    reason: Mapped[str] = mapped_column(String(80), nullable=False)
+    outcome: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class TaskStep(Base):
     __tablename__ = "task_steps"
     __table_args__ = (

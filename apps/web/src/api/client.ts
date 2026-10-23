@@ -22,6 +22,7 @@ type CardListResponse =
   paths["/api/v1/cards"]["get"]["responses"][200]["content"]["application/json"];
 type DemoSessionResponse = components["schemas"]["DemoSessionResponse"];
 type AgentTaskResponse = components["schemas"]["AgentTaskResponse"];
+type HandoffResponse = components["schemas"]["HandoffResponse"];
 type AuditResponse = components["schemas"]["AgentAuditResponse"];
 type AccountBalanceListResponse =
   components["schemas"]["AccountBalanceListResponse"];
@@ -145,6 +146,18 @@ function idempotencyKey(): string {
 }
 
 export const apiClient = {
+  readHandoff: (taskId: string) =>
+    request<HandoffResponse | null>(
+      `/api/v1/agent/tasks/${encodeURIComponent(taskId)}/handoff`,
+    ),
+  requestHandoff: (
+    taskId: string,
+    reason: "user_requested" | "partial_success" | "cannot_continue",
+  ) =>
+    request<HandoffResponse>(
+      `/api/v1/agent/tasks/${encodeURIComponent(taskId)}/handoff`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    ),
   readHealth: () =>
     staticPreviewMode
       ? preview(demoHealth)
