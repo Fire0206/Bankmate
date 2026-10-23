@@ -26,7 +26,7 @@ export function CardList({
       <div className="section-heading">
         <div>
           <h2 id="cards-title">我的银行卡</h2>
-          <p>冻结或解冻前需要在智能助手中确认。</p>
+          <p>冻结、解冻或挂失前需要在智能助手中确认。</p>
         </div>
         <button
           aria-label="刷新银行卡"
@@ -57,7 +57,7 @@ export function CardList({
                 aria-hidden="true"
                 className={
                   "card-icon" +
-                  (card.status === "frozen" ? " card-icon-frozen" : "")
+                  (card.status !== "active" ? " card-icon-frozen" : "")
                 }
               >
                 <AppIcon name="cards" size={19} />
@@ -78,19 +78,38 @@ export function CardList({
                   name={card.status === "active" ? "check" : "lock"}
                   size={15}
                 />
-                {card.status === "active" ? "正常" : "已冻结"}
+                {card.status === "active"
+                  ? "正常"
+                  : card.status === "lost"
+                    ? "已挂失"
+                    : "已冻结"}
               </span>
-              <button
-                className="card-action-button"
-                onClick={() =>
-                  onAskAboutCard(
-                    `${card.status === "active" ? "冻结" : "解冻"}尾号 ${card.card_suffix} 的卡`,
-                  )
-                }
-                type="button"
-              >
-                {card.status === "active" ? "办理冻结" : "办理解冻"}
-              </button>
+              {card.status === "lost" ? (
+                <span className="card-suffix">挂失卡不可解冻</span>
+              ) : (
+                <>
+                  <button
+                    className="card-action-button"
+                    onClick={() =>
+                      onAskAboutCard(
+                        `${card.status === "active" ? "冻结" : "解冻"}尾号 ${card.card_suffix} 的卡`,
+                      )
+                    }
+                    type="button"
+                  >
+                    {card.status === "active" ? "办理冻结" : "办理解冻"}
+                  </button>
+                  <button
+                    className="card-action-button"
+                    onClick={() =>
+                      onAskAboutCard(`挂失尾号 ${card.card_suffix} 的银行卡`)
+                    }
+                    type="button"
+                  >
+                    办理挂失
+                  </button>
+                </>
+              )}
             </li>
           ))}
         </ul>

@@ -48,6 +48,7 @@ from finorch_api.application.cards import (
     CardNotFoundError,
     CardWriteConflictError,
     freeze_card,
+    report_card_lost,
     unfreeze_card,
 )
 from finorch_api.application.errors import BankingRuleError
@@ -739,6 +740,7 @@ def _dispatch_tool(
             target_status = str(result_data["target_status"])
             action = {
                 "frozen": "冻结",
+                "lost": "挂失",
                 "active": "解冻" if resource_type == "card" else "恢复",
                 "paused": "暂停",
                 "cancelled": "取消",
@@ -2661,11 +2663,11 @@ def confirm_task_operation(
                 "card_id": str(challenge.card_id),
                 "target_status": challenge.target_status,
             }
-            expected_tool = (
-                "card.freeze"
-                if challenge.target_status == CardStatus.FROZEN.value
-                else "card.unfreeze"
-            )
+            expected_tool = {
+                CardStatus.FROZEN.value: "card.freeze",
+                CardStatus.ACTIVE.value: "card.unfreeze",
+                CardStatus.LOST.value: "card.report_lost",
+            }.get(challenge.target_status)
             if (
                 card.version != challenge.card_version
                 or _hash(normalized) != challenge.parameters_hash
@@ -2711,6 +2713,15 @@ def confirm_task_operation(
                     task_id=task.id,
                     tool_execution_id=execution.id,
                 )
+            elif challenge.target_status == CardStatus.LOST.value:
+                changed = report_card_lost(
+                    session,
+                    actor_id=actor_id,
+                    card_id=challenge.card_id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                )
             else:
                 raise AgentTaskStateConflictError
             execution.status = "succeeded"
@@ -2728,7 +2739,11 @@ def confirm_task_operation(
                 step.status = "succeeded"
                 step.summary = execution.result_summary
                 step.completed_at = utc_now()
-            action = "冻结" if changed.status is CardStatus.FROZEN else "解冻"
+            action = {
+                CardStatus.FROZEN: "冻结",
+                CardStatus.ACTIVE: "解冻",
+                CardStatus.LOST: "挂失",
+            }[changed.status]
             task.message = f"尾号 {changed.card_suffix} 的卡片已{action}。"
             task.error_code = None
             _audit(

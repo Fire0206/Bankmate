@@ -4687,7 +4687,8 @@
         "type": "string",
         "enum": [
           "active",
-          "frozen"
+          "frozen",
+          "lost"
         ],
         "title": "CardStatus"
       },

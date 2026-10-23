@@ -125,6 +125,17 @@ def requested_card_tool(request_text: str) -> str | None:
     if is_planning_only_request(request):
         return None
 
+    # Reporting a card lost is a separate irreversible simulated state. A
+    # generic request to unfreeze must never be interpreted as lost-card recovery.
+    lost_match = _active_action_match(
+        request,
+        re.compile(
+            r"(?:挂失|报失)(?=[^，,。；;！？!?\n]{0,20}(?:银行卡|卡片|储蓄卡|借记卡|卡|尾号|\d{4}|这张|那张|它|$))"
+        ),
+    )
+    if lost_match is not None:
+        return "card.report_lost"
+
     restore_patterns = (
         re.compile(r"(?:解除|撤销|取消)(?:掉)?[^，,。；;！？!?\n]{0,24}(?:冻结|锁定)"),
         re.compile(

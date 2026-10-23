@@ -105,7 +105,7 @@ def tool_input_clarification_message(tool_name: str) -> str:
         return "请补充或核对收款人、转账金额和转出账户。"
     if tool_name == "investment.buy":
         return "请补充或核对理财产品名称和申购金额。"
-    if tool_name in {"investment.redeem", "card.freeze", "card.unfreeze"}:
+    if tool_name in {"investment.redeem", "card.freeze", "card.unfreeze", "card.report_lost"}:
         return "请补充或核对要操作的产品或银行卡信息。"
     if tool_name == "transfer.split_create":
         return "请核对分账活动名称、总金额和参与人姓名后再继续。"
@@ -229,9 +229,9 @@ def missing_write_input_message(
 ) -> str | None:
     """Prefer a specific user clarification when a requested write lacks its target."""
     request = request_text.casefold()
-    if any(tool in missing_tools for tool in ("card.freeze", "card.unfreeze")) and not re.search(
-        r"(?<!\d)\d{4}(?!\d)", request
-    ):
+    if any(
+        tool in missing_tools for tool in ("card.freeze", "card.unfreeze", "card.report_lost")
+    ) and not re.search(r"(?<!\d)\d{4}(?!\d)", request):
         return "请提供要操作的银行卡尾号。"
 
     subscription_tools = {

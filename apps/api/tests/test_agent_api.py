@@ -14,6 +14,7 @@ from finorch_api.agent.runtime import (
     ModelTurn,
 )
 from finorch_api.api.v1.agent import get_provider_selection
+from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.infrastructure.models import (
@@ -23,6 +24,7 @@ from finorch_api.infrastructure.models import (
     ConfirmationChallenge,
     SplitBill,
     ToolExecution,
+    utc_now,
 )
 from finorch_api.main import app
 from finorch_api.security.demo_identity import (
@@ -31,6 +33,7 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
+from finorch_api.security.verification import issue_demo_code
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import func, select, update
 
@@ -112,6 +115,70 @@ def test_fake_provider_reads_one_owned_card_status(api_context) -> None:
     assert card_step["status"] == "succeeded"
     assert card_step["result_data"]["card_suffix"] == "1042"
     assert card_step["result_data"]["status"] == "active"
+
+
+def test_report_lost_requires_confirmation_and_demo_verification(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "挂失尾号 1042 的银行卡", key="card-lost-proposal")
+    assert task["status"] == "awaiting_confirmation", task
+    challenge = task["confirmation"]
+    assert challenge["tool_name"] == "card.report_lost"
+    assert challenge["risk_level"] == "red"
+    assert challenge["confirmation_method"] == "demo_otp"
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None and card.status is CardStatus.ACTIVE
+
+    blocked = confirm(client, task)
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "strong_verification_required"
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+    approved = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json={
+            "challenge_id": challenge["id"],
+            "parameters_hash": challenge["parameters_hash"],
+            "verification_code": code,
+        },
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "completed"
+    assert confirm(client, task).status_code == 200
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None and card.status is CardStatus.LOST and card.version == 2
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.event_type == "card.status_changed",
+                    AuditEvent.card_id == ALICE_ACTIVE_CARD_ID,
+                )
+            )
+            == 1
+        )
+
+    unfreeze = submit(client, "解冻尾号 1042 的卡", key="lost-card-unfreeze-denied")
+    assert unfreeze["status"] == "failed"
+    with database.session_factory() as session:
+        assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.LOST
+
+
+def test_report_lost_rejects_foreign_card(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "挂失尾号 2729 的银行卡", key="foreign-card-lost-denied")
+    assert task["status"] == "failed"
+    with database.session_factory() as session:
+        assert session.get(Card, BOB_CARD_ID).status is CardStatus.ACTIVE
 
 
 def test_fake_provider_does_not_read_another_users_card(api_context) -> None:
