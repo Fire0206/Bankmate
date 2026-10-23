@@ -1,4 +1,7 @@
+import { useState } from "react";
+
 import type { components } from "../generated/api";
+import { apiClient } from "../api/client";
 import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
 import { RiskAssessmentForm } from "./RiskAssessmentForm";
@@ -258,6 +261,42 @@ function TransactionList({
 
 function SubscriptionList({ data }: { data: JsonObject }) {
   const items = objectArray(data.items);
+  const [drafts, setDrafts] = useState<Record<string, number>>({});
+  const [saved, setSaved] = useState<
+    Record<string, { days: number; version: number }>
+  >({});
+  const [working, setWorking] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function saveReminder(item: JsonObject) {
+    const id = stringValue(item.id);
+    const days = drafts[id] ?? numberValue(item.reminder_days_before);
+    const version = saved[id]?.version ?? numberValue(item.version);
+    if (!id || days === null || version === null) return;
+    setWorking(id);
+    setError(null);
+    try {
+      const response = await apiClient.setSubscriptionReminder(id, {
+        days_before: days,
+        expected_version: version,
+      });
+      setSaved((previous) => ({
+        ...previous,
+        [id]: {
+          days: response.reminder_days_before,
+          version: response.version,
+        },
+      }));
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "提醒设置未保存，请刷新后重试。",
+      );
+    } finally {
+      setWorking(null);
+    }
+  }
   return (
     <section aria-label="订阅与代扣" className="task-result">
       <div className="task-result-heading">
@@ -277,6 +316,39 @@ function SubscriptionList({ data }: { data: JsonObject }) {
                   {statusLabel(item.status)} · 下次扣款{" "}
                   {dateLabel(item.next_charge_at)}
                 </small>
+                <div className="reminder-preference">
+                  <label htmlFor={"reminder-" + stringValue(item.id)}>
+                    提前提醒
+                  </label>
+                  <select
+                    id={"reminder-" + stringValue(item.id)}
+                    value={
+                      drafts[stringValue(item.id)] ??
+                      saved[stringValue(item.id)]?.days ??
+                      numberValue(item.reminder_days_before) ??
+                      3
+                    }
+                    onChange={(event) =>
+                      setDrafts((previous) => ({
+                        ...previous,
+                        [stringValue(item.id)]: Number(event.target.value),
+                      }))
+                    }
+                  >
+                    {[0, 1, 3, 7, 14, 30].map((days) => (
+                      <option key={days} value={days}>
+                        {days} 天
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={working === stringValue(item.id)}
+                    onClick={() => void saveReminder(item)}
+                  >
+                    {working === stringValue(item.id) ? "保存中" : "保存"}
+                  </button>
+                </div>
               </div>
               <strong>{formatAmount(item.amount_minor)} / 月</strong>
             </div>
@@ -285,6 +357,11 @@ function SubscriptionList({ data }: { data: JsonObject }) {
       ) : (
         <p className="task-result-empty">暂未识别到周期扣费。</p>
       )}
+      {error ? (
+        <p role="alert" className="task-result-notice">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -308,6 +385,72 @@ function SubscriptionChange({ data }: { data: JsonObject }) {
         {actionLabel[status] ?? statusLabel(status)}
       </strong>
       <span>月费 {formatAmount(subscription.amount_minor)}</span>
+    </section>
+  );
+}
+
+function SubscriptionReminders({ data }: { data: JsonObject }) {
+  const [items, setItems] = useState(objectArray(data.items));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function checkDueReminders() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiClient.refreshSubscriptionReminders();
+      setItems(
+        objectArray((await apiClient.readSubscriptionReminders()).items),
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "提醒检查失败，请重试。",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section aria-label="续费提醒" className="task-result">
+      <div className="task-result-heading">
+        <strong>续费提醒</strong>
+        <span>{items.length} 项即将续费</span>
+      </div>
+      <button
+        type="button"
+        className="reminder-refresh"
+        disabled={busy}
+        onClick={() => void checkDueReminders()}
+      >
+        {busy ? "检查中" : "检查到期提醒"}
+      </button>
+      {items.length ? (
+        <div className="task-result-list">
+          {items.map((item) => (
+            <div
+              className="task-result-row"
+              key={stringValue(item.subscription_id)}
+            >
+              <div>
+                <strong>{stringValue(item.merchant)}</strong>
+                <small>
+                  下次扣款 {dateLabel(item.next_charge_at)} · 提前{" "}
+                  {numberValue(item.reminder_days_before) ?? 3} 天提醒
+                  {item.delivered === true ? " · 已生成应用内提醒" : ""}
+                </small>
+              </div>
+              <strong>{formatAmount(item.amount_minor)}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="task-result-empty">未来 30 天没有即将续费的项目。</p>
+      )}
+      {error ? (
+        <p role="alert" className="task-result-notice">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -739,6 +882,8 @@ function resultForTool(toolName: string, data: JsonObject) {
       return <TransactionList anomaliesOnly data={data} />;
     case "subscription.list":
       return <SubscriptionList data={data} />;
+    case "subscription.reminders":
+      return <SubscriptionReminders data={data} />;
     case "subscription.pause":
     case "subscription.resume":
     case "subscription.cancel":
@@ -758,6 +903,7 @@ const resultTitles: Record<string, string> = {
   "bill.transactions": "交易明细",
   "bill.anomalies": "异常消费提示",
   "subscription.list": "自动扣费",
+  "subscription.reminders": "续费提醒",
   "transfer.accounts": "账户余额",
   "transfer.payees": "收款人",
   "transfer.history": "转账记录",
@@ -799,6 +945,11 @@ function readIntentScore(toolName: string, request: string): number {
   if (toolName === "bill.anomalies" && /异常|可疑|重复扣费/.test(request))
     return 2;
   if (toolName === "bill.annual_report" && /年度|全年/.test(request)) return 2;
+  if (
+    toolName === "subscription.reminders" &&
+    /提醒|即将续费|下次扣款/.test(request)
+  )
+    return 2;
   if (toolName === "bill.transactions" && /流水|明细|交易/.test(request))
     return 2;
   if (
@@ -875,6 +1026,19 @@ function conciseValue(step: Step): string[] {
               `${stringValue(item.merchant)} · ${formatAmount(item.amount_minor)} / 月`,
           ),
       ];
+    case "subscription.reminders":
+      return items.length
+        ? items
+            .slice(0, 2)
+            .map(
+              (item) =>
+                stringValue(item.merchant) +
+                " · " +
+                dateLabel(item.next_charge_at) +
+                " · " +
+                formatAmount(item.amount_minor),
+            )
+        : ["未来 30 天没有即将续费的项目。"];
     case "transfer.accounts":
       return items
         .slice(0, 3)

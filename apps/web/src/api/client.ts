@@ -19,6 +19,11 @@ type TransactionsResponse = components["schemas"]["TransactionPageResponse"];
 type BillSummaryResponse = components["schemas"]["BillSummaryResponse"];
 type SubscriptionListResponse =
   components["schemas"]["SubscriptionListResponse"];
+type SubscriptionReminderListResponse =
+  components["schemas"]["SubscriptionReminderListResponse"];
+type ReminderPreferenceRequest =
+  components["schemas"]["ReminderPreferenceRequest"];
+type SubscriptionResponse = components["schemas"]["SubscriptionResponse"];
 type AccountListResponse = components["schemas"]["AccountBalanceListResponse"];
 type PayeeListResponse = components["schemas"]["PayeeListResponse"];
 type TransferListResponse = components["schemas"]["TransferListResponse"];
@@ -109,6 +114,24 @@ export const apiClient = {
     ),
   readSubscriptions: () =>
     request<SubscriptionListResponse>("/api/v1/subscriptions"),
+  readSubscriptionReminders: () =>
+    request<SubscriptionReminderListResponse>(
+      "/api/v1/subscriptions/reminders",
+    ),
+  refreshSubscriptionReminders: () =>
+    request<SubscriptionReminderListResponse>(
+      "/api/v1/subscriptions/reminders/refresh",
+      {
+        method: "POST",
+      },
+    ),
+  setSubscriptionReminder: (id: string, body: ReminderPreferenceRequest) =>
+    request<SubscriptionResponse>(
+      "/api/v1/subscriptions/" +
+        encodeURIComponent(id) +
+        "/reminder-preference",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
   readAccounts: () => request<AccountListResponse>("/api/v1/accounts"),
   readPayees: () => request<PayeeListResponse>("/api/v1/payees"),
   readTransfers: () =>

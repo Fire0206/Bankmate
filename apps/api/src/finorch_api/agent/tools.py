@@ -177,6 +177,8 @@ class SubscriptionToolItem(BaseModel):
     next_charge_at: datetime
     version: int = Field(ge=1)
     detected_charge_count: int = Field(ge=3)
+    reminder_days_before: int = Field(ge=0, le=30)
+    last_reminded_charge_at: datetime | None
 
 
 class SubscriptionListOutput(BaseModel):
@@ -185,6 +187,25 @@ class SubscriptionListOutput(BaseModel):
     items: list[SubscriptionToolItem]
     monthly_total_minor: int
     currency: str
+
+
+class SubscriptionReminderItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: UUID
+    merchant: str
+    amount_minor: int
+    currency: str
+    next_charge_at: datetime
+    remind_at: datetime
+    reminder_days_before: int = Field(ge=0, le=30)
+    delivered: bool
+
+
+class SubscriptionRemindersOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SubscriptionReminderItem]
 
 
 class SubscriptionChangeProposalOutput(BaseModel):

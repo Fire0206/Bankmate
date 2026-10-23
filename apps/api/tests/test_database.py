@@ -49,13 +49,16 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0008_risk_assessments"
+        assert revision == "0009_subscription_reminders"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
     }
     assert "remark" in {
         column["name"] for column in inspect(database.engine).get_columns("transfers")
+    }
+    assert {"reminder_days_before", "last_reminded_charge_at"} <= {
+        column["name"] for column in inspect(database.engine).get_columns("subscriptions")
     }
 
 
@@ -196,8 +199,56 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0008_risk_assessments"
+                "0009_subscription_reminders"
             )
+    finally:
+        engine.dispose()
+
+
+def test_subscription_reminder_migration_preserves_existing_rows(tmp_path: Path) -> None:
+    path = tmp_path / "migration-reminders.sqlite3"
+    url = URL.create("sqlite", database=str(path)).render_as_string(hide_password=False)
+    config = Config(str(REPOSITORY_ROOT / "apps" / "api" / "alembic.ini"))
+    config.attributes["database_url"] = url
+    engine = build_engine(url)
+    try:
+        command.upgrade(config, "0008_risk_assessments")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO demo_users (id, display_name, dataset_version, created_at) "
+                    "VALUES ('00000000000040008000000000000001', 'Prior Demo', 'old', '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO accounts (id, demo_user_id, label, currency, "
+                    "opening_balance_minor, created_at) VALUES "
+                    "('10000000000040008000000000000001', "
+                    "'00000000000040008000000000000001', 'Prior Account', 'CNY', "
+                    "100000, '2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO subscriptions (id, account_id, merchant_key, merchant, "
+                    "amount_minor, currency, billing_cycle, status, next_charge_at, "
+                    "source_transaction_ids, version, created_at, updated_at) VALUES "
+                    "('40000000000040008000000000000001', "
+                    "'10000000000040008000000000000001', 'prior merchant', "
+                    "'Prior Merchant', 3000, 'CNY', 'monthly', 'active', "
+                    "'2026-11-01', '[]', 1, '2026-10-01', '2026-10-01')"
+                )
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    "SELECT merchant, amount_minor, reminder_days_before, "
+                    "last_reminded_charge_at FROM subscriptions"
+                )
+            ).one()
+            assert row == ("Prior Merchant", 3000, 3, None)
     finally:
         engine.dispose()
 

@@ -28,6 +28,7 @@ from finorch_api.agent.tools import (
     SubscriptionChangeProposalOutput,
     SubscriptionListOutput,
     SubscriptionNameInput,
+    SubscriptionRemindersOutput,
     SubscriptionToolItem,
 )
 from finorch_api.agent.transfer_tools import transfer_tool_specs
@@ -41,6 +42,7 @@ from finorch_api.application.cards import CardNotFoundError, CardView, list_card
 from finorch_api.application.confirmation import parameters_hash as hash_parameters
 from finorch_api.application.subscriptions import (
     find_owned_subscription,
+    list_subscription_reminders,
     list_subscriptions,
 )
 from finorch_api.domain.cards import CardStatus, transition_card_status
@@ -300,6 +302,8 @@ def build_tool_registry() -> ToolRegistry:
                 next_charge_at=item.next_charge_at,
                 version=item.version,
                 detected_charge_count=item.detected_charge_count,
+                reminder_days_before=item.reminder_days_before,
+                last_reminded_charge_at=item.last_reminded_charge_at,
             )
             for item in result.items
         ]
@@ -307,6 +311,14 @@ def build_tool_registry() -> ToolRegistry:
             items=items,
             monthly_total_minor=result.monthly_total_minor,
             currency=result.currency,
+        )
+
+    def subscription_reminders_handler(
+        _arguments: BaseModel, context: ToolCallContext
+    ) -> SubscriptionRemindersOutput:
+        items = list_subscription_reminders(context.session, actor_id=context.actor_id)
+        return SubscriptionRemindersOutput.model_validate(
+            {"items": [asdict(item) for item in items]}
         )
 
     def subscription_change_handler(target_status: str):
@@ -447,6 +459,21 @@ def build_tool_registry() -> ToolRegistry:
                 risk_level="low",
                 confirmation_requirement="never",
                 handler=subscription_list_handler,
+            ),
+            ToolSpec(
+                name="subscription.reminders",
+                description=(
+                    "Read upcoming in-app synthetic subscription renewal reminders, "
+                    "their due dates, lead days and delivery status. Do not claim a "
+                    "merchant was notified or charged."
+                ),
+                version=TOOL_VERSION,
+                input_model=EmptyToolInput,
+                output_model=SubscriptionRemindersOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=subscription_reminders_handler,
             ),
             *tuple(
                 ToolSpec(

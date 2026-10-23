@@ -70,15 +70,18 @@ REST API 使用 FastAPI/Pydantic 定义。FastAPI 生成的 OpenAPI Schema 是**
 
 Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`test` 可用；客户端提供的 `user_id` 或角色字段不参与身份判定。两端点的响应 DTO 与 SQLAlchemy 模型分离，Schema 仍以 OpenAPI 和自动生成的 TypeScript 类型为准。
 
-账单和订阅只读端点（所有查询均限定为当前服务端 Demo actor 的合成数据）：
+账单和订阅查询端点（所有查询均限定为当前服务端 Demo actor 的合成数据）：
 
-| 方法与路径                                                                                                      | 说明                                                                                 |
-| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `GET /api/v1/transactions?month=YYYY-MM&category=...&merchant=...&direction=income%7Cexpense&offset=0&limit=50` | 按月份、类别、商户、收支方向筛选流水；返回 `items/total/offset/limit/next_offset`。  |
-| `GET /api/v1/bills/summary?month=YYYY-MM&category=...`                                                          | 返回月度收入、支出、结余、类别汇总、近六个月趋势及规则提示；可选类别筛选。           |
-| `GET /api/v1/subscriptions`                                                                                     | 返回从周期模拟交易识别并持久化的订阅、月费合计、状态、检测扣款数及下次模拟扣款时间。 |
+| 方法与路径                                                                                                      | 说明                                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /api/v1/transactions?month=YYYY-MM&category=...&merchant=...&direction=income%7Cexpense&offset=0&limit=50` | 按月份、类别、商户、收支方向筛选流水；返回 `items/total/offset/limit/next_offset`。             |
+| `GET /api/v1/bills/summary?month=YYYY-MM&category=...`                                                          | 返回月度收入、支出、结余、类别汇总、近六个月趋势及规则提示；可选类别筛选。                      |
+| `GET /api/v1/subscriptions`                                                                                     | 返回从周期模拟交易识别并持久化的订阅、月费合计、状态、检测扣款数及下次模拟扣款时间。            |
+| `GET /api/v1/subscriptions/reminders`                                                                           | 返回当前 actor 未来 30 天有效订阅的应用内提醒计划与是否已生成。                                 |
+| `POST /api/v1/subscriptions/reminders/refresh`                                                                  | 用服务端当前时间为已到提醒日的周期追加一次本地提醒审计；重复调用不重复生成。                    |
+| `PUT /api/v1/subscriptions/{subscription_id}/reminder-preference`                                               | 以 `days_before`（0–30）和 `expected_version` 设置当前 actor 订阅的提前提醒天数，冲突返回 409。 |
 
-账单 API 的金额均为整数 `amount_minor` 和 ISO 4217 `currency`；异常仅表示匹配确定性演示规则，不代表欺诈结论。当前订阅端点只读；暂停、恢复和取消只能经 Agent Tool 提案与下述任务确认端点执行，不能直接写 Subscription。
+账单 API 的金额均为整数 `amount_minor` 和 ISO 4217 `currency`；异常仅表示匹配确定性演示规则，不代表欺诈结论。提醒设置仅改变应用内通知偏好，不修改商户代扣状态；暂停、恢复和取消仍只能经 Agent Tool 提案与下述任务确认端点执行。
 
 Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
 

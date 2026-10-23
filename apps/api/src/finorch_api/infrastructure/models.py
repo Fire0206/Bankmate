@@ -490,6 +490,9 @@ class Subscription(Base):
             "status in ('active', 'paused', 'cancelled')", name="subscription_status_allowed"
         ),
         CheckConstraint("version >= 1", name="subscription_version_positive"),
+        CheckConstraint(
+            "reminder_days_before between 0 and 30", name="subscription_reminder_days_allowed"
+        ),
         UniqueConstraint("account_id", "merchant_key", name="uq_subscriptions_account_merchant"),
         Index("ix_subscriptions_account_status", "account_id", "status"),
     )
@@ -507,6 +510,10 @@ class Subscription(Base):
     billing_cycle: Mapped[str] = mapped_column(String(16), nullable=False, default="monthly")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     next_charge_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reminder_days_before: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    last_reminded_charge_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     source_transaction_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
