@@ -647,28 +647,31 @@ def simulate_due_transfers(
         executed: list[Transfer] = []
         for transfer in rows:
             try:
-                # A scheduled authorization cannot silently bypass a risk increase
-                # on execution day. This local demo has no unattended OTP channel.
-                decision = decide_risk(
-                    operation="transfer",
-                    amount_minor=transfer.amount_minor,
-                    currency=transfer.currency,
-                    daily_executed_minor=executed_transfer_total(
-                        session, actor_id=actor_id, now=now
-                    ),
-                )
-                if decision.level == "red":
-                    raise BankingRuleError(
-                        "strong_verification_required",
-                        "定时转账在执行时达到高风险阈值，需重新授权。",
+                # Keep each due transfer atomic even when a business-rule failure
+                # happens after the debit. Other due transfers may still proceed.
+                with session.begin_nested():
+                    # A scheduled authorization cannot silently bypass a risk increase
+                    # on execution day. This local demo has no unattended OTP channel.
+                    decision = decide_risk(
+                        operation="transfer",
+                        amount_minor=transfer.amount_minor,
+                        currency=transfer.currency,
+                        daily_executed_minor=executed_transfer_total(
+                            session, actor_id=actor_id, now=now
+                        ),
                     )
-                _execute_money_transfer(
-                    session,
-                    transfer=transfer,
-                    request_id=request_id,
-                    task_id=task_id,
-                    tool_execution_id=None,
-                )
+                    if decision.level == "red":
+                        raise BankingRuleError(
+                            "strong_verification_required",
+                            "定时转账在执行时达到高风险阈值，需重新授权。",
+                        )
+                    _execute_money_transfer(
+                        session,
+                        transfer=transfer,
+                        request_id=request_id,
+                        task_id=task_id,
+                        tool_execution_id=None,
+                    )
             except BankingRuleError as exc:
                 transfer.status = "failed"
                 session.flush()

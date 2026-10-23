@@ -522,6 +522,63 @@ def test_scheduled_transfer_rechecks_risk_at_execution(banking_api) -> None:
         assert audit.after_state["error_code"] == "strong_verification_required"
 
 
+def test_scheduled_transfer_failure_after_debit_rolls_back_that_transfer(
+    banking_api, monkeypatch
+) -> None:
+    client, _actor, database = banking_api
+    future = (utc_now() + timedelta(days=2)).replace(microsecond=0)
+    task = submit(
+        client,
+        f"请在 {future:%Y-%m-%d %H:%M} 给小林定时转 50 元",
+        "scheduled-partial-debit-rollback",
+    )
+    assert confirm(client, task).status_code == 200
+    with database.session_factory.begin() as session:
+        transfer = session.scalar(select(Transfer).where(Transfer.status == "scheduled"))
+        assert transfer is not None
+        transfer.scheduled_at = utc_now() - timedelta(minutes=1)
+        transfer_id = transfer.id
+
+    before = balances(database)
+    from finorch_api.application import transfers as transfer_application
+
+    original_delta = transfer_application._account_delta
+    calls = 0
+
+    def fail_destination(session, *, account_id, amount_minor):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return False
+        return original_delta(session, account_id=account_id, amount_minor=amount_minor)
+
+    monkeypatch.setattr(transfer_application, "_account_delta", fail_destination)
+    response = client.post("/api/v1/simulate-due")
+    assert response.status_code == 200, response.text
+    assert response.json()["executed_count"] == 0
+    assert calls == 2
+    assert balances(database) == before
+    with database.session_factory() as session:
+        transfer = session.get(Transfer, transfer_id)
+        assert transfer is not None and transfer.status == "failed"
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Transaction)
+                .where(Transaction.synthetic_ref.like(f"transfer:{transfer_id}:%"))
+            )
+            == 0
+        )
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event_type == "transfer.simulated_execution_failed",
+                AuditEvent.resource_id == transfer_id,
+            )
+        )
+        assert audit is not None
+        assert audit.after_state["error_code"] == "destination_not_found"
+
+
 def test_scheduled_transfer_one_year_limit_handles_leap_day(banking_api, monkeypatch) -> None:
     client, _actor, _database = banking_api
     leap_day_now = datetime(2024, 2, 29, 0, 0, tzinfo=UTC)

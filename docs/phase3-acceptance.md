@@ -11,7 +11,7 @@
 | 姓名转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | application/transfers.py；缺三级策略                                               |
 | 手机号转账     | F    | F    | F   | F    | F    | F        | F    | F    | M        | 当前 actor 精确匹配合成手机号；模型待验收                                          |
 | 转账备注       | F    | F    | F   | F    | F    | F        | F    | F    | M        | 备注存储并绑定确认，前端展示；模型待验收                                           |
-| 定时转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | 显式模拟到期执行；需执行日风险复核                                                 |
+| 定时转账       | F    | F    | F   | F    | P    | F        | F    | F    | M        | 显式模拟到期执行；执行日风险复核与单笔失败回滚已验证                               |
 | AA 拆分/收款   | F    | F    | F   | F    | P    | P        | F    | F    | M        | transfers.py；口语参数仍需验证                                                     |
 | 分类/月度账单  | F    | F    | F   | F    | F    | F        | F    | F    | M        | bills.py；真实流水聚合                                                             |
 | 异常提示       | F    | F    | F   | F    | F    | F        | F    | F    | M        | 金额及重复扣费规则，非欺诈判定                                                     |
