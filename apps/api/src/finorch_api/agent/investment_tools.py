@@ -17,6 +17,7 @@ from finorch_api.application.investments import (
     propose_purchase,
     propose_redemption,
 )
+from finorch_api.application.risk_assessment import questionnaire_data
 from finorch_api.infrastructure.models import ToolExecution
 
 
@@ -160,6 +161,14 @@ class InvestmentRiskProfileOutput(BaseModel):
     source: Literal["synthetic_demo_profile"]
 
 
+class InvestmentQuestionnaireOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    questionnaire_version: str
+    questions: list[dict[str, object]]
+    notice: str
+
+
 def investment_tool_specs() -> tuple[ToolSpec, ...]:
     def get_products(arguments: BaseModel, context: ToolCallContext) -> ProductsOutput:
         values = ProductQueryInput.model_validate(arguments)
@@ -223,6 +232,11 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
             risk_label=risk_label,
             source="synthetic_demo_profile",
         )
+
+    def questionnaire_handler(
+        _arguments: BaseModel, _context: ToolCallContext
+    ) -> InvestmentQuestionnaireOutput:
+        return InvestmentQuestionnaireOutput.model_validate(questionnaire_data())
 
     def portfolio_handler(_arguments: BaseModel, context: ToolCallContext) -> PortfolioOutput:
         value = get_portfolio(context.session, actor_id=context.actor_id)
@@ -385,6 +399,18 @@ def investment_tool_specs() -> tuple[ToolSpec, ...]:
             "low",
             "never",
             profile_handler,
+        ),
+        ToolSpec(
+            "investment.assessment_questions",
+            "Show the synthetic risk questionnaire. The user must answer in the app; "
+            "never invent answers or submit a risk level on the user's behalf.",
+            "1.0",
+            InvestmentEmptyInput,
+            InvestmentQuestionnaireOutput,
+            "read_only",
+            "low",
+            "never",
+            questionnaire_handler,
         ),
         ToolSpec(
             "investment.portfolio",

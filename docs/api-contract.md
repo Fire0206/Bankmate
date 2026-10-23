@@ -82,17 +82,20 @@ Demo actor 由服务端 `FINORCH_DEMO_USER_ID` 选择，仅在 `development`/`te
 
 Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
 
-| 方法与路径                                                             | 说明                                            |
-| ---------------------------------------------------------------------- | ----------------------------------------------- |
-| `GET /api/v1/accounts`                                                 | 当前 actor 的模拟账户及服务端余额投影。         |
-| `GET /api/v1/payees`                                                   | 当前 actor 已保存的模拟收款人。                 |
-| `GET /api/v1/transfers?limit=50`                                       | 普通/定时转账历史及模拟状态。                   |
-| `GET /api/v1/transfers/{transfer_id}`                                  | actor 范围内的单笔转账；越权按 not found 处理。 |
-| `GET /api/v1/splits?limit=50`                                          | AA 分账、参与人及模拟收付状态。                 |
-| `GET /api/v1/investments/profile`                                      | 服务端模拟风险等级。                            |
-| `GET /api/v1/investments/products?category=...&maximum_risk_level=...` | 模拟产品筛选及风险匹配结果。                    |
-| `GET /api/v1/investments/portfolio`                                    | 模拟现金、持仓、资产及估算盈亏。                |
-| `GET /api/v1/investments/orders`                                       | 当前 actor 的模拟申购/赎回历史。                |
+| 方法与路径                                                             | 说明                                                                                                          |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/accounts`                                                 | 当前 actor 的模拟账户及服务端余额投影。                                                                       |
+| `GET /api/v1/payees`                                                   | 当前 actor 已保存的模拟收款人。                                                                               |
+| `GET /api/v1/transfers?limit=50`                                       | 普通/定时转账历史及模拟状态。                                                                                 |
+| `GET /api/v1/transfers/{transfer_id}`                                  | actor 范围内的单笔转账；越权按 not found 处理。                                                               |
+| `GET /api/v1/splits?limit=50`                                          | AA 分账、参与人及模拟收付状态。                                                                               |
+| `GET /api/v1/investments/profile`                                      | 服务端模拟风险等级。                                                                                          |
+| `GET /api/v1/investments/risk-assessment/questionnaire`                | 四项固定版本模拟问卷和五档选项；只读。                                                                        |
+| `GET /api/v1/investments/risk-assessment/latest`                       | 当前 actor 最近一次测评；未测评返回 `null`。                                                                  |
+| `POST /api/v1/investments/risk-assessment`                             | 用户本人提交四项 1–5 答案和问卷版本；须提供 `Idempotency-Key`，服务端评分、写画像及审计。同键异答案返回 409。 |
+| `GET /api/v1/investments/products?category=...&maximum_risk_level=...` | 模拟产品筛选及风险匹配结果。                                                                                  |
+| `GET /api/v1/investments/portfolio`                                    | 模拟现金、持仓、资产及估算盈亏。                                                                              |
+| `GET /api/v1/investments/orders`                                       | 当前 actor 的模拟申购/赎回历史。                                                                              |
 
 普通转账、定时转账、AA 分账收付、理财申购和赎回没有绕过确认的独立写 API；只能经 Agent Task proposal 和确认 API 执行。定时任务仅支持开发/测试环境的显式本地模拟执行，不是后台自动调度。
 `POST /api/v1/payees` 可选填写合成 `phone_number`，每位 actor 的手机号唯一；`GET /api/v1/payees` 仅返回掩码。转账 Tool 传精确 `recipient_phone` 或 `recipient_name`，不能两者兼传。转账查询返回可空 `remark`；备注不被执行为指令，确认时须保持一致。

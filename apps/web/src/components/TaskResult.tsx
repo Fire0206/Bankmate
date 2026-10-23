@@ -1,6 +1,7 @@
 import type { components } from "../generated/api";
 import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
+import { RiskAssessmentForm } from "./RiskAssessmentForm";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type JsonObject = Record<string, unknown>;
@@ -765,6 +766,7 @@ const resultTitles: Record<string, string> = {
   "investment.products": "理财产品",
   "investment.compare": "理财产品比较",
   "investment.profile": "风险等级",
+  "investment.assessment_questions": "风险测评",
   "investment.portfolio": "理财持仓",
   "investment.orders": "理财操作记录",
   "finance.payday_plan": "发薪日资金安排",
@@ -991,8 +993,12 @@ export function TaskResult({
   const reads = results.filter(
     (step) =>
       step.tool_name !== null &&
+      step.tool_name !== "investment.assessment_questions" &&
       !Object.hasOwn(writeTitles, step.tool_name) &&
       resultTitles[step.tool_name],
+  );
+  const hasAssessmentQuestions = results.some(
+    (step) => step.tool_name === "investment.assessment_questions",
   );
   // Repeated reads can be collapsed. Every successful write remains a distinct result.
   const latestReads = new Map<string, Step>();
@@ -1059,10 +1065,14 @@ export function TaskResult({
           </div>
         </div>
       ) : null}
+      {hasAssessmentQuestions ? <RiskAssessmentForm /> : null}
     </>
   );
   const fullResultContent = results.map((step) => {
     if (!step.tool_name || !isObject(step.result_data)) return null;
+    if (step.tool_name === "investment.assessment_questions") {
+      return compact ? <RiskAssessmentForm key={step.id} /> : null;
+    }
     const detail = resultForTool(step.tool_name, step.result_data);
     return (
       <div className="full-result-item" key={step.id}>
