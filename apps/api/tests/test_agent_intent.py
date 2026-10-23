@@ -1,5 +1,10 @@
 import pytest
-from finorch_api.agent.intent import is_split_creation_request, parse_split_intent
+from finorch_api.agent.intent import (
+    is_split_creation_request,
+    parse_split_intent,
+    requested_card_tool,
+    requested_subscription_tool,
+)
 
 
 @pytest.mark.parametrize(
@@ -29,6 +34,12 @@ from finorch_api.agent.intent import is_split_creation_request, parse_split_inte
             30_000,
             ("小林", "小王"),
         ),
+        (
+            "按原样使用活动名称“书友AA”创建120元AA分账，参与人是小林和小王",
+            "书友AA",
+            12_000,
+            ("小林", "小王"),
+        ),
     ],
 )
 def test_split_intent_extracts_variable_event_names_and_people(
@@ -47,6 +58,19 @@ def test_split_intent_does_not_invent_missing_fields() -> None:
     assert intent.title is None
     assert intent.amount_minor is None
     assert intent.participant_names is None
+
+
+def test_temporary_charge_pause_is_distinct_from_ambiguous_cancellation() -> None:
+    assert (
+        requested_subscription_tool("核对重复的音乐会员扣款后，暂时暂停扣费")
+        == "subscription.pause"
+    )
+    assert requested_subscription_tool("取消这笔扣费") is None
+
+
+def test_confirm_then_freeze_is_an_action_but_confirm_whether_frozen_is_a_query() -> None:
+    assert requested_card_tool("核对依据，确认后冻结相关银行卡") == "card.freeze"
+    assert requested_card_tool("确认这张银行卡是否已经冻结") is None
 
 
 @pytest.mark.parametrize(

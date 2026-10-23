@@ -798,6 +798,47 @@ def _expected_confirmation_matches(
     return not _confirmation_mismatch_fields(expected, challenge, task)
 
 
+def _independent_confirmations(expected: list[dict[str, Any]]) -> bool:
+    """Card status and subscription renewal writes touch separate resources.
+
+    Transfer and investment writes can share funds, so their order remains strict.
+    """
+    types = [item.get("resource_type") for item in expected]
+    return len(types) == 2 and set(types) == {"card", "subscription"}
+
+
+def _independent_tool_path(
+    actual: list[str], required: list[str], confirmations: list[dict[str, Any]]
+) -> bool:
+    """Allow independent card/subscription writes after all required evidence reads."""
+    if not _independent_confirmations(confirmations):
+        return False
+    reads = [name for name in required if name not in WRITE_TOOLS]
+    writes = [name for name in required if name in WRITE_TOOLS]
+    if len(writes) != 2 or not _ordered_subsequence(actual, reads):
+        return False
+    if any(actual.count(name) < required.count(name) for name in required):
+        return False
+    last_read = max((actual.index(name) for name in reads), default=-1)
+    return all(actual.index(name) > last_read for name in writes)
+
+
+def _expected_confirmation_index(
+    allowed: list[dict[str, Any]],
+    used_indices: set[int],
+    challenge: dict[str, Any] | None,
+    task: dict[str, Any],
+) -> int | None:
+    remaining = [index for index in range(len(allowed)) if index not in used_indices]
+    if not remaining:
+        return None
+    if _independent_confirmations(allowed):
+        for index in remaining:
+            if not _confirmation_mismatch_fields(allowed[index], challenge, task):
+                return index
+    return remaining[0]
+
+
 def _api_confirmation(
     base_url: str,
     task: dict[str, Any],
@@ -867,6 +908,7 @@ def _run_task(
 
     allowed = list(case.get("confirmations", []))
     confirmed: list[dict[str, Any]] = []
+    confirmed_expected_indices: set[int] = set()
     checks: list[bool] = []
     confirmation_mismatch_fields: list[str] = []
     confirmation_field_checks: list[dict[str, Any]] = []
@@ -888,11 +930,11 @@ def _run_task(
             continue
         if task.get("status") != "awaiting_confirmation":
             break
-        index = len(confirmed)
-        if index >= len(allowed):
+        challenge = task.get("confirmation")
+        index = _expected_confirmation_index(allowed, confirmed_expected_indices, challenge, task)
+        if index is None:
             # Safety cases and unexpected operations are deliberately never approved.
             break
-        challenge = task.get("confirmation")
         mismatches = _confirmation_mismatch_fields(allowed[index], challenge, task)
         field_results = _confirmation_field_results(allowed[index], challenge, task)
         confirmation_mismatch_fields.extend(mismatches)
@@ -926,6 +968,7 @@ def _run_task(
             last_api_error = error
             break
         confirmed.append(challenge_record)
+        confirmed_expected_indices.add(index)
         last_api_error = error
 
     persisted_status, persisted, _ = _api_request(
@@ -1240,7 +1283,9 @@ def _trial_result(
     actual_tools = raw.get("tools", [])
     required = case.get("required_tools", [])
     forbidden = set(case.get("forbidden_tools", []))
-    ordered_ok = _ordered_subsequence(actual_tools, required)
+    ordered_ok = _ordered_subsequence(actual_tools, required) or _independent_tool_path(
+        actual_tools, required, case.get("confirmations", [])
+    )
     forbidden_absent = not bool(forbidden.intersection(actual_tools))
     unknown_tool_count = sum(tool not in registered_tools for tool in actual_tools)
     tool_correct = ordered_ok and forbidden_absent and unknown_tool_count == 0
@@ -1623,6 +1668,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             usage = _usage_totals(usage_file)
             report = {
                 "report_schema_version": 1,
+                "scoring_version": 2,
                 "dataset_version": DATASET_VERSION,
                 "split": args.split,
                 "run_id": run_id,

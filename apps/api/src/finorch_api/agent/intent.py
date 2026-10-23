@@ -17,7 +17,9 @@ class SplitIntent:
 _SPLIT_MARKER = re.compile(r"(?:aa\s*)?分账", re.IGNORECASE)
 _MONEY = re.compile(r"(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)\s*(?:元|块钱|块)")
 _TITLE_DECLARATION = re.compile(
-    r"(?:标题|名称|活动名)\s*(?:是|为|叫|[:：])\s*[\"'“「『]?([^，,。；;！？!?\"'”」』]+)"
+    r"(?:标题|活动名(?:称)?|名称)\s*"
+    r"(?:(?:是|为|叫|[:：])\s*[\"'“「『]?|[\"'“「『])"
+    r"([^，,。；;！？!?\"'”」』]+)"
 )
 _TITLE_PREFIX = re.compile(
     r"^(?:(?:麻烦|请)?(?:帮我|给我)?(?:创建|新建|建立|发起|安排|做|开|收取|收款|催收)"
@@ -108,6 +110,8 @@ def _active_action_match(text: str, pattern: re.Pattern[str]) -> re.Match[str] |
     for match in pattern.finditer(text):
         before = text[max(0, match.start() - 20) : match.start()]
         before_clause = re.split(r"[，,。；;！？!?\n]|然后|随后|接着|再|并且|并|同时", before)[-1]
+        # “确认后冻结” is a requested next action, unlike “确认是否已冻结”.
+        before_clause = re.sub(r"(?:确认|核对|查明)(?:后|之后)\s*$", "", before_clause)
         if re.search(r"(?:不要|别|不必|无需|不需要|保持|维持|继续|已经|已|被|处于)\s*$", before):
             continue
         if re.search(
@@ -174,7 +178,8 @@ def requested_subscription_tool(request_text: str) -> str | None:
     """Return a direct subscription operation, ignoring past state and future options."""
     request = request_text.casefold()
     if not any(
-        phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣")
+        phrase in request
+        for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣", "扣费")
     ):
         return None
     if is_planning_only_request(request):
@@ -207,8 +212,8 @@ def requested_subscription_tool(request_text: str) -> str | None:
         return "subscription.resume"
 
     pause_pattern = re.compile(
-        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)"
-        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)(?:[^，,。；;！？!?\n]{0,12})(?:暂停|暂时停|临时停|先停一下)"
+        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣|扣费)"
+        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣|扣费)(?:[^，,。；;！？!?\n]{0,12})(?:暂停|暂时停|临时停|先停一下)"
     )
     pause = _active_action_match(request, pause_pattern)
     if pause is not None and not re.search(r"暂停(?:中|状态|过|后|之后)", request):
@@ -279,7 +284,7 @@ def parse_split_intent(request_text: str) -> SplitIntent:
     title_match = _TITLE_DECLARATION.search(request_text)
     title: str | None = None
     if title_match is not None:
-        title = _clean_title(title_match.group(1))
+        title = _clean_title(title_match.group(1), explicit=True)
     else:
         prefix = request_text[: marker.start()]
         money_before = [item for item in _MONEY.finditer(prefix)]
@@ -331,11 +336,11 @@ def parse_split_intent(request_text: str) -> SplitIntent:
     return SplitIntent(title, amount_minor, participant_names)
 
 
-def _clean_title(value: str) -> str | None:
+def _clean_title(value: str, *, explicit: bool = False) -> str | None:
     title = value.strip(" \t\r\n:：,，、-—的\"'“”‘’「」『』")
     title = re.sub(r"\s+", " ", title)
     if not title or len(title) > 120:
         return None
-    if re.search(r"(?:分账|平分|均分|对半|各出|AA)$", title, re.IGNORECASE):
+    if not explicit and re.search(r"(?:分账|平分|均分|对半|各出|AA)$", title, re.IGNORECASE):
         return None
     return title
