@@ -83,7 +83,9 @@ export function CardsPage({
                     ? "ACTIVE"
                     : card.status === "lost"
                       ? "LOST"
-                      : "FROZEN"}
+                      : card.status === "replaced"
+                        ? "REPLACED"
+                        : "FROZEN"}
                 </span>
               </div>
               <div className="physical-card-chip" />
@@ -105,7 +107,9 @@ export function CardsPage({
                       ? "正常"
                       : card.status === "lost"
                         ? "已挂失"
-                        : "已冻结"}
+                        : card.status === "replaced"
+                          ? "已补卡停用"
+                          : "已冻结"}
                   </strong>
                 </span>
               </div>
@@ -141,10 +145,24 @@ export function CardsPage({
                       ? "正常可用"
                       : card.status === "lost"
                         ? "已挂失，不可解冻"
-                        : "支付已停用"}
+                        : card.status === "replaced"
+                          ? "旧卡已停用"
+                          : "支付已停用"}
                   </small>
                 </span>
-                {card.status !== "lost" ? (
+                {card.status === "lost" ? (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      onPrompt(
+                        `为尾号 ${card.card_suffix} 的已挂失银行卡申请模拟补卡`,
+                      )
+                    }
+                    type="button"
+                  >
+                    申请模拟补卡
+                  </button>
+                ) : card.status !== "replaced" ? (
                   <>
                     <button
                       disabled={busy}

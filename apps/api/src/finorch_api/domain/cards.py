@@ -5,6 +5,7 @@ class CardStatus(StrEnum):
     ACTIVE = "active"
     FROZEN = "frozen"
     LOST = "lost"
+    REPLACED = "replaced"
 
 
 class InvalidCardTransition(ValueError):
@@ -20,6 +21,7 @@ def transition_card_status(current: CardStatus, requested: CardStatus) -> CardSt
         (CardStatus.FROZEN, CardStatus.ACTIVE),
         (CardStatus.ACTIVE, CardStatus.LOST),
         (CardStatus.FROZEN, CardStatus.LOST),
+        (CardStatus.LOST, CardStatus.REPLACED),
     }
     if (current, requested) not in allowed_transitions:
         raise InvalidCardTransition(current, requested)

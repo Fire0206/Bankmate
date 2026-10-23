@@ -67,6 +67,7 @@ def card_result_payload(card: CardView) -> dict[str, Any]:
         "card_suffix": card.card_suffix,
         "status": card.status.value,
         "version": card.version,
+        "replaced_by_card_id": str(card.replaced_by_card_id) if card.replaced_by_card_id else None,
     }
 
 
@@ -246,6 +247,12 @@ def build_tool_registry() -> ToolRegistry:
             context=context, card_suffix=typed.card_suffix, target_status=CardStatus.LOST
         )
 
+    def replace_handler(arguments: BaseModel, context: ToolCallContext) -> CardChangeProposalOutput:
+        typed = CardSuffixInput.model_validate(arguments)
+        return _card_change_proposal(
+            context=context, card_suffix=typed.card_suffix, target_status=CardStatus.REPLACED
+        )
+
     def bill_summary_handler(arguments: BaseModel, context: ToolCallContext) -> BillSummaryOutput:
         typed = BillSummaryInput.model_validate(arguments)
         view = get_monthly_summary(
@@ -411,6 +418,20 @@ def build_tool_registry() -> ToolRegistry:
                 risk_level="high",
                 confirmation_requirement="always",
                 handler=report_lost_handler,
+            ),
+            ToolSpec(
+                name="card.replace",
+                description=(
+                    "Propose issuing a new synthetic card to replace an owned lost card. "
+                    "The lost card remains unusable. Requires confirmation and local demo OTP."
+                ),
+                version=TOOL_VERSION,
+                input_model=CardSuffixInput,
+                output_model=CardChangeProposalOutput,
+                permission_level="high_risk_write",
+                risk_level="high",
+                confirmation_requirement="always",
+                handler=replace_handler,
             ),
             ToolSpec(
                 name="bill.monthly_summary",

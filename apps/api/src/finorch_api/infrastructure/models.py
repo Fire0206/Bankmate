@@ -106,7 +106,9 @@ class Card(Base):
     __tablename__ = "cards"
     __table_args__ = (
         CheckConstraint("length(card_suffix) = 4", name="card_suffix_length"),
-        CheckConstraint("status in ('active', 'frozen', 'lost')", name="status_allowed"),
+        CheckConstraint(
+            "status in ('active', 'frozen', 'lost', 'replaced')", name="status_allowed"
+        ),
         CheckConstraint("version >= 1", name="version_positive"),
         Index("ix_cards_account_id", "account_id"),
     )
@@ -129,6 +131,9 @@ class Card(Base):
         nullable=False,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    replaced_by_card_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("cards.id", ondelete="RESTRICT"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
@@ -756,7 +761,7 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
             "target_status in ('active', 'frozen', 'paused', 'cancelled', 'executed', "
-            "'scheduled', 'open', 'settled', 'lost')",
+            "'scheduled', 'open', 'settled', 'lost', 'replaced')",
             name="challenge_target_status_allowed",
         ),
         CheckConstraint(

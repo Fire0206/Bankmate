@@ -40,6 +40,7 @@ function statusName(status: string): string {
     active: "正常",
     frozen: "已冻结",
     lost: "已挂失",
+    replaced: "已补卡停用",
     paused: "已暂停",
     cancelled: "已取消",
     awaiting_confirmation: "待确认",
@@ -58,7 +59,9 @@ function actionName(confirmation: Confirmation): string {
       ? "冻结银行卡"
       : confirmation.target_status === "lost"
         ? "挂失银行卡"
-        : "解冻银行卡";
+        : confirmation.target_status === "replaced"
+          ? "模拟补卡"
+          : "解冻银行卡";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"
@@ -120,7 +123,10 @@ export function ConfirmationCard({
     investment_order: "理财操作",
   };
   const impactLabels: Record<Confirmation["resource_type"], string> = {
-    card: "只影响这张模拟银行卡。",
+    card:
+      confirmation.target_status === "replaced"
+        ? "旧卡将永久停用，并创建一张新的模拟银行卡。新卡尾号由服务端生成。"
+        : "只影响这张模拟银行卡。",
     subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
     transfer: "这笔转账只在模拟账本中记账。",
     split: "仅更新这笔模拟 AA 分账的状态。",

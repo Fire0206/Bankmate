@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import UUID
+from secrets import randbelow
+from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition, transition_card_status
-from finorch_api.infrastructure.models import AuditEvent, Card
+from finorch_api.infrastructure.models import Account, AuditEvent, Card
 from finorch_api.infrastructure.persistence.cards import (
     get_owned_card,
     list_owned_cards,
@@ -30,6 +32,7 @@ class CardView:
     card_suffix: str
     status: CardStatus
     version: int
+    replaced_by_card_id: UUID | None
     created_at: datetime
     updated_at: datetime
 
@@ -54,6 +57,7 @@ def _to_view(card: Card) -> CardView:
         card_suffix=card.card_suffix,
         status=card.status,
         version=card.version,
+        replaced_by_card_id=card.replaced_by_card_id,
         created_at=_as_utc(card.created_at),
         updated_at=_as_utc(card.updated_at),
     )
@@ -187,6 +191,76 @@ def report_card_lost(
     )
 
 
+def replace_lost_card(
+    session: Session,
+    *,
+    actor_id: UUID,
+    card_id: UUID,
+    request_id: str,
+    task_id: UUID,
+    tool_execution_id: UUID,
+) -> tuple[CardView, CardView]:
+    """Close a lost demo card and issue a new synthetic debit card atomically."""
+    with write_transaction(session):
+        old = get_owned_card(session, actor_id=actor_id, card_id=card_id)
+        if old is None:
+            raise CardNotFoundError
+        transition_card_status(old.status, CardStatus.REPLACED)
+        suffixes = set(
+            session.scalars(
+                select(Card.card_suffix)
+                .join(Account, Card.account_id == Account.id)
+                .where(Account.demo_user_id == actor_id)
+            )
+        )
+        suffix = next(
+            (
+                candidate
+                for _ in range(100)
+                if (candidate := f"{randbelow(10000):04d}") not in suffixes
+            ),
+            None,
+        )
+        if suffix is None:
+            raise CardWriteConflictError("Could not assign a unique demo card suffix.")
+        new = Card(
+            id=uuid4(),
+            account_id=old.account_id,
+            label=f"{old.label}（补发）"[:80],
+            card_suffix=suffix,
+            status=CardStatus.ACTIVE,
+        )
+        session.add(new)
+        session.flush()
+        before_version = old.version
+        old.status = CardStatus.REPLACED
+        old.replaced_by_card_id = new.id
+        session.flush()
+        session.add(
+            AuditEvent(
+                actor_id=actor_id,
+                card_id=old.id,
+                event_type="card.replaced",
+                resource_type="card",
+                resource_id=old.id,
+                resource_version=old.version,
+                request_id=request_id,
+                task_id=task_id,
+                tool_execution_id=tool_execution_id,
+                outcome="succeeded",
+                before_state={"status": "lost", "version": before_version},
+                after_state={
+                    "status": "replaced",
+                    "version": old.version,
+                    "new_card_id": str(new.id),
+                    "new_card_suffix": new.card_suffix,
+                },
+            )
+        )
+        session.flush()
+        return _to_view(old), _to_view(new)
+
+
 __all__ = [
     "CardNotFoundError",
     "CardPage",
@@ -197,5 +271,6 @@ __all__ = [
     "get_card",
     "list_cards",
     "report_card_lost",
+    "replace_lost_card",
     "unfreeze_card",
 ]

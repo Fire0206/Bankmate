@@ -922,6 +922,8 @@ export interface components {
             status: components["schemas"]["CardStatus"];
             /** Version */
             version: number;
+            /** Replaced By Card Id */
+            replaced_by_card_id: string | null;
             /**
              * Created At
              * Format: date-time
@@ -937,7 +939,7 @@ export interface components {
          * CardStatus
          * @enum {string}
          */
-        CardStatus: "active" | "frozen" | "lost";
+        CardStatus: "active" | "frozen" | "lost" | "replaced";
         /** ConfirmationResponse */
         ConfirmationResponse: {
             /**

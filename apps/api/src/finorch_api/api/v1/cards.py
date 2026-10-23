@@ -45,6 +45,7 @@ def _to_response(card: CardView) -> CardResponse:
         card_suffix=card.card_suffix,
         status=card.status,
         version=card.version,
+        replaced_by_card_id=card.replaced_by_card_id,
         created_at=card.created_at,
         updated_at=card.updated_at,
     )

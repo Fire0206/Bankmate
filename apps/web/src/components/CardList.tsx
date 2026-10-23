@@ -82,10 +82,14 @@ export function CardList({
                     ? "正常"
                     : card.status === "lost"
                       ? "已挂失"
-                      : "已冻结"}
+                      : card.status === "replaced"
+                        ? "已补卡停用"
+                        : "已冻结"}
                 </span>
-                {card.status === "lost" ? (
-                  <span className="card-suffix">不可解冻</span>
+                {card.status === "lost" || card.status === "replaced" ? (
+                  <span className="card-suffix">
+                    {card.status === "lost" ? "不可解冻" : "旧卡已停用"}
+                  </span>
                 ) : (
                   <button
                     className="card-manage-button"

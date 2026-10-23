@@ -4880,6 +4880,18 @@
             "minimum": 1.0,
             "title": "Version"
           },
+          "replaced_by_card_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replaced By Card Id"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -4900,6 +4912,7 @@
           "card_suffix",
           "status",
           "version",
+          "replaced_by_card_id",
           "created_at",
           "updated_at"
         ],
@@ -4910,7 +4923,8 @@
         "enum": [
           "active",
           "frozen",
-          "lost"
+          "lost",
+          "replaced"
         ],
         "title": "CardStatus"
       },
