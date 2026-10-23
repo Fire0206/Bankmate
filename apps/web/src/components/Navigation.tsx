@@ -1,18 +1,29 @@
-import { brand } from "../brand";
-import { AppIcon } from "./AppIcon";
+import { pages, type PageKey } from "../pageConfig";
 
-export type Section = "assistant" | "cards";
+const navigationLabels: Record<PageKey, string> = {
+  overview: "总览",
+  assistant: "Agent 助理",
+  bills: "账单",
+  cards: "银行卡",
+  transfers: "转账",
+  subscriptions: "订阅",
+  investments: "投资",
+};
 
 export function Navigation({
+  activePage,
+  displayName,
   mobileOpen,
-  activeSection,
   onClose,
-  onSelect,
+  onExit,
+  onNavigate,
 }: {
+  activePage: PageKey;
+  displayName: string;
   mobileOpen: boolean;
-  activeSection: Section;
   onClose: () => void;
-  onSelect: (section: Section) => void;
+  onExit: () => void;
+  onNavigate: (page: PageKey) => void;
 }) {
   return (
     <>
@@ -30,86 +41,59 @@ export function Navigation({
         id="main-navigation"
       >
         <a
-          aria-label={`${brand.name} 首页`}
+          aria-label="FinOrch 首页"
           className="brand-block"
-          href="#assistant"
-          onClick={() => {
-            onSelect("assistant");
+          href="#/overview"
+          onClick={(event) => {
+            event.preventDefault();
+            onNavigate("overview");
             onClose();
           }}
         >
-          <span aria-hidden="true" className="brand-symbol">
-            {brand.mark}
+          <span aria-hidden="true" className="brand-symbol" />
+          <span className="brand-copy">
+            <strong className="brand-name">FinOrch</strong>
+            <small>PRIVATE BANKING</small>
           </span>
-          <span className="brand-name">{brand.name}</span>
         </a>
 
         <nav aria-label="工作区导航" className="nav-list">
-          <a
-            aria-current={activeSection === "assistant" ? "page" : undefined}
-            className={
-              "nav-link" +
-              (activeSection === "assistant" ? " nav-link-active" : "")
-            }
-            href="#assistant"
-            onClick={() => {
-              onSelect("assistant");
-              onClose();
-            }}
-          >
-            <AppIcon name="assistant" />
-            <span>智能助手</span>
-          </a>
-          <a
-            aria-current={activeSection === "cards" ? "page" : undefined}
-            className={
-              "nav-link" + (activeSection === "cards" ? " nav-link-active" : "")
-            }
-            href="#cards"
-            onClick={() => {
-              onSelect("cards");
-              onClose();
-            }}
-          >
-            <AppIcon name="cards" />
-            <span>银行卡</span>
-          </a>
+          <p className="nav-section-label">WORKSPACE</p>
+          {pages.map((page, index) => (
+            <a
+              aria-current={activePage === page.key ? "page" : undefined}
+              className={
+                "nav-link" + (activePage === page.key ? " nav-link-active" : "")
+              }
+              href={"#/" + page.key}
+              key={page.key}
+              onClick={(event) => {
+                event.preventDefault();
+                onNavigate(page.key);
+                onClose();
+              }}
+            >
+              <span>{navigationLabels[page.key]}</span>
+              <small>{String(index + 1).padStart(2, "0")}</small>
+            </a>
+          ))}
         </nav>
+
+        <button
+          className="sidebar-profile"
+          onClick={onExit}
+          title="退出演示账户"
+          type="button"
+        >
+          <span className="sidebar-profile-avatar">
+            {displayName.slice(0, 1)}
+          </span>
+          <span className="sidebar-profile-copy">
+            <strong>{displayName}</strong>
+            <small>个人账户 · Demo</small>
+          </span>
+        </button>
       </aside>
-      <nav aria-label="手机端导航" className="mobile-tabs">
-        <a
-          aria-current={activeSection === "assistant" ? "page" : undefined}
-          className={
-            activeSection === "assistant"
-              ? "mobile-tab mobile-tab-active"
-              : "mobile-tab"
-          }
-          href="#assistant"
-          onClick={() => {
-            onSelect("assistant");
-            onClose();
-          }}
-        >
-          <AppIcon name="assistant" size={21} />
-          <span>智能助手</span>
-        </a>
-        <a
-          aria-current={activeSection === "cards" ? "page" : undefined}
-          className={
-            activeSection === "cards"
-              ? "mobile-tab mobile-tab-active"
-              : "mobile-tab"
-          }
-          href="#cards"
-          onClick={() => {
-            onSelect("cards");
-            onClose();
-          }}
-        >
-          <AppIcon name="cards" size={21} />
-          <span>银行卡</span>
-        </a>
-      </nav>
     </>
   );
 }

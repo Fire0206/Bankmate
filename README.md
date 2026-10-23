@@ -21,7 +21,7 @@
 
 ## 技术架构
 
-- **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
+- **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm，使用 Lightweight Charts 展示现金流时间序列。shadcn/ui 仅作为后续可选集成方案，当前未安装。
 - **API**：Python、FastAPI、Pydantic、uv、pytest；包括账户、收款人、转账、AA 分账、模拟理财产品/持仓/订单，以及 Agent Task、确认、取消和审计 API。资金变更只经 Agent 服务端确认流程执行。
 - **Phase 2C 扩展**：只读发薪日资金计划预览和按合成流水确定性生成的财务提示；这些接口不创建转账、订单或其他资金副作用。
 - **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；OpenAI-compatible Adapter 在工作流要求指定下一工具时可使用受限的函数选择，仍由服务端校验工具和参数。模型 Adapter 需要自行配置服务端密钥。

@@ -7,31 +7,32 @@ import type {
   CardListResponse,
   DemoSessionResponse,
 } from "./api/client";
-import { brand } from "./brand";
-import { AppIcon, type IconName } from "./components/AppIcon";
+import { AppIcon } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
-import { ConfirmationCard } from "./components/ConfirmationCard";
-import { Navigation, type Section } from "./components/Navigation";
+import { ConfirmationModal } from "./components/ConfirmationModal";
+import { DemoGate } from "./components/DemoGate";
+import { FocusedOverview } from "./components/FocusedOverview";
+import { Navigation } from "./components/Navigation";
+import { SideDrawer } from "./components/SideDrawer";
 import { TaskResult } from "./components/TaskResult";
-import { TaskDetails } from "./components/TaskDetails";
-import {
-  hasSuccessfulChange,
-  taskMessage,
-  taskStatusIcon,
-  taskStatusLabel,
-} from "./components/taskFormat";
+import { TaskDetails, TaskOverview } from "./components/TaskDetails";
+import { statusLabel, taskMessage } from "./components/taskFormat";
+import { Toast, type ToastMessage } from "./components/Toast";
+import { pageFromHash, pageMeta, type PageKey } from "./pageConfig";
+import { BillsPage } from "./pages/BillsPage";
+import { CardsPage } from "./pages/CardsPage";
+import { InvestmentsPage } from "./pages/InvestmentsPage";
+import { SubscriptionsPage } from "./pages/SubscriptionsPage";
+import { TransfersPage } from "./pages/TransfersPage";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   text: string;
   task?: AgentTaskResponse;
-  taskId?: string;
-  restored?: boolean;
 };
 type ApiState = "checking" | "connected" | "unavailable";
 type RecoveryAction = "connection" | "task" | "write-lookup" | "write-retry";
-type ComposerChoice = { taskId: string; mode: "new" | "continue" };
 type UiError = {
   title: string;
   message: string;
@@ -70,6 +71,31 @@ type PendingWrite =
     };
 
 const pendingWriteStorageKey = "finorch.demo.pending-write";
+const demoEntryStorageKey = "finorch.demo.entered.v1";
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => unknown;
+};
+
+function readDemoEntry(): boolean {
+  try {
+    return sessionStorage.getItem(demoEntryStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function withViewTransition(update: () => void) {
+  const transitionDocument = document as ViewTransitionDocument;
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  if (transitionDocument.startViewTransition && !reducedMotion) {
+    transitionDocument.startViewTransition(update);
+  } else {
+    update();
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -144,22 +170,11 @@ const apiErrorCopy: Record<string, string> = {
     "模拟安全限制暂时阻止写操作。查询仍可使用，请稍后重新发起。",
 };
 
-const verificationErrors = new Set([
-  "strong_verification_required",
-  "verification_incorrect",
-  "verification_expired",
-  "verification_invalidated",
-  "verification_locked",
-  "verification_unavailable",
-]);
-
 function toUiError(error: unknown): UiError {
   if (error instanceof ApiError) {
     return {
       title: apiErrorCopy[error.code] ?? "请求未完成",
-      message:
-        apiErrorCopy[error.code] ??
-        "请求没有完成。请刷新任务状态，再根据实际结果继续。",
+      message: error.message,
       code: error.code,
       status: error.status,
       requestId: error.requestId,
@@ -173,8 +188,8 @@ function toUiError(error: unknown): UiError {
   return {
     title: isNetworkError ? "暂时无法连接服务" : "请求未完成",
     message: isNetworkError
-      ? "请恢复连接后先查询这次请求的处理状态。"
-      : "请求没有完成。请刷新任务状态，再根据实际结果继续。",
+      ? "请检查服务连接后重试。"
+      : "操作没有完成，请查看错误详情。",
     code: null,
     status: null,
     requestId: null,
@@ -202,16 +217,18 @@ function userName(session: DemoSessionResponse | null): string {
     : session.display_name;
 }
 
+function modeLabel(mode: DemoSessionResponse["agent_provider"]): string {
+  return mode === "fake" ? "演示模式" : "兼容模型模式";
+}
+
 function environmentLabel(
   environment: DemoSessionResponse["environment"],
 ): string {
   return environment === "development" ? "本地开发" : "测试环境";
 }
 
-function initialSection(): Section {
-  return typeof window !== "undefined" && window.location.hash === "#cards"
-    ? "cards"
-    : "assistant";
+function initialContextOpen(): boolean {
+  return typeof window !== "undefined" && window.innerWidth >= 1100;
 }
 
 function ErrorBanner({
@@ -251,24 +268,22 @@ function ErrorBanner({
   return (
     <section aria-live="assertive" className="error-banner" role="alert">
       <span aria-hidden="true" className="error-mark">
-        <AppIcon name="alert" size={17} />
+        <AppIcon name="info" size={17} />
       </span>
       <div className="error-copy">
         <strong>{error.title}</strong>
         <p>{error.message}</p>
-        {import.meta.env.DEV ? (
-          <details className="developer-diagnostics">
-            <summary>本地开发诊断</summary>
-            <div className="error-detail">
-              {error.code ? <code>{error.code}</code> : null}
-              {error.status ? <span>HTTP {error.status}</span> : null}
-              {error.requestId ? <code>请求编号 {error.requestId}</code> : null}
-              {error.fieldDetails.map((detail) => (
-                <p key={detail}>{detail}</p>
-              ))}
-            </div>
-          </details>
-        ) : null}
+        <details>
+          <summary>查看错误详情</summary>
+          <div className="error-detail">
+            {error.code ? <code>{error.code}</code> : null}
+            {error.status ? <span>HTTP {error.status}</span> : null}
+            {error.requestId ? <code>请求编号 {error.requestId}</code> : null}
+            {error.fieldDetails.map((detail) => (
+              <p key={detail}>{detail}</p>
+            ))}
+          </div>
+        </details>
       </div>
       <div className="error-actions">
         <button
@@ -325,25 +340,21 @@ function EnvironmentDetails({
   session: DemoSessionResponse | null;
   apiVersion: string | null;
 }) {
-  if (!import.meta.env.DEV) return null;
   return (
-    <details className="environment-details developer-diagnostics">
+    <details className="environment-details">
       <summary>
-        演示说明
+        <span className={"mode-dot mode-dot-" + mode} />
+        {modeLabel(mode)}
         <AppIcon name="chevron-down" size={15} />
       </summary>
       <div className="environment-popover">
-        <h2>本地运行信息</h2>
+        <h2>环境详情</h2>
         <p>
           {mode === "fake"
-            ? "当前使用 Fake Provider 的确定性模拟规则，没有调用外部模型。"
-            : "当前使用 OpenAI-compatible Provider，由服务端转发模型请求。页面不会读取或显示密钥。"}
+            ? "当前使用确定性模拟规则，不调用外部模型。"
+            : "当前选择兼容模型模式，请求由服务端转发。若服务端未配置模型，任务会明确失败；页面不会读取或显示密钥。"}
         </p>
         <dl>
-          <div>
-            <dt>Provider</dt>
-            <dd>{mode === "fake" ? "Fake Provider" : "OpenAI-compatible"}</dd>
-          </div>
           <div>
             <dt>数据环境</dt>
             <dd>
@@ -368,9 +379,9 @@ function EnvironmentDetails({
 }
 
 function StatusIndicator({ status }: { status: ApiState }) {
-  if (status === "connected") return null;
   const copy = {
     checking: "连接中",
+    connected: "服务已连接",
     unavailable: "服务不可用",
   }[status];
   return (
@@ -386,30 +397,19 @@ function StatusIndicator({ status }: { status: ApiState }) {
   );
 }
 
-function promptSuggestions(): Array<{
-  label: string;
-  prompt: string;
-  icon: IconName;
-}> {
-  return [
-    { label: "查看本月收支", prompt: "我这个月花了多少钱", icon: "bill" },
-    {
-      label: "管理自动扣费",
-      prompt: "我有哪些自动扣费",
-      icon: "subscriptions",
-    },
-    { label: "查询理财产品", prompt: "查看适合我的理财产品", icon: "wealth" },
-    { label: "发起转账", prompt: "我要转账", icon: "transfer" },
+function promptSuggestions(cards: CardListResponse["items"]): string[] {
+  const suggestions = [
+    "我这个月花了多少钱",
+    "最近有没有异常消费",
+    "我有哪些自动扣费",
+    "查询我的账户余额",
+    "查看我的转账记录",
+    "查看适合我的理财产品",
   ];
-}
-
-function canContinueTask(task: AgentTaskResponse | null): boolean {
-  if (!task) return false;
-  return (
-    task.status === "awaiting_input" ||
-    task.status === "awaiting_confirmation" ||
-    (task.status === "failed" && hasSuccessfulChange(task))
-  );
+  const activeCard = cards.find((item) => item.status === "active");
+  if (activeCard)
+    suggestions.push("冻结尾号 " + activeCard.card_suffix + " 的卡");
+  return suggestions;
 }
 
 export default function App() {
@@ -438,16 +438,17 @@ export default function App() {
   );
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<Section>(initialSection);
-  const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null);
-  const [composerChoice, setComposerChoice] = useState<ComposerChoice | null>(
-    null,
-  );
+  const [enteredDemo, setEnteredDemo] = useState(readDemoEntry);
+  const [activePage, setActivePage] = useState<PageKey>(pageFromHash);
+  const [contextOpen, setContextOpen] = useState(initialContextOpen);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const activeTaskId = activeTask?.id;
   const activeTaskStatus = activeTask?.status;
   const activeTaskVersion = activeTask?.version;
-  const detailsOpen = detailsTaskId === activeTaskId;
   const auditKey =
     activeTaskId && activeTaskVersion !== undefined
       ? activeTaskId + ":" + activeTaskVersion
@@ -457,58 +458,49 @@ export default function App() {
   const audit = matchingAudit?.events ?? [];
   const auditLoading = detailsOpen && Boolean(activeTask) && !matchingAudit;
   const auditError = matchingAudit?.error ?? null;
-  const needsTaskChoice = canContinueTask(activeTask);
-  const selectedChoice =
-    composerChoice?.taskId === activeTaskId
-      ? (composerChoice?.mode ?? null)
-      : null;
-  const recentTerminalTask =
-    messages.length === 1 &&
-    messages[0]?.restored &&
-    messages[0].task &&
-    messages[0].task.status === "completed"
-      ? messages[0].task
-      : null;
-  const showWelcome = messages.length === 0 || Boolean(recentTerminalTask);
 
-  const applyTask = useCallback((task: AgentTaskResponse, restored = false) => {
+  const applyTask = useCallback((task: AgentTaskResponse) => {
     setActiveTask(task);
+    setConfirmationOpen(Boolean(task.confirmation));
     setMessages((current) => {
-      const existingIndex = current.findIndex(
-        (message) => message.task?.id === task.id,
-      );
-      const existingMessage =
-        existingIndex >= 0 ? current[existingIndex] : null;
-      const previousMessages = current.map((message) => {
-        if (message.role !== "user" || message.taskId === task.id)
-          return message;
-        if (message.taskId || message.text !== task.request_text)
-          return message;
-        return { ...message, taskId: task.id };
-      });
-      const previousRestored = Boolean(existingMessage?.restored || restored);
-      const updatedMessages = previousMessages.filter(
-        (message) => message.task?.id !== task.id,
-      );
-      let lastRelatedUser = -1;
-      updatedMessages.forEach((message, index) => {
-        if (message.role === "user" && message.taskId === task.id)
-          lastRelatedUser = index;
-      });
-      const insertionIndex =
-        lastRelatedUser >= 0
-          ? lastRelatedUser + 1
-          : existingIndex >= 0
-            ? Math.min(existingIndex, updatedMessages.length)
-            : updatedMessages.length;
-      updatedMessages.splice(insertionIndex, 0, {
+      const response: Message = {
         id: "task-" + task.id,
         role: "assistant",
         text: taskMessage(task),
         task,
-        restored: previousRestored,
+      };
+      return [
+        ...current.filter((message) => message.task?.id !== task.id),
+        response,
+      ];
+    });
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
+  const closeConfirmation = useCallback(() => setConfirmationOpen(false), []);
+  const closeDetailsDrawer = useCallback(() => {
+    setDetailsDrawerOpen(false);
+    setDetailsOpen(false);
+  }, []);
+
+  const notify = useCallback(
+    (title: string, message: string, tone: ToastMessage["tone"]) => {
+      setToast({
+        id: crypto.randomUUID(),
+        title,
+        message,
+        tone,
       });
-      return updatedMessages;
+    },
+    [],
+  );
+
+  const navigate = useCallback((page: PageKey) => {
+    withViewTransition(() => {
+      setActivePage(page);
+      setMobileNavOpen(false);
+      window.history.pushState(null, "", "#/" + page);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   }, []);
 
@@ -569,22 +561,9 @@ export default function App() {
           if (savedWrite) {
             const recovered = await lookupPendingWrite(savedWrite);
             if (!current) return;
-            if (recovered.task) applyTask(recovered.task, true);
+            if (recovered.task) applyTask(recovered.task);
             if (recovered.resolved) {
               storePendingWrite(null);
-            } else if (
-              savedWrite.kind === "confirm" &&
-              recovered.task?.confirmation?.confirmation_method === "demo_otp"
-            ) {
-              storePendingWrite(null);
-              setRequestError({
-                title: "确认尚未完成",
-                message: "服务端仍在等待确认。请重新输入本地模拟验证码。",
-                code: null,
-                status: null,
-                requestId: null,
-                fieldDetails: [],
-              });
             } else {
               setRequestError({
                 title: "提交状态尚未确认",
@@ -599,7 +578,7 @@ export default function App() {
             }
           } else {
             const recent = await apiClient.readRecentTask(conversationId);
-            if (current && recent) applyTask(recent, true);
+            if (current && recent) applyTask(recent);
           }
         } catch (error) {
           if (current) setRequestError(toUiError(error));
@@ -617,38 +596,39 @@ export default function App() {
   }, [applyTask, conversationId, lookupPendingWrite, storePendingWrite]);
 
   useEffect(() => {
+    function onHashChange() {
+      withViewTransition(() => {
+        setActivePage(pageFromHash());
+        setMobileNavOpen(false);
+      });
+    }
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", "#/overview");
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const desktopContext = window.matchMedia("(min-width: 1100px)");
     const desktopNavigation = window.matchMedia("(min-width: 960px)");
     const updateLayout = () => {
+      setContextOpen(desktopContext.matches);
       if (desktopNavigation.matches) setMobileNavOpen(false);
     };
+    desktopContext.addEventListener("change", updateLayout);
     desktopNavigation.addEventListener("change", updateLayout);
     updateLayout();
     return () => {
+      desktopContext.removeEventListener("change", updateLayout);
       desktopNavigation.removeEventListener("change", updateLayout);
     };
   }, []);
 
   useEffect(() => {
-    const syncSection = () => {
-      setActiveSection(
-        window.location.hash === "#cards" ? "cards" : "assistant",
-      );
-    };
-    window.addEventListener("hashchange", syncSection);
-    return () => window.removeEventListener("hashchange", syncSection);
-  }, []);
-
-  useEffect(() => {
-    const nextHash = activeSection === "cards" ? "#cards" : "#assistant";
-    if (window.location.hash !== nextHash)
-      window.history.replaceState(null, "", nextHash);
-    document.title = `${brand.name} · ${activeSection === "cards" ? "银行卡" : "智能助手"}`;
-  }, [activeSection]);
-
-  useEffect(() => {
-    if (messages.length > 0 && conversationRef.current)
-      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
-  }, [messages.length]);
+    const container = conversationRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
+  }, [messages.length, busy]);
 
   useEffect(() => {
     if (
@@ -774,10 +754,7 @@ export default function App() {
     return apiClient.cancelTask(write.taskId, write.key);
   }
 
-  async function submitWrite(
-    write: PendingWrite,
-    verificationCode?: string,
-  ): Promise<AgentTaskResponse | null> {
+  async function submitWrite(write: PendingWrite, verificationCode?: string) {
     storePendingWrite(write);
     setBusy(true);
     setRequestError(null);
@@ -785,6 +762,13 @@ export default function App() {
       const task = await executeWrite(write, verificationCode);
       applyTask(task);
       storePendingWrite(null);
+      if (task.status === "completed") {
+        notify("任务已完成", task.message, "success");
+      } else if (task.status === "awaiting_confirmation") {
+        notify("等待你的确认", "操作尚未执行，请核对后再确认。", "warning");
+      } else if (task.status === "failed") {
+        notify("操作未完成", taskMessage(task), "error");
+      }
       if (
         task.status === "completed" ||
         (write.kind === "confirm" &&
@@ -795,22 +779,7 @@ export default function App() {
           ))
       )
         await refreshCards();
-      return task;
     } catch (error) {
-      if (
-        write.kind === "confirm" &&
-        error instanceof ApiError &&
-        verificationErrors.has(error.code)
-      ) {
-        storePendingWrite(null);
-        try {
-          applyTask(await apiClient.readTask(write.taskId));
-        } catch {
-          // The definitive verification rejection is still shown below.
-        }
-        setRequestError(toUiError(error));
-        return null;
-      }
       try {
         const recovered = await lookupPendingWrite(write);
         if (recovered.task) applyTask(recovered.task);
@@ -826,13 +795,12 @@ export default function App() {
               ))
           )
             await refreshCards();
-          return recovered.task;
+          return;
         }
       } catch {
         // Keep the idempotency record so the user can query or safely retry it later.
       }
       setRequestError(toUiError(error));
-      return null;
     } finally {
       setBusy(false);
     }
@@ -851,22 +819,6 @@ export default function App() {
         if (recovered.task?.status === "completed") await refreshCards();
         return;
       }
-      if (
-        pendingWrite.kind === "confirm" &&
-        recovered.task?.confirmation?.confirmation_method === "demo_otp"
-      ) {
-        storePendingWrite(null);
-        setRequestError({
-          title: "确认尚未完成",
-          message:
-            "服务端仍在等待确认。请重新输入本地模拟验证码，再确认这项操作。",
-          code: null,
-          status: null,
-          requestId: null,
-          fieldDetails: [],
-        });
-        return;
-      }
       if (!allowResubmit) {
         setRequestError({
           title: "尚未找到已完成的提交",
@@ -883,6 +835,11 @@ export default function App() {
       const task = await executeWrite(pendingWrite);
       applyTask(task);
       storePendingWrite(null);
+      if (task.status === "completed") {
+        notify("任务已完成", task.message, "success");
+      } else if (task.status === "awaiting_confirmation") {
+        notify("等待你的确认", "操作尚未执行，请核对后再确认。", "warning");
+      }
       if (task.status === "completed") await refreshCards();
     } catch (error) {
       try {
@@ -909,7 +866,7 @@ export default function App() {
     setRequestError(null);
     try {
       const task = await apiClient.readRecentTask(conversationId);
-      if (task) applyTask(task, true);
+      if (task) applyTask(task);
     } catch (error) {
       setRequestError(toUiError(error));
     } finally {
@@ -935,32 +892,23 @@ export default function App() {
   async function sendMessage(value = draft) {
     const requestText = value.trim();
     if (!requestText || busy || !session || pendingWrite) return;
-    if (needsTaskChoice && !selectedChoice) return;
     setDraft("");
-    const continuesTask = needsTaskChoice && selectedChoice === "continue";
     setMessages((current) => [
-      ...(continuesTask
-        ? current
-        : current.filter(
-            (message) =>
-              !(
-                message.restored &&
-                message.task &&
-                ["completed", "failed", "cancelled"].includes(
-                  message.task.status,
-                )
-              ),
-          )),
-      {
-        id: crypto.randomUUID(),
-        role: "user",
-        text: requestText,
-        ...(continuesTask && activeTask ? { taskId: activeTask.id } : {}),
-      },
+      ...current,
+      { id: crypto.randomUUID(), role: "user", text: requestText },
     ]);
     const key = crypto.randomUUID();
+    const hasCompletedStep = activeTask?.steps.some(
+      (step) => step.step_type === "tool" && step.status === "succeeded",
+    );
+    const canContinueFailedTask =
+      activeTask?.status === "failed" && hasCompletedStep;
     const write: PendingWrite =
-      activeTask && continuesTask
+      activeTask &&
+      (["awaiting_input", "awaiting_confirmation"].includes(
+        activeTask.status,
+      ) ||
+        canContinueFailedTask)
         ? {
             kind: "input",
             key,
@@ -970,23 +918,6 @@ export default function App() {
           }
         : { kind: "create", key, conversationId, requestText };
     await submitWrite(write);
-  }
-
-  async function startNewTask() {
-    if (!activeTask || busy || pendingWrite) return;
-    if (
-      ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status)
-    ) {
-      const cancelled = await submitWrite({
-        kind: "cancel",
-        key: crypto.randomUUID(),
-        conversationId: activeTask.conversation_id,
-        taskId: activeTask.id,
-      });
-      if (!cancelled || cancelled.status !== "cancelled") return;
-    }
-    setComposerChoice({ taskId: activeTask.id, mode: "new" });
-    document.getElementById("agent-request")?.focus();
   }
 
   async function confirmTask(
@@ -1017,24 +948,64 @@ export default function App() {
     });
   }
 
-  function fillPrompt(prompt: string) {
-    setActiveSection("assistant");
-    setDraft(prompt);
-    setMobileNavOpen(false);
-    window.requestAnimationFrame(() => {
-      document.getElementById("agent-request")?.focus();
+  function askFinOrch(prompt: string) {
+    navigate("assistant");
+    void sendMessage(prompt);
+  }
+
+  function enterDemo() {
+    withViewTransition(() => {
+      try {
+        sessionStorage.setItem(demoEntryStorageKey, "1");
+      } catch {
+        // Entry state is a presentation aid, not an authorization source.
+      }
+      setEnteredDemo(true);
+      setActivePage("overview");
+      window.history.replaceState(null, "", "#/overview");
+    });
+  }
+
+  function exitDemo() {
+    withViewTransition(() => {
+      try {
+        sessionStorage.removeItem(demoEntryStorageKey);
+      } catch {
+        // Ignore storage restrictions; the current session can still exit.
+      }
+      setEnteredDemo(false);
     });
   }
 
   const mode = activeTask?.provider_mode ?? session?.agent_provider ?? "fake";
+  const overviewRefreshKey = activeTask
+    ? `${activeTask.id}:${activeTask.version}`
+    : (session?.dataset_version ?? "initial");
+  const demoDisplayName =
+    !session || session.display_name === "Demo User One"
+      ? "林知远"
+      : userName(session);
+
+  if (!enteredDemo) {
+    return (
+      <DemoGate
+        apiState={apiState}
+        onEnter={enterDemo}
+        onRetry={() => void retryConnection()}
+        session={session}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
       <Navigation
-        activeSection={activeSection}
+        activePage={activePage}
+        displayName={demoDisplayName}
         mobileOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
-        onSelect={setActiveSection}
+        onExit={exitDemo}
+        onNavigate={navigate}
       />
 
       <div className="app-main">
@@ -1051,38 +1022,56 @@ export default function App() {
               >
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
-              <h1 className="topbar-section-name">
-                <span className="topbar-mobile-brand">
-                  <span
-                    aria-hidden="true"
-                    className="brand-symbol topbar-brand-symbol"
-                  >
-                    {brand.mark}
-                  </span>
-                  {brand.name} ·
-                </span>
-                {activeSection === "cards" ? "银行卡" : "智能助手"}
-              </h1>
+              <div className="topbar-path">
+                <span>FinOrch</span>
+                <i aria-hidden="true">/</i>
+                <strong>{pageMeta(activePage).label}</strong>
+              </div>
             </div>
             <div className="topbar-actions">
-              <span className="account-name">{userName(session)}</span>
-              <span
-                className="demo-badge"
-                title="银行卡、账单和资金数据均为合成数据，不连接真实银行或支付网络"
+              <button
+                className="topbar-new-task"
+                onClick={() => {
+                  navigate("assistant");
+                  document.getElementById("agent-request")?.focus();
+                }}
+                type="button"
               >
-                模拟数据
-              </span>
+                <span aria-hidden="true">+</span>
+                新任务
+              </button>
               <EnvironmentDetails
                 apiVersion={apiVersion}
                 mode={mode}
                 session={session}
               />
               <StatusIndicator status={apiState} />
+              <button
+                aria-label="退出演示账户"
+                className="account-avatar"
+                onClick={exitDemo}
+                title="退出演示"
+                type="button"
+              >
+                LZ
+              </button>
             </div>
           </div>
         </header>
 
         <main className="page-content">
+          {activePage === "overview" ? (
+            <FocusedOverview
+              activeTask={activeTask}
+              audit={audit}
+              busy={busy}
+              cards={cards}
+              onPrompt={askFinOrch}
+              refreshKey={overviewRefreshKey}
+              session={session}
+            />
+          ) : null}
+
           {requestError ? (
             <ErrorBanner
               error={requestError}
@@ -1120,287 +1109,153 @@ export default function App() {
             />
           ) : null}
 
-          {activeSection === "cards" ? (
-            <div className="cards-page">
-              <CardList
-                cards={cards}
-                loading={loading}
-                onAskAboutCard={fillPrompt}
-                onRefresh={() => void refreshCards()}
-                refreshing={refreshing}
-              />
-            </div>
-          ) : (
-            <section
-              aria-label="智能助手对话"
-              className={
-                "assistant-panel" + (showWelcome ? " assistant-panel-idle" : "")
-              }
-              id="assistant"
-            >
-              <div
-                aria-live="polite"
-                className="conversation"
-                ref={conversationRef}
-                role="log"
-              >
-                {showWelcome ? (
-                  <div className="welcome-state">
-                    <h2>今天想办理什么？</h2>
-                    <p>查询账户、管理订阅，或办理需要确认的操作。</p>
-                    {!loading ? (
-                      <div className="suggestion-group">
-                        <div className="suggestions">
-                          {promptSuggestions().map((suggestion) => (
-                            <button
-                              className="suggestion-button"
-                              disabled={
-                                busy || Boolean(pendingWrite) || !session
-                              }
-                              key={suggestion.label}
-                              onClick={() => fillPrompt(suggestion.prompt)}
-                              type="button"
-                            >
-                              <span
-                                className="suggestion-icon"
-                                aria-hidden="true"
-                              >
-                                <AppIcon name={suggestion.icon} size={20} />
-                              </span>
-                              <span>{suggestion.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                        {recentTerminalTask ? (
-                          <div className="recent-task">
-                            <TaskResult
-                              compact
-                              compactPrefix="最近完成："
-                              task={recentTerminalTask}
-                            />
+          {activePage === "assistant" ? (
+            <>
+              <div className="workspace-stage-heading">
+                <div>
+                  <p className="eyebrow">Agent workspace</p>
+                  <h2>把目标交给 FinOrch，先理解，再执行</h2>
+                </div>
+                <span>
+                  <AppIcon name="info" size={15} />
+                  所有变更以服务端结果为准
+                </span>
+              </div>
+
+              <div className="workbench-grid">
+                <section
+                  aria-labelledby="assistant-title"
+                  className="assistant-panel"
+                  id="assistant"
+                >
+                  <div className="assistant-header">
+                    <div>
+                      <h2 id="assistant-title">对话</h2>
+                      <p>银行卡、账单、订阅、转账与理财</p>
+                    </div>
+                  </div>
+
+                  <div
+                    aria-live="polite"
+                    className="conversation"
+                    ref={conversationRef}
+                    role="log"
+                  >
+                    {messages.length === 0 ? (
+                      <div className="welcome-state">
+                        <span aria-hidden="true" className="welcome-mark">
+                          F
+                        </span>
+                        <h3>你好，{userName(session)}</h3>
+                        <p>
+                          {loading
+                            ? "正在读取演示账户…"
+                            : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
+                        </p>
+                        {!loading ? (
+                          <div className="suggestion-group">
+                            <span className="suggestion-label">你可以试试</span>
+                            <div className="suggestions">
+                              {promptSuggestions(cards).map((prompt) => (
+                                <button
+                                  className="suggestion-button"
+                                  disabled={
+                                    busy || Boolean(pendingWrite) || !session
+                                  }
+                                  key={prompt}
+                                  onClick={() => void sendMessage(prompt)}
+                                  type="button"
+                                >
+                                  {prompt}
+                                  <AppIcon name="arrow-right" size={16} />
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         ) : null}
                       </div>
                     ) : (
-                      <p className="welcome-loading" role="status">
-                        正在读取演示账户…
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="message-list">
-                    {messages.map((message) => {
-                      const task = message.task;
-                      const isCurrentTask = task?.id === activeTask?.id;
-                      if (message.role === "user") {
-                        return (
+                      <div className="message-list">
+                        {messages.map((message) => (
                           <article
-                            className="message message-user"
+                            className={"message message-" + message.role}
                             key={message.id}
                           >
-                            <div className="message-bubble message-bubble-user">
+                            <div className="message-author">
+                              {message.role === "user"
+                                ? userName(session)
+                                : "FinOrch"}
+                            </div>
+                            <div
+                              className={
+                                "message-bubble message-bubble-" + message.role
+                              }
+                            >
                               <p>{message.text}</p>
                             </div>
+                            {message.task ? (
+                              <>
+                                <div className="message-status">
+                                  <span
+                                    className={
+                                      "task-status task-status-" +
+                                      message.task.status
+                                    }
+                                  >
+                                    {statusLabel(message.task.status)}
+                                  </span>
+                                </div>
+                                <TaskResult task={message.task} />
+                              </>
+                            ) : null}
                           </article>
-                        );
-                      }
-                      if (!task) {
-                        return (
-                          <article
-                            className="message message-assistant"
-                            key={message.id}
-                          >
-                            <p className="task-message">{message.text}</p>
-                          </article>
-                        );
-                      }
-                      return (
-                        <article
-                          className="message message-assistant"
-                          key={message.id}
-                        >
-                          {message.restored ? (
-                            <div className="restored-task">
-                              <span>已恢复最近任务</span>
-                              <blockquote>{task.request_text}</blockquote>
-                            </div>
-                          ) : null}
-                          {message.text &&
-                          ["awaiting_input", "failed", "cancelled"].includes(
-                            task.status,
-                          ) ? (
-                            <p
-                              className={
-                                "task-message" +
-                                (task.status === "failed"
-                                  ? " task-message-error"
-                                  : "")
-                              }
-                            >
-                              {message.text}
-                            </p>
-                          ) : null}
-                          {isCurrentTask && task.status === "completed" ? (
-                            <TaskResult task={task} />
-                          ) : null}
-                          {isCurrentTask &&
-                          (task.status !== "completed" ||
-                            hasSuccessfulChange(task)) ? (
-                            <TaskDetails
-                              audit={audit}
-                              auditError={auditError}
-                              auditLoading={auditLoading}
-                              busy={busy}
-                              onCancel={() => void cancelTask(task)}
-                              onOpenChange={(open) =>
-                                setDetailsTaskId(open ? task.id : null)
-                              }
-                              onRefresh={() => void refreshTask()}
-                              open={detailsOpen}
-                              refreshing={refreshingTask}
-                              task={task}
-                            />
-                          ) : task.status !== "completed" ? (
-                            <span
-                              className={
-                                "task-status task-status-" +
-                                (task.status === "failed" &&
-                                hasSuccessfulChange(task)
-                                  ? "partial"
-                                  : task.status)
-                              }
-                            >
-                              <AppIcon
-                                name={taskStatusIcon(task.status)}
-                                size={15}
-                              />
-                              {taskStatusLabel(task)}
-                            </span>
-                          ) : null}
-                          {task.confirmation ? (
-                            <ConfirmationCard
-                              busy={busy}
-                              confirmation={task.confirmation}
-                              hasPreviousChanges={hasSuccessfulChange(task)}
-                              onCancel={() => void cancelTask(task)}
-                              onConfirm={(code) => void confirmTask(task, code)}
-                              onRefresh={() => void refreshTask()}
-                              refreshing={refreshingTask}
-                            />
-                          ) : null}
-                          {task.status !== "completed" || !isCurrentTask ? (
-                            <TaskResult compact={!isCurrentTask} task={task} />
-                          ) : null}
-                        </article>
-                      );
-                    })}
+                        ))}
+                      </div>
+                    )}
+                    {busy ? (
+                      <p className="processing-indicator" role="status">
+                        <span aria-hidden="true" className="processing-dot" />
+                        正在处理…
+                      </p>
+                    ) : null}
                   </div>
-                )}
-                {busy && !activeTask ? (
-                  <p className="processing-indicator" role="status">
-                    <span aria-hidden="true" className="processing-dot" />
-                    正在处理…
-                  </p>
-                ) : null}
-              </div>
 
-              <form
-                className="composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void sendMessage();
-                }}
-              >
-                {needsTaskChoice && !pendingWrite ? (
-                  <div
-                    className="composer-choice"
-                    role="group"
-                    aria-label="任务输入方式"
+                  <form
+                    className="composer"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void sendMessage();
+                    }}
                   >
-                    <span>
-                      {activeTask?.status === "awaiting_confirmation"
-                        ? "当前有待确认操作"
-                        : activeTask?.status === "awaiting_input"
-                          ? "当前任务需要补充信息"
-                          : "当前任务部分完成"}
-                    </span>
-                    <div>
-                      <button
-                        className={
-                          selectedChoice === "continue" ? "choice-active" : ""
-                        }
-                        disabled={busy}
-                        onClick={() =>
-                          activeTask &&
-                          setComposerChoice({
-                            taskId: activeTask.id,
-                            mode: "continue",
-                          })
-                        }
-                        type="button"
-                      >
-                        补充当前任务
-                      </button>
-                      <button
-                        className={
-                          selectedChoice === "new" ? "choice-active" : ""
-                        }
-                        disabled={busy}
-                        onClick={() => void startNewTask()}
-                        type="button"
-                      >
-                        开始新任务
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {pendingWrite ? (
-                  <p className="composer-hint">
-                    提交结果尚未确认。请先查询这次请求的状态，不要重新发起。
-                  </p>
-                ) : needsTaskChoice &&
-                  selectedChoice === "continue" &&
-                  activeTask?.status === "awaiting_confirmation" ? (
-                  <p className="composer-hint">
-                    补充当前任务会使这次确认失效，操作内容需要重新核对。
-                  </p>
-                ) : needsTaskChoice &&
-                  !selectedChoice &&
-                  activeTask?.status === "awaiting_confirmation" ? (
-                  <p className="composer-hint">
-                    开始新任务会取消待确认操作；已执行的操作不会撤销。
-                  </p>
-                ) : needsTaskChoice &&
-                  !selectedChoice &&
-                  activeTask?.status === "awaiting_input" ? (
-                  <p className="composer-hint">
-                    开始新任务会结束当前请求；已执行的操作不会撤销。
-                  </p>
-                ) : needsTaskChoice &&
-                  !selectedChoice &&
-                  activeTask?.status === "failed" ? (
-                  <p className="composer-hint">
-                    已执行的操作不会因切换任务而撤销。
-                  </p>
-                ) : null}
-                {!needsTaskChoice || selectedChoice ? (
-                  <>
+                    {pendingWrite ? (
+                      <p className="composer-hint">
+                        上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
+                      </p>
+                    ) : activeTask?.status === "awaiting_input" ? (
+                      <p className="composer-hint">补充信息将继续当前任务。</p>
+                    ) : activeTask?.status === "awaiting_confirmation" ? (
+                      <p className="composer-hint">
+                        修改请求会取消当前确认，并重新核对操作内容。
+                      </p>
+                    ) : activeTask?.status === "failed" &&
+                      activeTask.steps.some(
+                        (step) =>
+                          step.step_type === "tool" &&
+                          step.status === "succeeded",
+                      ) ? (
+                      <p className="composer-hint">
+                        部分步骤已完成；补充要求可继续当前任务，已完成操作不会重做。
+                      </p>
+                    ) : null}
                     <label className="visually-hidden" htmlFor="agent-request">
                       输入请求
                     </label>
                     <div className="composer-row">
                       <textarea
                         id="agent-request"
-                        disabled={
-                          Boolean(pendingWrite) ||
-                          (needsTaskChoice && !selectedChoice)
-                        }
+                        disabled={Boolean(pendingWrite)}
                         maxLength={1000}
                         onChange={(event) => setDraft(event.target.value)}
-                        onInput={(event) => {
-                          event.currentTarget.style.height = "auto";
-                          event.currentTarget.style.height = `${Math.min(event.currentTarget.scrollHeight, 150)}px`;
-                        }}
                         onKeyDown={(event) => {
                           if (
                             event.key === "Enter" &&
@@ -1411,14 +1266,8 @@ export default function App() {
                             void sendMessage();
                           }
                         }}
-                        placeholder={
-                          needsTaskChoice && !selectedChoice
-                            ? "先选择补充当前任务或开始新任务"
-                            : selectedChoice === "continue"
-                              ? "补充这项任务所需的信息"
-                              : "输入你需要查询或办理的事项"
-                        }
-                        rows={1}
+                        placeholder="例如：我这个月花了多少钱"
+                        rows={2}
                         value={draft}
                       />
                       <button
@@ -1428,21 +1277,206 @@ export default function App() {
                           busy ||
                           Boolean(pendingWrite) ||
                           !draft.trim() ||
-                          !session ||
-                          (needsTaskChoice && !selectedChoice)
+                          !session
                         }
                         type="submit"
                       >
                         <AppIcon name="send" size={19} />
                       </button>
                     </div>
-                  </>
-                ) : null}
-              </form>
-            </section>
-          )}
+                    <div className="composer-foot">
+                      <span>Enter 发送，Shift + Enter 换行</span>
+                      <span>仅处理模拟数据</span>
+                    </div>
+                  </form>
+                </section>
+
+                <details
+                  className="context-disclosure"
+                  onToggle={(event) => setContextOpen(event.currentTarget.open)}
+                  open={contextOpen}
+                >
+                  <summary className="context-summary">
+                    <span className="context-summary-icon">
+                      <AppIcon name="overview" size={19} />
+                    </span>
+                    <span className="context-summary-copy">
+                      <strong>执行上下文</strong>
+                      <small>账户、卡片与处理进度</small>
+                    </span>
+                    <AppIcon
+                      className="context-chevron"
+                      name="chevron-down"
+                      size={18}
+                    />
+                  </summary>
+                  <div className="context-content">
+                    <CardList
+                      cards={cards}
+                      loading={loading}
+                      manageDisabled={busy || Boolean(pendingWrite)}
+                      onManage={(card) =>
+                        void sendMessage(
+                          card.status === "active"
+                            ? `冻结尾号 ${card.card_suffix} 的银行卡`
+                            : `解冻尾号 ${card.card_suffix} 的银行卡`,
+                        )
+                      }
+                      onRefresh={() => void refreshCards()}
+                      refreshing={refreshing}
+                    />
+                    <TaskOverview
+                      busy={busy}
+                      refreshing={refreshingTask}
+                      onRefresh={() => void refreshTask()}
+                      onCancel={() => {
+                        if (activeTask) void cancelTask(activeTask);
+                      }}
+                      onOpenConfirmation={() => {
+                        setDetailsDrawerOpen(false);
+                        setConfirmationOpen(true);
+                      }}
+                      task={activeTask}
+                    />
+                    <TaskDetails
+                      audit={audit}
+                      auditError={auditError}
+                      auditLoading={auditLoading}
+                      onOpenChange={setDetailsOpen}
+                      open={detailsOpen}
+                      task={activeTask}
+                    />
+                  </div>
+                </details>
+              </div>
+            </>
+          ) : null}
+
+          {activePage === "bills" ? (
+            <BillsPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
+          {activePage === "cards" ? (
+            <CardsPage
+              busy={busy || Boolean(pendingWrite)}
+              cards={cards}
+              loading={loading}
+              onManage={(card) =>
+                askFinOrch(
+                  card.status === "active"
+                    ? `冻结尾号 ${card.card_suffix} 的银行卡`
+                    : `解冻尾号 ${card.card_suffix} 的银行卡`,
+                )
+              }
+              onPrompt={askFinOrch}
+              onRefresh={() => void refreshCards()}
+              refreshing={refreshing}
+            />
+          ) : null}
+          {activePage === "transfers" ? (
+            <TransfersPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
+          {activePage === "subscriptions" ? (
+            <SubscriptionsPage
+              busy={busy || Boolean(pendingWrite)}
+              onPrompt={askFinOrch}
+              refreshKey={overviewRefreshKey}
+            />
+          ) : null}
+          {activePage === "investments" ? (
+            <InvestmentsPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
         </main>
       </div>
+
+      <nav aria-label="移动端快捷导航" className="mobile-dock">
+        <button
+          aria-current={activePage === "overview" ? "page" : undefined}
+          className={activePage === "overview" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("overview")}
+          type="button"
+        >
+          <AppIcon name="overview" size={19} />
+          <span>总览</span>
+        </button>
+        <button
+          aria-current={activePage === "assistant" ? "page" : undefined}
+          className={activePage === "assistant" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("assistant")}
+          type="button"
+        >
+          <AppIcon name="assistant" size={19} />
+          <span>助手</span>
+        </button>
+        <button
+          aria-current={activePage === "bills" ? "page" : undefined}
+          className={activePage === "bills" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("bills")}
+          type="button"
+        >
+          <AppIcon name="bill" size={19} />
+          <span>账单</span>
+        </button>
+        <button
+          aria-current={activePage === "cards" ? "page" : undefined}
+          className={activePage === "cards" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("cards")}
+          type="button"
+        >
+          <AppIcon name="cards" size={19} />
+          <span>卡片</span>
+        </button>
+        <button onClick={() => setMobileNavOpen(true)} type="button">
+          <AppIcon name="menu" size={19} />
+          <span>更多</span>
+        </button>
+      </nav>
+
+      {activeTask?.confirmation && confirmationOpen ? (
+        <ConfirmationModal
+          busy={busy}
+          confirmation={activeTask.confirmation}
+          hasPreviousChanges={activeTask.steps.some(
+            (step) => step.step_type === "tool" && step.status === "succeeded",
+          )}
+          onCancel={() => void cancelTask(activeTask)}
+          onClose={closeConfirmation}
+          onConfirm={(code) => void confirmTask(activeTask, code)}
+          onRefresh={() => void refreshTask()}
+          refreshing={refreshingTask}
+        />
+      ) : null}
+
+      {detailsDrawerOpen ? (
+        <SideDrawer
+          onClose={closeDetailsDrawer}
+          subtitle="Task evidence and audit"
+          title="执行记录"
+        >
+          <TaskOverview
+            busy={busy}
+            onCancel={() => {
+              if (activeTask) void cancelTask(activeTask);
+            }}
+            onOpenConfirmation={() => {
+              setDetailsDrawerOpen(false);
+              setConfirmationOpen(true);
+            }}
+            onRefresh={() => void refreshTask()}
+            refreshing={refreshingTask}
+            task={activeTask}
+          />
+          <TaskDetails
+            audit={audit}
+            auditError={auditError}
+            auditLoading={auditLoading}
+            onOpenChange={setDetailsOpen}
+            open
+            task={activeTask}
+          />
+        </SideDrawer>
+      ) : null}
+
+      {toast ? <Toast onDismiss={dismissToast} toast={toast} /> : null}
     </div>
   );
 }

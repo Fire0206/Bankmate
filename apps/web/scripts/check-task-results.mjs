@@ -5,6 +5,8 @@ import { createServer } from "vite";
 
 const vite = await createServer({
   appType: "custom",
+  cacheDir: "../../.data/vite-test-cache",
+  configLoader: "runner",
   logLevel: "error",
   server: { middlewareMode: true },
 });

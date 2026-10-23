@@ -1,11 +1,20 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import "./index.css";
-import Showcase from "./showcase/Showcase";
+import "./figma-theme.css";
+import "./phase3-compat.css";
 
-const entry = window.location.pathname === "/showcase" ? <Showcase /> : <App />;
+const showcaseRoute = lazy(() => import("./showcase/Showcase"));
+const entry =
+  window.location.pathname === "/showcase" ? (
+    <Suspense fallback={<p role="status">正在读取场景工作台…</p>}>
+      {React.createElement(showcaseRoute)}
+    </Suspense>
+  ) : (
+    <App />
+  );
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>{entry}</React.StrictMode>,

@@ -1,0 +1,465 @@
+/* Phase 3 components share the final Figma theme without changing its layout system. */
+
+.confirmation-card {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.confirmation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.confirmation-kicker {
+  color: var(--gold);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.confirmation-heading h3 {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 25px;
+  font-weight: 500;
+}
+
+.confirmation-refresh {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.confirmation-card-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  color: var(--gold);
+}
+
+.confirmation-card-name > span {
+  display: grid;
+  gap: 2px;
+}
+
+.confirmation-card-name strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.confirmation-card-name small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.confirmation-details {
+  display: grid;
+  gap: 0;
+  margin: 19px 0 0;
+}
+
+.confirmation-details > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  border-top: 1px solid var(--line-soft);
+  padding: 10px 0;
+}
+
+.confirmation-details dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.confirmation-details dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.confirmation-amount-row dd {
+  font-family: var(--font-serif);
+  font-size: 22px;
+}
+
+.state-change {
+  display: grid;
+  grid-template-columns: max-content 28px max-content;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.state-change > div {
+  display: grid;
+  gap: 2px;
+}
+
+.state-change span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.state-change strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.state-change-arrow {
+  color: var(--gold);
+  text-align: center;
+}
+
+.confirmation-impact,
+.confirmation-expiry {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.confirmation-expiry {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.confirmation-expiry time {
+  color: var(--ink);
+}
+
+.confirmation-verification {
+  display: grid;
+  gap: 7px;
+  margin-top: 17px;
+  border: 1px solid var(--gold-soft);
+  background: rgb(234 219 185 / 25%);
+  padding: 14px;
+}
+
+.confirmation-verification label {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.confirmation-verification p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.confirmation-verification input {
+  width: min(100%, 220px);
+  min-height: 44px;
+  border: 1px solid var(--gold);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.2em;
+}
+
+.confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.task-result-summary {
+  display: grid;
+  width: 100%;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.result-group h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.result-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.result-summary {
+  border-top: 1px solid var(--line);
+  padding-top: 11px;
+}
+
+.result-summary h4,
+.full-result-item h4 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.result-summary ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  list-style: none;
+}
+
+.completed-change-list {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.completed-change-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 9px 0;
+}
+
+.completed-change-list li > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.completed-change-list strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.completed-change-list small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.completed-change-mark {
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.task-result-notice {
+  margin: 8px 0 0;
+  border-left: 2px solid var(--gold);
+  color: var(--warning);
+  padding-left: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.full-result-details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.full-result-details > summary {
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.full-result-content {
+  padding-top: 12px;
+}
+
+.full-result-item {
+  margin-bottom: 16px;
+}
+
+.risk-assessment {
+  width: 100%;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.risk-assessment h4 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.risk-assessment > p {
+  margin: 5px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.risk-assessment .risk-assessment-current {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
+.risk-assessment fieldset {
+  min-width: 0;
+  margin: 17px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  padding: 14px 0 0;
+}
+
+.risk-assessment legend {
+  color: var(--ink);
+  padding: 0 8px 0 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.risk-assessment-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 6px 12px;
+}
+
+.risk-assessment-options label {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.risk-assessment-options input {
+  accent-color: var(--accent);
+}
+
+.risk-assessment-notice {
+  margin-top: 13px !important;
+}
+
+.risk-assessment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.risk-assessment-actions button {
+  min-height: 40px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  padding: 0 15px;
+  font-size: 12px;
+}
+
+.risk-assessment-actions button + button {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--accent-strong);
+}
+
+.reminder-preference {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.reminder-preference label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.reminder-preference select,
+.reminder-preference button,
+.reminder-refresh {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+.reminder-preference button,
+.reminder-refresh {
+  cursor: pointer;
+}
+
+.reminder-refresh {
+  margin-bottom: 8px;
+}
+
+.reminder-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  border-top: 1px solid var(--gold-soft);
+  border-bottom: 1px solid var(--gold-soft);
+  background: rgb(234 219 185 / 22%);
+  padding: 12px 2px;
+}
+
+.reminder-banner > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.reminder-banner strong {
+  color: var(--ink);
+}
+
+.reminder-banner button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+@media (max-width: 760px) {
+  .result-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .confirmation-details > div {
+    gap: 12px;
+  }
+
+  .confirmation-actions > button {
+    flex: 1 1 100%;
+  }
+
+  .reminder-banner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

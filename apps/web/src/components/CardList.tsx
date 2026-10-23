@@ -9,24 +9,26 @@ export function CardList({
   loading,
   refreshing,
   onRefresh,
-  onAskAboutCard,
+  onManage,
+  manageDisabled,
 }: {
   cards: Card[];
   loading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
-  onAskAboutCard: (request: string) => void;
+  onManage: (card: Card) => void;
+  manageDisabled: boolean;
 }) {
   return (
     <section
       aria-labelledby="cards-title"
-      className="card-management-section"
+      className="context-section"
       id="cards"
     >
       <div className="section-heading">
         <div>
-          <h2 id="cards-title">我的银行卡</h2>
-          <p>冻结或解冻前需要在智能助手中确认。</p>
+          <h2 id="cards-title">银行卡</h2>
+          <p>当前演示账户</p>
         </div>
         <button
           aria-label="刷新银行卡"
@@ -66,35 +68,32 @@ export function CardList({
                 <span className="card-name">{cardLabel(card.label)}</span>
                 <span className="card-suffix">尾号 {card.card_suffix}</span>
               </span>
-              <span
-                className={
-                  "status-label " +
-                  (card.status === "active"
-                    ? "status-label-active"
-                    : "status-label-frozen")
-                }
-              >
-                <AppIcon
-                  name={card.status === "active" ? "check" : "lock"}
-                  size={15}
-                />
-                {card.status === "active" ? "正常" : "已冻结"}
+              <span className="card-row-end">
+                <span
+                  className={
+                    "status-label " +
+                    (card.status === "active"
+                      ? "status-label-active"
+                      : "status-label-frozen")
+                  }
+                >
+                  <span aria-hidden="true" className="status-dot" />
+                  {card.status === "active" ? "正常" : "已冻结"}
+                </span>
+                <button
+                  className="card-manage-button"
+                  disabled={manageDisabled}
+                  onClick={() => onManage(card)}
+                  type="button"
+                >
+                  {card.status === "active" ? "冻结" : "解冻"}
+                </button>
               </span>
-              <button
-                className="card-action-button"
-                onClick={() =>
-                  onAskAboutCard(
-                    `${card.status === "active" ? "冻结" : "解冻"}尾号 ${card.card_suffix} 的卡`,
-                  )
-                }
-                type="button"
-              >
-                {card.status === "active" ? "办理冻结" : "办理解冻"}
-              </button>
             </li>
           ))}
         </ul>
       )}
+      <p className="card-footnote">卡片状态以服务端数据为准。</p>
     </section>
   );
 }
