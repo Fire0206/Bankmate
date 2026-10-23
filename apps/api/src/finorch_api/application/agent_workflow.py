@@ -20,6 +20,7 @@ from finorch_api.agent.intent import (
     requested_subscription_tool as _requested_subscription_tool,
 )
 from finorch_api.infrastructure.models import AgentTask, TaskStep, ToolExecution
+from finorch_api.security.write_intent import user_authorized_write
 
 
 def _has_social_engineering_risk_signal(request: str) -> bool:
@@ -215,7 +216,12 @@ def missing_requested_write_tools(
     ):
         required.append("investment.redeem")
 
-    return tuple(dict.fromkeys(required))
+    # A workflow must never demand a write that the same server-side intent gate
+    # would reject. This also keeps advisory wording from becoming an implicit
+    # authorization merely because a read returned matching resources.
+    return tuple(
+        name for name in dict.fromkeys(required) if user_authorized_write(request_text, name)
+    )
 
 
 def missing_write_input_message(

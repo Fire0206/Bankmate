@@ -66,8 +66,8 @@ HOLDOUT_USED_PATH = REPOSITORY_ROOT / ".data" / "phase2d-holdout-consumed.json"
 INPUT_PRICE_USD_PER_MILLION = 0.30  # Peak, cache-miss price; intentionally conservative.
 OUTPUT_PRICE_USD_PER_MILLION = 1.20  # Peak price.
 USD_TO_CNY_UPPER_BOUND = 10.0  # Conservative evaluation budget conversion, not a live FX quote.
-SOFT_BUDGET_CNY = 60.0
-HARD_BUDGET_CNY = 120.0
+SOFT_BUDGET_CNY = 40.0
+HARD_BUDGET_CNY = 100.0
 MAX_INPUT_TOKENS_PER_REQUEST = 1_000_000
 MAX_COMPLETION_TOKENS_PER_REQUEST = 8_192
 
@@ -1453,7 +1453,9 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     trials: list[dict[str, Any]] = []
     stop_reason: str | None = None
     run_directory_parent = Path(tempfile.gettempdir()).resolve()
-    with tempfile.TemporaryDirectory(prefix="finorch-phase2d-") as directory_name:
+    with tempfile.TemporaryDirectory(
+        prefix="finorch-phase2d-", ignore_cleanup_errors=True
+    ) as directory_name:
         run_directory = Path(directory_name).resolve()
         if (
             not run_directory.is_relative_to(run_directory_parent)
@@ -1664,6 +1666,19 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         finally:
             stop_owned_process(process)
             get_engine(database_url).dispose()
+
+    # Windows may keep the SQLite file open briefly after the owned API exits.
+    for _ in range(5):
+        if not run_directory.exists():
+            break
+        try:
+            shutil.rmtree(run_directory)
+        except PermissionError:
+            time.sleep(0.4)
+    report["temporary_directory_cleaned"] = not run_directory.exists()
+    if not report["temporary_directory_cleaned"]:
+        report["complete"] = False
+        report["stop_reason"] = "temporary_database_cleanup_failed"
 
     output_path = (
         Path(args.report).resolve()
