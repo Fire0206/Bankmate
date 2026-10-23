@@ -2,6 +2,7 @@ import pytest
 from finorch_api.agent.intent import (
     is_split_creation_request,
     parse_split_intent,
+    requested_card_tool,
     requested_subscription_tool,
 )
 
@@ -65,6 +66,11 @@ def test_temporary_charge_pause_is_distinct_from_ambiguous_cancellation() -> Non
         == "subscription.pause"
     )
     assert requested_subscription_tool("取消这笔扣费") is None
+
+
+def test_confirm_then_freeze_is_an_action_but_confirm_whether_frozen_is_a_query() -> None:
+    assert requested_card_tool("核对依据，确认后冻结相关银行卡") == "card.freeze"
+    assert requested_card_tool("确认这张银行卡是否已经冻结") is None
 
 
 @pytest.mark.parametrize(

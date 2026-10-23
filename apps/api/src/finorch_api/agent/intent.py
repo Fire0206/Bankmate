@@ -110,6 +110,8 @@ def _active_action_match(text: str, pattern: re.Pattern[str]) -> re.Match[str] |
     for match in pattern.finditer(text):
         before = text[max(0, match.start() - 20) : match.start()]
         before_clause = re.split(r"[，,。；;！？!?\n]|然后|随后|接着|再|并且|并|同时", before)[-1]
+        # “确认后冻结” is a requested next action, unlike “确认是否已冻结”.
+        before_clause = re.sub(r"(?:确认|核对|查明)(?:后|之后)\s*$", "", before_clause)
         if re.search(r"(?:不要|别|不必|无需|不需要|保持|维持|继续|已经|已|被|处于)\s*$", before):
             continue
         if re.search(

@@ -16,6 +16,8 @@ from scripts.phase2d_eval import (
     _confirmation_field_results,
     _confirmation_mismatch_fields,
     _expected_confirmation_matches,
+    _expected_confirmation_index,
+    _independent_tool_path,
     _ordered_subsequence,
     _prior_evaluation_cost_cny,
     _result_schema_checks,
@@ -120,6 +122,44 @@ def test_confirmation_gate_requires_exact_expected_fields_and_plan_amount() -> N
     assert _expected_confirmation_matches(plan_expected, investment_challenge, plan_task)
     investment_challenge["details"]["amount_minor"] = 875001
     assert not _expected_confirmation_matches(plan_expected, investment_challenge, plan_task)
+
+
+def test_independent_confirmations_can_arrive_in_either_order_without_relaxing_fields() -> None:
+    allowed = [
+        {"resource_type": "card", "card_suffix": "1234", "target_status": "frozen"},
+        {"resource_type": "subscription", "resource_label": "音乐会员", "target_status": "paused"},
+    ]
+    subscription = {
+        "resource_type": "subscription",
+        "resource_label": "音乐会员",
+        "target_status": "paused",
+    }
+    card = {"resource_type": "card", "card_suffix": "1234", "target_status": "frozen"}
+    assert _expected_confirmation_index(allowed, set(), subscription, {"steps": []}) == 1
+    assert _expected_confirmation_index(allowed, {1}, card, {"steps": []}) == 0
+    assert _expected_confirmation_index(allowed, {0, 1}, card, {"steps": []}) is None
+    changed = subscription | {"target_status": "cancelled"}
+    assert _expected_confirmation_index(allowed, set(), changed, {"steps": []}) == 0
+    assert _confirmation_mismatch_fields(allowed[0], changed, {"steps": []})
+    assert _independent_tool_path(
+        ["bill.anomalies", "subscription.list", "subscription.pause", "card.freeze"],
+        ["bill.anomalies", "subscription.list", "card.freeze", "subscription.pause"],
+        allowed,
+    )
+    assert not _independent_tool_path(
+        ["subscription.pause", "bill.anomalies", "subscription.list", "card.freeze"],
+        ["bill.anomalies", "subscription.list", "card.freeze", "subscription.pause"],
+        allowed,
+    )
+    dependent = [
+        {"resource_type": "transfer", "target_status": "executed"},
+        {"resource_type": "investment_order", "target_status": "executed"},
+    ]
+    assert not _independent_tool_path(
+        ["investment.buy", "transfer.create"],
+        ["transfer.create", "investment.buy"],
+        dependent,
+    )
 
 
 def test_confirmation_diagnostics_report_field_names_without_values() -> None:
