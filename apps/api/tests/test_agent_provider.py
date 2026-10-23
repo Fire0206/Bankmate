@@ -1018,6 +1018,47 @@ def test_runtime_rejects_wrong_or_batched_write_when_a_step_is_required() -> Non
     assert dispatch_calls == []
 
 
+def test_runtime_hides_writes_without_request_intent_but_keeps_reads() -> None:
+    registry = ToolRegistry(
+        tuple(
+            ToolSpec(
+                name=name,
+                description="Synthetic card operation.",
+                version="1.0",
+                input_model=CardSuffixInput,
+                output_model=CardListOutput,
+                permission_level=permission,
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=lambda _arguments, _context: {},
+            )
+            for name, permission in (("card.list", "read_only"), ("card.freeze", "funds_write"))
+        )
+    )
+
+    class ObservingProvider:
+        mode = "openai-compatible"
+
+        def __init__(self) -> None:
+            self.available_tools: set[str] = set()
+
+        def complete(self, messages, tools):
+            del messages
+            self.available_tools = {item["function"]["name"] for item in tools}
+            return ModelTurn("只读查询已结束。", status="completed")
+
+    provider = ObservingProvider()
+    result = AgentRuntime(provider).run(
+        request_text="列出我的卡，不要冻结",
+        trusted_context={},
+        registry=registry,
+        dispatch=lambda *_arguments: ToolDispatchResult("succeeded", {}),
+        allowed_write_tools=frozenset(),
+    )
+    assert result.status == "completed"
+    assert provider.available_tools == {"card__list"}
+
+
 def test_openai_mode_without_settings_fails_closed_without_secret() -> None:
     selection = select_provider(Settings(_env_file=None, agent_provider="openai-compatible"))
 

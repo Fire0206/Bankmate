@@ -139,6 +139,7 @@ class AgentRuntime:
             ToolDispatchResult,
         ],
         continuation: bool = False,
+        allowed_write_tools: frozenset[str] | None = None,
     ) -> AgentRunResult:
         messages: list[dict[str, Any]] = [
             {
@@ -266,6 +267,14 @@ class AgentRuntime:
             else None
         )
         definitions = registry.definitions()
+        if allowed_write_tools is not None:
+            definitions = [
+                definition
+                for definition in definitions
+                if (spec := registry.get(definition.get("function", {}).get("name", "")))
+                is not None
+                and (spec.permission_level == "read_only" or spec.name in allowed_write_tools)
+            ]
         if required_tool_name is not None:
             definitions = [
                 definition

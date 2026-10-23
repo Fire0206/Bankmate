@@ -518,7 +518,9 @@ def test_investment_proposal_cannot_bypass_required_transfer(workflow_context) -
         )
 
     assert task["status"] == "failed"
-    assert task["error_code"] == "agent_required_tool_mismatch"
+    # The provider repeats an invalid call ID after the first premature buy is
+    # blocked; the runtime rejects that response without any business effect.
+    assert task["error_code"] == "llm_provider_invalid_response"
     assert task["confirmation"] is None
     with database.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
@@ -836,6 +838,63 @@ def test_failed_second_step_can_resume_without_repeating_first_write(workflow_co
                     ToolExecution.tool_name == "card.freeze",
                     ToolExecution.status == "succeeded",
                 )
+            )
+            == 1
+        )
+
+
+class _PaydayRequiredToolProbe:
+    mode = "openai-compatible"
+
+    def __init__(self) -> None:
+        self.delegate = FakeProvider()
+        self.required_calls = 0
+
+    def complete(self, messages: list[dict], tools: list[dict]) -> ModelTurn:
+        return self.delegate.complete(messages, tools)
+
+    def complete_required_tool(
+        self, messages: list[dict], tools: list[dict], tool_name: str
+    ) -> ModelTurn:
+        assert tool_name == "transfer.create"
+        context = next(
+            json.loads(message["content"].removeprefix("Trusted demo context: "))
+            for message in messages
+            if message.get("role") == "system"
+            and str(message.get("content", "")).startswith("Trusted demo context: ")
+        )
+        succeeded = {
+            item.get("tool_name")
+            for item in context.get("task_progress", {}).get("tools", [])
+            if item.get("status") == "succeeded"
+        }
+        assert {"finance.payday_plan", "investment.products"} <= succeeded
+        self.required_calls += 1
+        return self.delegate.complete(messages, tools)
+
+
+def test_payday_transfer_not_forced_before_plan_and_suitability(workflow_context) -> None:
+    client, database = workflow_context
+    provider = _PaydayRequiredToolProbe()
+    app.dependency_overrides[get_provider_selection] = lambda: ProviderSelection(
+        provider, provider.mode
+    )
+    task = submit(
+        client,
+        "发薪日资金调度：给小林100元，预留1000元，其余按余额规划后申购适合的产品。",
+        "payday-prerequisite-order",
+    )
+    assert task["status"] == "awaiting_confirmation", task
+    names = tool_names(task)
+    assert names.index("finance.payday_plan") < names.index("investment.products")
+    assert names.index("investment.products") < names.index("transfer.create")
+    assert not any(step.get("error_code") == "workflow_step_not_ready" for step in task["steps"])
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(ConfirmationChallenge)
+                .where(ConfirmationChallenge.task_id == UUID(task["id"]))
             )
             == 1
         )

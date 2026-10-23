@@ -385,6 +385,26 @@ def _successful_tool_result(
     )
 
 
+def _transfer_prerequisites_ready(session: Session, *, task_id: UUID, payday: bool) -> bool:
+    """Only force a transfer proposal after its persisted read prerequisites exist."""
+    if payday and not isinstance(
+        _successful_tool_result(session, task_id=task_id, tool_name="finance.payday_plan"), dict
+    ):
+        return False
+    products = _successful_tool_result(session, task_id=task_id, tool_name="investment.products")
+    items = products.get("items") if isinstance(products, dict) else None
+    return isinstance(items, list) and any(
+        isinstance(item, dict) and item.get("suitable") is True for item in items
+    )
+
+
+def _is_payday_request(request_text: str) -> bool:
+    return any(
+        phrase in request_text.casefold()
+        for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度")
+    )
+
+
 def _workflow_write_block_reason(
     session: Session, *, task: AgentTask, tool_name: str, parsed: BaseModel
 ) -> tuple[str, str] | None:
@@ -402,10 +422,7 @@ def _workflow_write_block_reason(
         if isinstance(items, list)
         else []
     )
-    is_payday = any(
-        phrase in task.request_text.casefold()
-        for phrase in ("发薪", "工资", "薪资", "收入到账", "资金调度")
-    )
+    is_payday = _is_payday_request(task.request_text)
 
     if tool_name == "transfer.create":
         if is_payday and not isinstance(plan, dict):
@@ -1192,6 +1209,15 @@ def _run_task(
     )
     trusted_context.update(task_progress_context(session, actor_id=actor_id, task_id=task_id))
     requires_ordered_transfer = requires_transfer_before_investment(request_text)
+    is_payday = _is_payday_request(request_text)
+    registry = build_tool_registry()
+    allowed_write_tools = frozenset(
+        spec.name
+        for definition in registry.definitions()
+        if (spec := registry.get(definition.get("function", {}).get("name", ""))) is not None
+        and spec.permission_level != "read_only"
+        and user_authorized_write(request_text, spec.name)
+    )
     if requires_ordered_transfer:
         progress = trusted_context.get("task_progress", {})
         succeeded_names = {
@@ -1199,12 +1225,15 @@ def _run_task(
             for item in progress.get("tools", [])
             if isinstance(item, dict) and item.get("status") == "succeeded"
         }
-        if "transfer.create" not in succeeded_names:
+        if (
+            "transfer.create" in allowed_write_tools
+            and "transfer.create" not in succeeded_names
+            and _transfer_prerequisites_ready(session, task_id=task_id, payday=is_payday)
+        ):
             trusted_context["task_progress"] = {
                 **progress,
                 "required_next_tools": ["transfer.create"],
             }
-    registry = build_tool_registry()
 
     def dispatch(
         spec: ToolSpec | None,
@@ -1239,6 +1268,7 @@ def _run_task(
                 registry=registry,
                 dispatch=dispatch,
                 continuation=continuation or replan_count > 0,
+                allowed_write_tools=allowed_write_tools,
             )
             if (
                 requires_ordered_transfer
@@ -1248,11 +1278,14 @@ def _run_task(
                 progress = task_progress_context(session, actor_id=actor_id, task_id=task_id).get(
                     "task_progress", {}
                 )
-                trusted_context["task_progress"] = {
-                    **progress,
-                    "required_next_tools": ["transfer.create"],
-                }
-                continue
+                if _transfer_prerequisites_ready(session, task_id=task_id, payday=is_payday):
+                    if "transfer.create" not in allowed_write_tools:
+                        break
+                    trusted_context["task_progress"] = {
+                        **progress,
+                        "required_next_tools": ["transfer.create"],
+                    }
+                    continue
             if result.status != "completed":
                 break
             current_progress = task_progress_context(
@@ -1276,9 +1309,15 @@ def _run_task(
                     executed_tools=result.executed_tools,
                 )
                 break
+            ready_missing_tools = tuple(
+                name
+                for name in missing_tools
+                if name != "transfer.create"
+                or _transfer_prerequisites_ready(session, task_id=task_id, payday=is_payday)
+            )
             trusted_context["task_progress"] = {
                 **current_progress,
-                "required_next_tools": list(missing_tools),
+                "required_next_tools": list(ready_missing_tools),
             }
     except AgentProviderError as exc:
         _finalize_run(
