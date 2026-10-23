@@ -184,8 +184,7 @@ export const apiClient = {
         total: items.length,
         offset,
         limit,
-        next_offset:
-          offset + limit < items.length ? offset + limit : null,
+        next_offset: offset + limit < items.length ? offset + limit : null,
       } as TransactionPageResponse);
     }
     const query = new URLSearchParams();
@@ -225,15 +224,11 @@ export const apiClient = {
   readInvestmentProducts: () =>
     staticPreviewMode
       ? preview(demoProducts)
-      : request<InvestmentProductListResponse>(
-          "/api/v1/investments/products",
-        ),
+      : request<InvestmentProductListResponse>("/api/v1/investments/products"),
   readInvestmentPortfolio: () =>
     staticPreviewMode
       ? preview(demoPortfolio)
-      : request<InvestmentPortfolioResponse>(
-          "/api/v1/investments/portfolio",
-        ),
+      : request<InvestmentPortfolioResponse>("/api/v1/investments/portfolio"),
   readInvestmentOrders: () =>
     staticPreviewMode
       ? preview(demoOrders)

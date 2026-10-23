@@ -24,8 +24,8 @@
   --nav-muted: #a8b5ae;
   --gold: #be9a58;
   --gold-soft: #eadbb9;
-  --font-sans: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei",
-    sans-serif;
+  --font-sans:
+    "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --font-serif: "Noto Serif SC", "Songti SC", SimSun, Georgia, serif;
   --font-mono: "IBM Plex Mono", "Cascadia Code", Consolas, monospace;
 }

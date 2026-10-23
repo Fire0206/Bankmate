@@ -1,7 +1,4 @@
-import {
-  staticPreviewMode,
-  type DemoSessionResponse,
-} from "../api/client";
+import { staticPreviewMode, type DemoSessionResponse } from "../api/client";
 import { AppIcon } from "./AppIcon";
 
 export function DemoGate({

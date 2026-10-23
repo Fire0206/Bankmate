@@ -99,15 +99,15 @@ Demo 进入页是“本地演示身份入口”，不是真实登录系统。
 
 ## 5. 页面能力
 
-| 页面 | 当前内容 | 真实交互 |
-| --- | --- | --- |
-| 财务总览 | 余额、支出、订阅、卡片、六个月现金流、异常提示 | 跳转账单、卡片或交给 Agent |
-| 智能助手 | 对话、任务步骤、结果卡、执行上下文 | 创建任务、补充输入、确认、取消、恢复 |
-| 账单分析 | 月度 KPI、现金流图、分类、交易明细 | 筛选 Modal、交易详情 Drawer、交给 Agent |
-| 银行卡 | 卡片视觉、状态、控制列表 | 冻结/解冻确认 Modal |
-| 转账与分账 | 账户、收款人、记录、AA 分账 | 向 Agent 发起转账/分账任务 |
-| 订阅代扣 | 月费、下次扣款、状态、列表 | 暂停、恢复、取消确认 |
-| 模拟理财 | 资产、风险等级、产品、持仓、订单 | 产品风险匹配、申购/赎回任务 |
+| 页面       | 当前内容                                       | 真实交互                                |
+| ---------- | ---------------------------------------------- | --------------------------------------- |
+| 财务总览   | 余额、支出、订阅、卡片、六个月现金流、异常提示 | 跳转账单、卡片或交给 Agent              |
+| 智能助手   | 对话、任务步骤、结果卡、执行上下文             | 创建任务、补充输入、确认、取消、恢复    |
+| 账单分析   | 月度 KPI、现金流图、分类、交易明细             | 筛选 Modal、交易详情 Drawer、交给 Agent |
+| 银行卡     | 卡片视觉、状态、控制列表                       | 冻结/解冻确认 Modal                     |
+| 转账与分账 | 账户、收款人、记录、AA 分账                    | 向 Agent 发起转账/分账任务              |
+| 订阅代扣   | 月费、下次扣款、状态、列表                     | 暂停、恢复、取消确认                    |
+| 模拟理财   | 资产、风险等级、产品、持仓、订单               | 产品风险匹配、申购/赎回任务             |
 
 ## 6. 弹窗与覆盖层
 
@@ -163,24 +163,24 @@ Demo 进入页是“本地演示身份入口”，不是真实登录系统。
 
 ## 7. 关键文件
 
-| 路径 | 作用 |
-| --- | --- |
-| `apps/web/src/App.tsx` | 页面状态、路由、Agent 任务、确认和覆盖层编排 |
-| `apps/web/src/pageConfig.ts` | 七个页面的路由与导航元数据 |
-| `apps/web/src/api/client.ts` | 现有后端 API 客户端 |
-| `apps/web/src/components/DemoGate.tsx` | Demo 进入页 |
-| `apps/web/src/components/WorkspaceOverview.tsx` | 财务总览 |
-| `apps/web/src/components/CashflowChart.tsx` | Lightweight Charts 现金流图 |
-| `apps/web/src/components/ConfirmationModal.tsx` | 高风险确认 Modal |
-| `apps/web/src/components/SideDrawer.tsx` | 交易/审计 Drawer |
-| `apps/web/src/components/Skeleton.tsx` | 结构化加载占位 |
-| `apps/web/src/components/Toast.tsx` | 操作反馈 |
-| `apps/web/src/pages/BillsPage.tsx` | 账单分析、筛选和交易详情 |
-| `apps/web/src/pages/CardsPage.tsx` | 银行卡页面 |
-| `apps/web/src/pages/TransfersPage.tsx` | 转账与 AA 分账页面 |
-| `apps/web/src/pages/SubscriptionsPage.tsx` | 订阅与代扣页面 |
-| `apps/web/src/pages/InvestmentsPage.tsx` | 模拟理财页面 |
-| `apps/web/src/index.css` | 视觉系统、响应式、弹窗、骨架和转场 |
+| 路径                                            | 作用                                         |
+| ----------------------------------------------- | -------------------------------------------- |
+| `apps/web/src/App.tsx`                          | 页面状态、路由、Agent 任务、确认和覆盖层编排 |
+| `apps/web/src/pageConfig.ts`                    | 七个页面的路由与导航元数据                   |
+| `apps/web/src/api/client.ts`                    | 现有后端 API 客户端                          |
+| `apps/web/src/components/DemoGate.tsx`          | Demo 进入页                                  |
+| `apps/web/src/components/WorkspaceOverview.tsx` | 财务总览                                     |
+| `apps/web/src/components/CashflowChart.tsx`     | Lightweight Charts 现金流图                  |
+| `apps/web/src/components/ConfirmationModal.tsx` | 高风险确认 Modal                             |
+| `apps/web/src/components/SideDrawer.tsx`        | 交易/审计 Drawer                             |
+| `apps/web/src/components/Skeleton.tsx`          | 结构化加载占位                               |
+| `apps/web/src/components/Toast.tsx`             | 操作反馈                                     |
+| `apps/web/src/pages/BillsPage.tsx`              | 账单分析、筛选和交易详情                     |
+| `apps/web/src/pages/CardsPage.tsx`              | 银行卡页面                                   |
+| `apps/web/src/pages/TransfersPage.tsx`          | 转账与 AA 分账页面                           |
+| `apps/web/src/pages/SubscriptionsPage.tsx`      | 订阅与代扣页面                               |
+| `apps/web/src/pages/InvestmentsPage.tsx`        | 模拟理财页面                                 |
+| `apps/web/src/index.css`                        | 视觉系统、响应式、弹窗、骨架和转场           |
 
 新增依赖：
 

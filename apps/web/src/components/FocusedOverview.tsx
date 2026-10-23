@@ -196,11 +196,7 @@ function TransactionRow({
 }) {
   const attention = Boolean(transaction.anomaly_reason);
   return (
-    <button
-      className="figma-transaction-row"
-      onClick={onSelect}
-      type="button"
-    >
+    <button className="figma-transaction-row" onClick={onSelect} type="button">
       <span className="figma-transaction-date">
         {transactionDate(transaction.occurred_at)}
       </span>
@@ -348,9 +344,7 @@ export function FocusedOverview({
     ];
     const csv = rows
       .map((row) =>
-        row
-          .map((cell) => `"${String(cell).replaceAll('"', '""')}"`)
-          .join(","),
+        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","),
       )
       .join("\n");
     const url = URL.createObjectURL(
@@ -450,7 +444,8 @@ export function FocusedOverview({
           </span>
           <span className="focused-outlook">
             <i />
-            自动扣费 {money(data?.subscriptions.monthly_total_minor, currencyCode)}
+            自动扣费{" "}
+            {money(data?.subscriptions.monthly_total_minor, currencyCode)}
           </span>
         </div>
       </section>
@@ -586,10 +581,7 @@ export function FocusedOverview({
                 <span>商户</span>
                 <h3>{leadingAnomaly.merchant}</h3>
                 <strong>
-                  {money(
-                    leadingAnomaly.amount_minor,
-                    leadingAnomaly.currency,
-                  )}
+                  {money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}
                 </strong>
               </div>
               <dl className="figma-risk-meta">
@@ -604,7 +596,8 @@ export function FocusedOverview({
                 <div>
                   <dt>账户</dt>
                   <dd>
-                    主账户借记卡 ·••{leadingAnomaly.source_card_suffix ?? "1042"}
+                    主账户借记卡 ·••
+                    {leadingAnomaly.source_card_suffix ?? "1042"}
                   </dd>
                 </div>
               </dl>
@@ -667,11 +660,11 @@ export function FocusedOverview({
           title="处置记录"
         >
           <div className="figma-audit-summary">
-            <span>
-              {auditEvents.length} 个事件 · 证据完整 · 等待确认
-            </span>
+            <span>{auditEvents.length} 个事件 · 证据完整 · 等待确认</span>
             <small>
-              {activeTask ? `TASK ${activeTask.status.toUpperCase()}` : "SYNTHETIC LOG"}
+              {activeTask
+                ? `TASK ${activeTask.status.toUpperCase()}`
+                : "SYNTHETIC LOG"}
             </small>
           </div>
           <ol className="figma-audit-list">
