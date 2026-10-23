@@ -56,6 +56,23 @@ export function CardsPage({
         </button>
       </div>
 
+      <div className="card-page-actions">
+        <button
+          disabled={busy}
+          onClick={() => onPrompt("为我的日常账户申请一张模拟借记卡")}
+          type="button"
+        >
+          申请模拟借记卡
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => onPrompt("查询我的银行卡申请状态")}
+          type="button"
+        >
+          查看申请进度
+        </button>
+      </div>
+
       <div className="card-page-grid">
         {loading ? (
           <>

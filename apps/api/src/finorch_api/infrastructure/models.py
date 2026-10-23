@@ -143,6 +143,35 @@ class Card(Base):
     account: Mapped[Account] = relationship(back_populates="cards")
 
 
+class CardApplication(Base):
+    """A synthetic debit-card request awaiting local demo review."""
+
+    __tablename__ = "card_applications"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('pending_confirmation', 'submitted', 'approved', 'rejected', 'cancelled')",
+            name="card_application_status_allowed",
+        ),
+        Index("ix_card_applications_actor_id", "actor_id"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("demo_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    issued_card_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("cards.id", ondelete="RESTRICT"), nullable=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    __mapper_args__ = {"version_id_col": version}
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
@@ -761,7 +790,7 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
             "target_status in ('active', 'frozen', 'paused', 'cancelled', 'executed', "
-            "'scheduled', 'open', 'settled', 'lost', 'replaced')",
+            "'scheduled', 'open', 'settled', 'lost', 'replaced', 'submitted')",
             name="challenge_target_status_allowed",
         ),
         CheckConstraint(
@@ -769,7 +798,8 @@ class ConfirmationChallenge(Base):
             "case when subscription_id is not null then 1 else 0 end + "
             "case when transfer_id is not null then 1 else 0 end + "
             "case when split_bill_id is not null then 1 else 0 end + "
-            "case when investment_order_id is not null then 1 else 0 end) = 1",
+            "case when investment_order_id is not null then 1 else 0 end + "
+            "case when card_application_id is not null then 1 else 0 end) = 1",
             name="challenge_single_resource",
         ),
         CheckConstraint(
@@ -808,6 +838,9 @@ class ConfirmationChallenge(Base):
         ForeignKey("cards.id", name="fk_confirmation_challenges_card_id_cards"),
         nullable=True,
     )
+    card_application_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("card_applications.id"), nullable=True
+    )
     subscription_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
@@ -839,6 +872,7 @@ class ConfirmationChallenge(Base):
     target_status: Mapped[str] = mapped_column(String(16), nullable=False)
     parameters_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    card_application_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subscription_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     transfer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_bill_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

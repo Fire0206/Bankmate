@@ -41,6 +41,10 @@ function statusName(status: string): string {
     frozen: "已冻结",
     lost: "已挂失",
     replaced: "已补卡停用",
+    pending_confirmation: "待提交",
+    submitted: "待模拟审核",
+    approved: "模拟审核通过",
+    rejected: "模拟审核未通过",
     paused: "已暂停",
     cancelled: "已取消",
     awaiting_confirmation: "待确认",
@@ -62,6 +66,8 @@ function actionName(confirmation: Confirmation): string {
         : confirmation.target_status === "replaced"
           ? "模拟补卡"
           : "解冻银行卡";
+  if (confirmation.resource_type === "card_application")
+    return "提交模拟借记卡申请";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"
@@ -117,6 +123,7 @@ export function ConfirmationCard({
   const action = actionName(confirmation);
   const resourceLabels: Record<Confirmation["resource_type"], string> = {
     card: "银行卡",
+    card_application: "银行卡申请",
     subscription: "自动扣费",
     transfer: "转账",
     split: "AA 分账",
@@ -127,6 +134,8 @@ export function ConfirmationCard({
       confirmation.target_status === "replaced"
         ? "旧卡将永久停用，并创建一张新的模拟银行卡。新卡尾号由服务端生成。"
         : "只影响这张模拟银行卡。",
+    card_application:
+      "确认后仅提交模拟申请，等待本地模拟审核；不会立即发卡或产生真实授信。",
     subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
     transfer: "这笔转账只在模拟账本中记账。",
     split: "仅更新这笔模拟 AA 分账的状态。",
@@ -134,7 +143,17 @@ export function ConfirmationCard({
   };
   const detailsRows: Array<[string, string | null]> = [];
 
-  if (confirmation.resource_type === "transfer") {
+  if (confirmation.resource_type === "card_application") {
+    const account = text(details, "account_label");
+    detailsRows.push([
+      "绑定账户",
+      account === "Everyday account"
+        ? "日常账户"
+        : account === "Savings account"
+          ? "储蓄账户"
+          : account,
+    ]);
+  } else if (confirmation.resource_type === "transfer") {
     detailsRows.push(
       ["收款人", text(details, "payee_name")],
       ["付款账户", text(details, "source_account_label")],
@@ -202,7 +221,8 @@ export function ConfirmationCard({
       <div className="confirmation-card-name">
         <AppIcon
           name={
-            confirmation.resource_type === "card"
+            confirmation.resource_type === "card" ||
+            confirmation.resource_type === "card_application"
               ? "cards"
               : confirmation.resource_type === "investment_order"
                 ? "wealth"

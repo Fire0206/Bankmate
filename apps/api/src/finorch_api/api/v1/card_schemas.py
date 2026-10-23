@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,3 +26,24 @@ class CardListResponse(BaseModel):
 
     items: list[CardResponse]
     next_cursor: str | None = None
+
+
+class CardApplicationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    account_id: UUID
+    account_label: str
+    label: str
+    status: Literal["pending_confirmation", "submitted", "approved", "rejected", "cancelled"]
+    issued_card_id: UUID | None
+    issued_card_suffix: str | None
+    version: int
+    created_at: datetime
+    reviewed_at: datetime | None
+
+
+class CardApplicationsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CardApplicationResponse]

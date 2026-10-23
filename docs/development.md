@@ -177,4 +177,14 @@ uv run --project apps/api python apps/api/scripts/handoff_operator.py <ticket-uu
 uv run --project apps/api python apps/api/scripts/handoff_operator.py <ticket-uuid> resolved --outcome "已核对模拟处理结果"
 ```
 
-请先通过任务详情或 API 获取工单 ID。脚本仅允许 `FINORCH_ENV=development/test`，处理过程追加审计；它不代表已接入真实银行客服。
+请先通过任务详情或 API 获取工单 ID。脚本仅允许 `FINORCH_ENVIRONMENT=development/test`，处理过程追加审计；它不代表已接入真实银行客服。
+
+## 本地模拟借记卡申请
+
+助手中输入“为我的日常账户申请一张模拟借记卡”，确认后可通过 `GET /api/v1/cards/applications` 查询提交状态。确认只提交申请，不立即发卡；未确认的提案不会列入申请列表。本地演示处理员可从申请列表取得 ID 后运行：
+
+```powershell
+uv run --project apps/api python apps/api/scripts/card_application_operator.py <application-uuid> approve
+```
+
+也可将 `approve` 换成 `reject`。脚本仅允许 development/test 环境、当前模拟用户的申请，批准时创建新的合成借记卡并追加审计。它不代表真实审核、发卡或授信。

@@ -75,6 +75,7 @@ def binding(challenge: ConfirmationChallenge, decision: RiskDecision, now: datet
         "expires": aware(challenge.expires_at).isoformat(),
         "versions": [
             challenge.card_version,
+            challenge.card_application_version,
             challenge.subscription_version,
             challenge.transfer_version,
             challenge.split_bill_version,

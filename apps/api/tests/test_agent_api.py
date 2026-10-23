@@ -14,6 +14,8 @@ from finorch_api.agent.runtime import (
     ModelTurn,
 )
 from finorch_api.api.v1.agent import get_provider_selection
+from finorch_api.application.card_applications import review_card_application
+from finorch_api.application.errors import BankingRuleError
 from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus
 from finorch_api.infrastructure.database import get_db_session
@@ -21,6 +23,7 @@ from finorch_api.infrastructure.models import (
     AgentTask,
     AuditEvent,
     Card,
+    CardApplication,
     ConfirmationChallenge,
     SplitBill,
     ToolExecution,
@@ -152,6 +155,131 @@ def test_lost_card_replacement_is_confirmed_owned_and_idempotent(api_context) ->
         )
     unfreeze = submit(client, "解冻尾号 1042 的银行卡", key="unfreeze-replaced")
     assert unfreeze["status"] != "awaiting_confirmation"
+
+
+def test_synthetic_card_application_requires_confirmation_and_local_review(api_context) -> None:
+    client, actor, database = api_context
+    task = submit(client, "为我的日常账户申请一张模拟借记卡", key="card-application-proposal")
+    assert task["status"] == "awaiting_confirmation", task
+    challenge = task["confirmation"]
+    assert challenge["resource_type"] == "card_application"
+    assert challenge["tool_name"] == "card.apply"
+    assert challenge["confirmation_method"] == "explicit"
+    with database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+        application = session.scalar(
+            select(CardApplication).where(CardApplication.actor_id == actor[0])
+        )
+        assert application is not None and application.status == "pending_confirmation"
+        application_id = application.id
+    assert client.get("/api/v1/cards/applications").json()["items"] == []
+    actor[0] = DEMO_USER_TWO_ID
+    assert confirm(client, task).status_code == 404
+    assert client.get("/api/v1/cards/applications").json()["items"] == []
+    actor[0] = DEMO_USER_ONE_ID
+    response = confirm(client, task)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "completed"
+    assert confirm(client, task).status_code == 200
+    duplicate = submit(
+        client, "为我的日常账户再申请一张模拟借记卡", key="duplicate-card-application"
+    )
+    assert duplicate["status"] != "awaiting_confirmation"
+    with database.session_factory() as session:
+        application = session.get(CardApplication, application_id)
+        assert application is not None and application.status == "submitted"
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+        reviewed = review_card_application(session, application_id=application_id, approve=True)
+        assert reviewed.status == "approved" and reviewed.issued_card_suffix is not None
+        with pytest.raises(BankingRuleError):
+            review_card_application(session, application_id=application_id, approve=True)
+    with database.session_factory() as session:
+        application = session.get(CardApplication, application_id)
+        assert application is not None and application.issued_card_id is not None
+        issued = session.get(Card, application.issued_card_id)
+        assert issued is not None and issued.status is CardStatus.ACTIVE
+        assert session.scalar(select(func.count()).select_from(Card)) == 4
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.event_type == "card.application_reviewed",
+                    AuditEvent.resource_id == application_id,
+                )
+            )
+            == 1
+        )
+    listed = client.get("/api/v1/cards/applications")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["status"] == "approved"
+    queried = submit(client, "查询我的银行卡申请状态", key="card-application-status")
+    assert queried["status"] == "completed"
+    assert any(step["tool_name"] == "card.applications" for step in queried["steps"])
+
+
+def test_competing_card_applications_cannot_both_be_submitted(api_context) -> None:
+    client, _actor, database = api_context
+    first = submit(
+        client,
+        "为我的日常账户申请一张模拟借记卡",
+        key="card-application-first",
+        conversation_id="40000000-0000-4000-8000-000000000001",
+    )
+    second = submit(
+        client,
+        "为我的日常账户申请一张模拟借记卡",
+        key="card-application-second",
+        conversation_id="40000000-0000-4000-8000-000000000002",
+    )
+    assert first["status"] == second["status"] == "awaiting_confirmation"
+    assert confirm(client, first).status_code == 200
+    stale = confirm(client, second)
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "card_application_exists"
+    with database.session_factory() as session:
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(CardApplication)
+                .where(CardApplication.status == "submitted")
+            )
+            == 1
+        )
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+
+
+def test_cancelled_card_application_stays_unissued_and_hidden(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "为我的日常账户申请一张模拟借记卡", key="cancel-card-application")
+    assert task["status"] == "awaiting_confirmation"
+    response = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/cancel",
+        headers={"Idempotency-Key": "cancel-card-application-key"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert client.get("/api/v1/cards/applications").json()["items"] == []
+    with database.session_factory() as session:
+        application = session.scalar(select(CardApplication))
+        assert application is not None and application.status == "cancelled"
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+
+
+def test_local_card_application_rejection_never_issues_card(api_context) -> None:
+    client, _actor, database = api_context
+    task = submit(client, "为我的储蓄账户申请一张模拟借记卡", key="reject-card-application")
+    assert task["status"] == "awaiting_confirmation"
+    assert confirm(client, task).status_code == 200
+    with database.session_factory() as session:
+        application = session.scalar(select(CardApplication))
+        assert application is not None
+        reviewed = review_card_application(session, application_id=application.id, approve=False)
+        assert reviewed.status == "rejected" and reviewed.issued_card_id is None
+        assert session.scalar(select(func.count()).select_from(Card)) == 3
+    listed = client.get("/api/v1/cards/applications")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["status"] == "rejected"
 
 
 def test_fake_provider_lists_real_owned_cards_and_persists_task(api_context) -> None:

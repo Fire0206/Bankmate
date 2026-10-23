@@ -111,6 +111,7 @@ def tool_input_clarification_message(tool_name: str) -> str:
         "card.unfreeze",
         "card.report_lost",
         "card.replace",
+        "card.apply",
     }:
         return "请补充或核对要操作的产品或银行卡信息。"
     if tool_name == "transfer.split_create":
@@ -349,7 +350,12 @@ def missing_explicit_write_parameters_message(request_text: str) -> str | None:
 
     supplement = request_text.rsplit("\n\n用户补充：", 1)
     active_text = supplement[-1].casefold() if len(supplement) > 1 else request
-    card_change = _requested_card_tool(request) is not None
+    card_change = _requested_card_tool(request) in {
+        "card.freeze",
+        "card.unfreeze",
+        "card.report_lost",
+        "card.replace",
+    }
     if card_change:
         suffix_source = active_text if len(supplement) > 1 else request
         suffix_source = re.sub(r"20\d{2}[-年]\d{1,2}(?:[-月]\d{1,2}(?:日)?)?", " ", suffix_source)

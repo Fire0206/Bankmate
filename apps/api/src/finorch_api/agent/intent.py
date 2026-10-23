@@ -129,6 +129,15 @@ def requested_card_tool(request_text: str) -> str | None:
     if is_planning_only_request(request):
         return None
 
+    application_match = _active_action_match(
+        request,
+        re.compile(r"(?:申请|办)(?:一张|张|个)?(?:模拟)?(?:借记卡|银行卡|新卡)"),
+    )
+    if application_match is not None and not any(
+        word in request for word in ("挂失", "补卡", "补发")
+    ):
+        return "card.apply"
+
     replacement_match = _active_action_match(
         request,
         re.compile(r"(?:补卡|补发(?:一张|新)?卡|重新发卡|申请新卡|换(?:一张|张)?新卡)"),

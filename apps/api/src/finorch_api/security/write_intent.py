@@ -38,7 +38,13 @@ def user_authorized_write(request_text: str, tool_name: str) -> bool:
         request
     ):
         return False
-    if tool_name in {"card.freeze", "card.unfreeze", "card.report_lost", "card.replace"}:
+    if tool_name in {
+        "card.freeze",
+        "card.unfreeze",
+        "card.report_lost",
+        "card.replace",
+        "card.apply",
+    }:
         return requested_card_tool(request) == tool_name
     if tool_name in {"subscription.pause", "subscription.resume", "subscription.cancel"}:
         return requested_subscription_tool(request) == tool_name
