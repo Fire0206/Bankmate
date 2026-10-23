@@ -115,6 +115,8 @@ Demo Session 与 Agent Task 端点：
 | `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片、订阅、转账、分账或理财确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
 | `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                                              |
 | `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                                  |
+| `GET /api/v1/agent/tasks/{task_id}/handoff`                                                      | 查询当前 actor 任务的本地模拟人工处理工单；没有工单返回 `null`。                                                                        |
+| `POST /api/v1/agent/tasks/{task_id}/handoff`                                                     | 为当前 actor 的任务申请本地模拟人工处理；重复提交返回同一工单，不授权金融写操作。                                                       |
 
 `card.freeze`、`card.unfreeze`、`card.report_lost`、`subscription.pause`、`subscription.resume`、`subscription.cancel`、转账、分账和理财写工具 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
 

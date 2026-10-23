@@ -58,6 +58,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 | `investment_holdings`                | 多对 1 `accounts` 和 `investment_products`         | 已实现模拟持仓及余额变化                                                  |
 | `investment_orders`                  | 多对 1 actor/account/product，可选关联 holding     | 已实现确认后的模拟申购/赎回订单                                           |
 | `agent_tasks`                        | 1 对多 `task_steps`                                | 已实现；受限保存用户请求和 Workflow 当前状态                              |
+| `human_handoffs`                     | 1 对 1 `agent_tasks`；归属 Demo actor              | 已实现本地模拟人工处理工单与状态；不代表金融授权                          |
 | `task_steps`                         | 多对 1 `agent_tasks`；1 对多 `tool_executions`     | 已实现；有序规划、输入、取消和工具步骤及安全错误摘要                      |
 | `tool_executions`                    | 多对 1 `task_steps`；可关联领域业务记录            | 已实现；受控工具调用状态、幂等引用、结果和错误                            |
 | `confirmation_challenges`            | 多对 1 `agent_tasks` / `cards` / `tool_executions` | 已实现；绑定 actor、目标、版本、摘要和有效期的一次性确认                  |

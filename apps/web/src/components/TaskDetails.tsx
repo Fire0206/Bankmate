@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
+
 import type { components } from "../generated/api";
 import { AppIcon } from "./AppIcon";
-import type { ApiError } from "../api/client";
+import { apiClient, type ApiError } from "../api/client";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type AuditEvent = components["schemas"]["AgentAuditEventResponse"];
+type Handoff = components["schemas"]["HandoffResponse"];
 import { statusLabels } from "./taskFormat";
 
 const eventLabels: Record<string, string> = {
@@ -256,6 +259,43 @@ export function TaskDetails({
   auditLoading: boolean;
   auditError: ApiError | Error | null;
 }) {
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (task?.id) {
+      apiClient.readHandoff(task.id).then(
+        (value) => {
+          if (live) {
+            setHandoff(value);
+            setHandoffError(null);
+          }
+        },
+        () => {
+          if (live) setHandoffError("人工处理状态暂时无法读取。");
+        },
+      );
+    }
+    return () => {
+      live = false;
+    };
+  }, [task?.id, task?.updated_at]);
+
+  async function requestHumanHandoff() {
+    if (!task) return;
+    setHandoffBusy(true);
+    setHandoffError(null);
+    try {
+      setHandoff(await apiClient.requestHandoff(task.id, "user_requested"));
+    } catch (error) {
+      setHandoffError(
+        error instanceof Error ? error.message : "提交人工处理失败。",
+      );
+    } finally {
+      setHandoffBusy(false);
+    }
+  }
   return (
     <details
       className="task-details"
@@ -301,6 +341,30 @@ export function TaskDetails({
               <p>{task.message}</p>
             </div>
           ) : null}
+
+          <div className="handoff-control">
+            {handoff?.task_id === task.id ? (
+              <p>
+                模拟人工处理：
+                {handoff.status === "pending"
+                  ? "待处理"
+                  : handoff.status === "in_progress"
+                    ? "处理中"
+                    : "已解决"}
+                {handoff.outcome ? ` · ${handoff.outcome}` : ""}
+              </p>
+            ) : (
+              <button
+                type="button"
+                disabled={handoffBusy}
+                onClick={() => void requestHumanHandoff()}
+              >
+                {handoffBusy ? "提交中" : "申请模拟人工处理"}
+              </button>
+            )}
+            {handoffError ? <p role="alert">{handoffError}</p> : null}
+            <small>此入口仅创建本地模拟工单，不会代替金融操作确认。</small>
+          </div>
 
           <h3 className="details-subheading">处理步骤</h3>
           {task.steps.length === 0 ? (

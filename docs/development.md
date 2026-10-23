@@ -165,3 +165,16 @@ Provider Mock 验证范围、可选真实模型 Smoke Test 方法、任务刷新
 - 前端显示 API 未连接时，先确认 API 在 `127.0.0.1:8000` 正在运行，并已运行 Alembic migration 和 seed，再刷新页面。
 - OpenAPI 类型有变化时运行 `pnpm run api:types` 并提交两项生成物。
 - Banking Core 的卡片、账单、订阅 Application、Session 和事务调用边界见[接口说明](development/banking-core.md)。
+
+## 本地模拟人工处理
+
+任务详情中的“申请模拟人工处理”会为当前用户的任务创建一张工单。`GET/POST /api/v1/agent/tasks/{task_id}/handoff` 只允许任务所属的 Demo actor 查询或提交；重复提交返回同一工单。工单仅保存原因、状态、简短处理结果和已成功工具名称，不保存完整模型对话，也不执行金融业务或绕过已有确认。
+
+本地开发环境的模拟处理员可依次执行：
+
+```powershell
+uv run --project apps/api python apps/api/scripts/handoff_operator.py <ticket-uuid> in_progress
+uv run --project apps/api python apps/api/scripts/handoff_operator.py <ticket-uuid> resolved --outcome "已核对模拟处理结果"
+```
+
+请先通过任务详情或 API 获取工单 ID。脚本仅允许 `FINORCH_ENV=development/test`，处理过程追加审计；它不代表已接入真实银行客服。
