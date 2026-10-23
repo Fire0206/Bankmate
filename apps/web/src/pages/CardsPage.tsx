@@ -72,13 +72,19 @@ export function CardsPage({
           cards.map((card) => (
             <article
               className={
-                "physical-card" + (card.status === "frozen" ? " is-frozen" : "")
+                "physical-card" + (card.status !== "active" ? " is-frozen" : "")
               }
               key={card.id}
             >
               <div className="physical-card-top">
                 <span>FinOrch</span>
-                <span>{card.status === "active" ? "ACTIVE" : "FROZEN"}</span>
+                <span>
+                  {card.status === "active"
+                    ? "ACTIVE"
+                    : card.status === "lost"
+                      ? "LOST"
+                      : "FROZEN"}
+                </span>
               </div>
               <div className="physical-card-chip" />
               <div className="physical-card-number">
@@ -95,7 +101,11 @@ export function CardsPage({
                 <span>
                   <small>状态</small>
                   <strong>
-                    {card.status === "active" ? "正常" : "已冻结"}
+                    {card.status === "active"
+                      ? "正常"
+                      : card.status === "lost"
+                        ? "已挂失"
+                        : "已冻结"}
                   </strong>
                 </span>
               </div>
@@ -127,16 +137,33 @@ export function CardsPage({
                   <strong>{cardLabel(card.label)}</strong>
                   <small>
                     尾号 {card.card_suffix} ·{" "}
-                    {card.status === "active" ? "正常可用" : "支付已停用"}
+                    {card.status === "active"
+                      ? "正常可用"
+                      : card.status === "lost"
+                        ? "已挂失，不可解冻"
+                        : "支付已停用"}
                   </small>
                 </span>
-                <button
-                  disabled={busy}
-                  onClick={() => onManage(card)}
-                  type="button"
-                >
-                  {card.status === "active" ? "冻结此卡" : "解冻此卡"}
-                </button>
+                {card.status !== "lost" ? (
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={() => onManage(card)}
+                      type="button"
+                    >
+                      {card.status === "active" ? "冻结此卡" : "解冻此卡"}
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        onPrompt(`挂失尾号 ${card.card_suffix} 的银行卡`)
+                      }
+                      type="button"
+                    >
+                      挂失此卡
+                    </button>
+                  </>
+                ) : null}
               </div>
             ))
           )}

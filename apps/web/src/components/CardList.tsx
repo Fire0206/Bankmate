@@ -59,7 +59,7 @@ export function CardList({
                 aria-hidden="true"
                 className={
                   "card-icon" +
-                  (card.status === "frozen" ? " card-icon-frozen" : "")
+                  (card.status !== "active" ? " card-icon-frozen" : "")
                 }
               >
                 <AppIcon name="cards" size={19} />
@@ -78,16 +78,24 @@ export function CardList({
                   }
                 >
                   <span aria-hidden="true" className="status-dot" />
-                  {card.status === "active" ? "正常" : "已冻结"}
+                  {card.status === "active"
+                    ? "正常"
+                    : card.status === "lost"
+                      ? "已挂失"
+                      : "已冻结"}
                 </span>
-                <button
-                  className="card-manage-button"
-                  disabled={manageDisabled}
-                  onClick={() => onManage(card)}
-                  type="button"
-                >
-                  {card.status === "active" ? "冻结" : "解冻"}
-                </button>
+                {card.status === "lost" ? (
+                  <span className="card-suffix">不可解冻</span>
+                ) : (
+                  <button
+                    className="card-manage-button"
+                    disabled={manageDisabled}
+                    onClick={() => onManage(card)}
+                    type="button"
+                  >
+                    {card.status === "active" ? "冻结" : "解冻"}
+                  </button>
+                )}
               </span>
             </li>
           ))}

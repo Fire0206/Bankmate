@@ -238,6 +238,14 @@ def build_tool_registry() -> ToolRegistry:
             context=context, card_suffix=typed.card_suffix, target_status=CardStatus.ACTIVE
         )
 
+    def report_lost_handler(
+        arguments: BaseModel, context: ToolCallContext
+    ) -> CardChangeProposalOutput:
+        typed = CardSuffixInput.model_validate(arguments)
+        return _card_change_proposal(
+            context=context, card_suffix=typed.card_suffix, target_status=CardStatus.LOST
+        )
+
     def bill_summary_handler(arguments: BaseModel, context: ToolCallContext) -> BillSummaryOutput:
         typed = BillSummaryInput.model_validate(arguments)
         view = get_monthly_summary(
@@ -389,6 +397,20 @@ def build_tool_registry() -> ToolRegistry:
                 risk_level="medium",
                 confirmation_requirement="always",
                 handler=unfreeze_handler,
+            ),
+            ToolSpec(
+                name="card.report_lost",
+                description=(
+                    "Propose reporting an owned synthetic card lost. This permanently blocks "
+                    "unfreeze for that card and requires explicit confirmation plus local demo OTP."
+                ),
+                version=TOOL_VERSION,
+                input_model=CardSuffixInput,
+                output_model=CardChangeProposalOutput,
+                permission_level="high_risk_write",
+                risk_level="high",
+                confirmation_requirement="always",
+                handler=report_lost_handler,
             ),
             ToolSpec(
                 name="bill.monthly_summary",

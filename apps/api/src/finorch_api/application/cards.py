@@ -166,6 +166,27 @@ def unfreeze_card(
     )
 
 
+def report_card_lost(
+    session: Session,
+    *,
+    actor_id: UUID,
+    card_id: UUID,
+    request_id: str,
+    task_id: UUID | None = None,
+    tool_execution_id: UUID | None = None,
+) -> CardView:
+    """Mark a synthetic card lost; this state cannot be reversed by unfreeze."""
+    return _change_card_status(
+        session,
+        actor_id=actor_id,
+        card_id=card_id,
+        target_status=CardStatus.LOST,
+        request_id=request_id,
+        task_id=task_id,
+        tool_execution_id=tool_execution_id,
+    )
+
+
 __all__ = [
     "CardNotFoundError",
     "CardPage",
@@ -175,5 +196,6 @@ __all__ = [
     "freeze_card",
     "get_card",
     "list_cards",
+    "report_card_lost",
     "unfreeze_card",
 ]

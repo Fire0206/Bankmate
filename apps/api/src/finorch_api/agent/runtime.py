@@ -829,6 +829,7 @@ class FakeProvider(LLMProvider):
             completion_messages = {
                 "card.freeze": "银行卡已冻结。",
                 "card.unfreeze": "银行卡已解冻。",
+                "card.report_lost": "银行卡已挂失。",
                 "subscription.pause": "自动扣费已暂停。",
                 "subscription.resume": "自动扣费已恢复。",
                 "subscription.cancel": "已取消该项自动扣费。",
@@ -1175,17 +1176,20 @@ class FakeProvider(LLMProvider):
         requested_card_action = requested_card_tool(full_request)
         is_unfreeze = requested_card_action == "card.unfreeze"
         is_freeze = requested_card_action == "card.freeze"
+        is_lost = requested_card_action == "card.report_lost"
         suffix_source = request if has_followup else full_request
         suffix_match = re.search(r"(?<!\d)(\d{4})(?!\d)", suffix_source)
 
-        if is_freeze or is_unfreeze:
+        if is_freeze or is_unfreeze or is_lost:
             suffix = suffix_match.group(1) if suffix_match else None
             if suffix is None and any(word in request for word in ("刚才", "刚刚", "上一张")):
                 recent = context.get("recent_card_suffix")
                 suffix = str(recent) if recent else None
             if suffix is None:
                 return ModelTurn("请告诉我需要操作的银行卡尾号。")
-            tool_name = "card.unfreeze" if is_unfreeze else "card.freeze"
+            tool_name = (
+                "card.report_lost" if is_lost else "card.unfreeze" if is_unfreeze else "card.freeze"
+            )
             return ModelTurn(
                 "",
                 (

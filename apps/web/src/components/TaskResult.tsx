@@ -52,6 +52,7 @@ function statusLabel(value: unknown): string {
     paused: "已暂停",
     cancelled: "已取消",
     frozen: "已冻结",
+    lost: "已挂失",
     awaiting_confirmation: "等待确认",
     scheduled: "待执行",
     executed: "已执行",
@@ -921,6 +922,7 @@ const resultTitles: Record<string, string> = {
 const writeTitles: Record<string, string> = {
   "card.freeze": "银行卡已冻结",
   "card.unfreeze": "银行卡已解冻",
+  "card.report_lost": "银行卡已挂失",
   "subscription.pause": "自动续费已暂停",
   "subscription.resume": "自动续费已恢复",
   "subscription.cancel": "自动续费已取消",

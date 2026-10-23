@@ -39,6 +39,7 @@ function statusName(status: string): string {
   const labels: Record<string, string> = {
     active: "正常",
     frozen: "已冻结",
+    lost: "已挂失",
     paused: "已暂停",
     cancelled: "已取消",
     awaiting_confirmation: "待确认",
@@ -55,7 +56,9 @@ function actionName(confirmation: Confirmation): string {
   if (confirmation.resource_type === "card")
     return confirmation.target_status === "frozen"
       ? "冻结银行卡"
-      : "解冻银行卡";
+      : confirmation.target_status === "lost"
+        ? "挂失银行卡"
+        : "解冻银行卡";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"

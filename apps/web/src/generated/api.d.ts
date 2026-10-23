@@ -919,7 +919,7 @@ export interface components {
          * CardStatus
          * @enum {string}
          */
-        CardStatus: "active" | "frozen";
+        CardStatus: "active" | "frozen" | "lost";
         /** ConfirmationResponse */
         ConfirmationResponse: {
             /**

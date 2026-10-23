@@ -29,7 +29,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 
 - `demo_users`：固定合成用户及 `dataset_version`，不含真实登录资料。
 - `accounts`：所属 DemoUser、标签、币种、`opening_balance_minor` 和由服务端事务维护的 `balance_minor` 投影；金额变化与对应交易记录在同一事务提交。
-- `cards`：所属 Account、展示标签、假卡号后四位、`active`/`frozen` 状态、乐观并发 `version`。
+- `cards`：所属 Account、展示标签、假卡号后四位、`active`/`frozen`/`lost` 状态、乐观并发 `version`。`lost` 为正式模拟挂失，不能通过解冻恢复；补卡尚未实现。
 - `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
@@ -52,7 +52,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 | `transactions`                       | 多对 1 `accounts`；可作为订阅检测来源              | 已实现合成账单及 transfer/investment 记账条目；账单统计仅查询 `bill` 类型 |
 | `transfers`                          | 多对 1 source/destination `accounts` 和 `payees`   | 已实现普通/定时模拟转账，需服务端确认后执行                               |
 | `split_bills` / `split_participants` | 分账归属 account/actor；参与者按金额顺序关联       | 已实现模拟 AA 拆分及受控的模拟收款                                        |
-| `cards`                              | 多对 1 `accounts`                                  | 已实现 active/frozen 与假卡号后四位；不存完整卡号                         |
+| `cards`                              | 多对 1 `accounts`                                  | 已实现 active/frozen/lost 与假卡号后四位；不存完整卡号                    |
 | `subscriptions`                      | 多对 1 `accounts`；记录来源交易 ID                 | 已实现周期候选持久化、月费/下次模拟扣款和经确认的状态管理；不操作真实商户 |
 | `investment_products`                | 1 对多 `investment_holdings` / `investment_orders` | 已实现确定性模拟价格、风险等级和参考收益                                  |
 | `investment_holdings`                | 多对 1 `accounts` 和 `investment_products`         | 已实现模拟持仓及余额变化                                                  |

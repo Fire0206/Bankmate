@@ -27,6 +27,7 @@
 | `card.get`             | `card_suffix` / 一张卡的 DTO           | `read_only` / `low` / `never`            | actor 范围内按尾号查询，不存在或越权统一视为 not found                           |
 | `card.freeze`          | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态                               |
 | `card.unfreeze`        | `card_suffix` / 操作提案与挑战         | `reversible_write` / `medium` / `always` | 校验归属和状态并建 challenge；本步骤不改变卡片状态                               |
+| `card.report_lost`     | `card_suffix` / 操作提案与挑战         | `high_risk_write` / `high` / `always`    | 独立 lost 状态；确认后仍需模拟强验证，不能通过解冻恢复                           |
 | `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额                            |
 | `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                                        |
 | `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 标记非住房大额支出及同账户/商户/金额/币种/UTC 日重复收费；仅为提示，不是欺诈检测 |

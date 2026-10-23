@@ -4,6 +4,7 @@ from enum import StrEnum
 class CardStatus(StrEnum):
     ACTIVE = "active"
     FROZEN = "frozen"
+    LOST = "lost"
 
 
 class InvalidCardTransition(ValueError):
@@ -17,6 +18,8 @@ def transition_card_status(current: CardStatus, requested: CardStatus) -> CardSt
     allowed_transitions = {
         (CardStatus.ACTIVE, CardStatus.FROZEN),
         (CardStatus.FROZEN, CardStatus.ACTIVE),
+        (CardStatus.ACTIVE, CardStatus.LOST),
+        (CardStatus.FROZEN, CardStatus.LOST),
     }
     if (current, requested) not in allowed_transitions:
         raise InvalidCardTransition(current, requested)
