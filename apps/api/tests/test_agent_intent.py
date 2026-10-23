@@ -1,5 +1,9 @@
 import pytest
-from finorch_api.agent.intent import is_split_creation_request, parse_split_intent
+from finorch_api.agent.intent import (
+    is_split_creation_request,
+    parse_split_intent,
+    requested_subscription_tool,
+)
 
 
 @pytest.mark.parametrize(
@@ -53,6 +57,14 @@ def test_split_intent_does_not_invent_missing_fields() -> None:
     assert intent.title is None
     assert intent.amount_minor is None
     assert intent.participant_names is None
+
+
+def test_temporary_charge_pause_is_distinct_from_ambiguous_cancellation() -> None:
+    assert (
+        requested_subscription_tool("核对重复的音乐会员扣款后，暂时暂停扣费")
+        == "subscription.pause"
+    )
+    assert requested_subscription_tool("取消这笔扣费") is None
 
 
 @pytest.mark.parametrize(

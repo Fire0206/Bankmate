@@ -176,7 +176,8 @@ def requested_subscription_tool(request_text: str) -> str | None:
     """Return a direct subscription operation, ignoring past state and future options."""
     request = request_text.casefold()
     if not any(
-        phrase in request for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣")
+        phrase in request
+        for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣", "扣费")
     ):
         return None
     if is_planning_only_request(request):
@@ -209,8 +210,8 @@ def requested_subscription_tool(request_text: str) -> str | None:
         return "subscription.resume"
 
     pause_pattern = re.compile(
-        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)"
-        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣)(?:[^，,。；;！？!?\n]{0,12})(?:暂停|暂时停|临时停|先停一下)"
+        r"(?:暂停|暂时停|临时停|先停一下|暂时停止|临时停止)(?:.{0,16})(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣|扣费)"
+        r"|(?:自动扣费|自动续费|订阅|会员|续费|扣款|代扣|扣费)(?:[^，,。；;！？!?\n]{0,12})(?:暂停|暂时停|临时停|先停一下)"
     )
     pause = _active_action_match(request, pause_pattern)
     if pause is not None and not re.search(r"暂停(?:中|状态|过|后|之后)", request):
