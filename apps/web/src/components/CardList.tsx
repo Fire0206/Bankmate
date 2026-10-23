@@ -9,11 +9,15 @@ export function CardList({
   loading,
   refreshing,
   onRefresh,
+  onManage,
+  manageDisabled,
 }: {
   cards: Card[];
   loading: boolean;
   refreshing: boolean;
   onRefresh: () => void;
+  onManage: (card: Card) => void;
+  manageDisabled: boolean;
 }) {
   return (
     <section
@@ -64,16 +68,26 @@ export function CardList({
                 <span className="card-name">{cardLabel(card.label)}</span>
                 <span className="card-suffix">尾号 {card.card_suffix}</span>
               </span>
-              <span
-                className={
-                  "status-label " +
-                  (card.status === "active"
-                    ? "status-label-active"
-                    : "status-label-frozen")
-                }
-              >
-                <span aria-hidden="true" className="status-dot" />
-                {card.status === "active" ? "正常" : "已冻结"}
+              <span className="card-row-end">
+                <span
+                  className={
+                    "status-label " +
+                    (card.status === "active"
+                      ? "status-label-active"
+                      : "status-label-frozen")
+                  }
+                >
+                  <span aria-hidden="true" className="status-dot" />
+                  {card.status === "active" ? "正常" : "已冻结"}
+                </span>
+                <button
+                  className="card-manage-button"
+                  disabled={manageDisabled}
+                  onClick={() => onManage(card)}
+                  type="button"
+                >
+                  {card.status === "active" ? "冻结" : "解冻"}
+                </button>
               </span>
             </li>
           ))}

@@ -168,12 +168,14 @@ export function TaskOverview({
   refreshing,
   onRefresh,
   onCancel,
+  onOpenConfirmation,
 }: {
   task: Task | null;
   busy: boolean;
   refreshing: boolean;
   onRefresh: () => void;
   onCancel: () => void;
+  onOpenConfirmation: () => void;
 }) {
   const cancellable =
     task !== null &&
@@ -203,6 +205,15 @@ export function TaskOverview({
             </time>
           </div>
           <div className="task-overview-actions">
+            {task.confirmation ? (
+              <button
+                className="task-confirm-button"
+                onClick={onOpenConfirmation}
+                type="button"
+              >
+                查看并确认
+              </button>
+            ) : null}
             <button
               className="text-button"
               disabled={refreshing}

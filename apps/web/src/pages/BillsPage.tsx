@@ -1,0 +1,572 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+
+import { apiClient } from "../api/client";
+import type {
+  BillSummaryResponse,
+  TransactionPageResponse,
+} from "../api/client";
+import { AppIcon } from "../components/AppIcon";
+import { CashflowChart } from "../components/CashflowChart";
+import { PageHeader } from "../components/PageHeader";
+import { SideDrawer } from "../components/SideDrawer";
+import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
+
+type Transaction = TransactionPageResponse["items"][number];
+type Filters = {
+  month: string;
+  category: string;
+  merchant: string;
+  direction: "all" | "income" | "expense";
+};
+
+function currentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonth(month: string, delta: number): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const date = new Date(Date.UTC(year, monthNumber - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function money(value: number, currency = "CNY"): string {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(value / 100);
+}
+
+function dateLabel(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function FilterModal({
+  filters,
+  categories,
+  onApply,
+  onClose,
+}: {
+  filters: Filters;
+  categories: BillSummaryResponse["categories"];
+  onApply: (filters: Filters) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState(filters);
+  const months = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, index) =>
+        shiftMonth(filters.month, -index),
+      ),
+    [filters.month],
+  );
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        aria-modal="true"
+        className="modal-dialog filter-dialog"
+        role="dialog"
+      >
+        <header className="filter-dialog-header">
+          <div>
+            <p className="eyebrow">Insights filter</p>
+            <h2>筛选账单</h2>
+          </div>
+          <button
+            aria-label="关闭筛选"
+            className="modal-close modal-close-inline"
+            onClick={onClose}
+            type="button"
+          >
+            <AppIcon name="close" size={18} />
+          </button>
+        </header>
+        <div className="filter-fields">
+          <label>
+            <span>月份</span>
+            <select
+              onChange={(event) =>
+                setDraft((value) => ({ ...value, month: event.target.value }))
+              }
+              value={draft.month}
+            >
+              {months.map((month) => (
+                <option key={month} value={month}>
+                  {month.replace("-", " 年 ")} 月
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>消费类别</span>
+            <select
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  category: event.target.value,
+                }))
+              }
+              value={draft.category}
+            >
+              <option value="">全部类别</option>
+              {categories.map((category) => (
+                <option key={category.category} value={category.category}>
+                  {category.category}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>收支方向</span>
+            <select
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  direction: event.target.value as Filters["direction"],
+                }))
+              }
+              value={draft.direction}
+            >
+              <option value="all">全部交易</option>
+              <option value="expense">只看支出</option>
+              <option value="income">只看收入</option>
+            </select>
+          </label>
+          <label>
+            <span>商户关键词</span>
+            <input
+              maxLength={120}
+              onChange={(event) =>
+                setDraft((value) => ({
+                  ...value,
+                  merchant: event.target.value,
+                }))
+              }
+              placeholder="例如：腾讯视频"
+              value={draft.merchant}
+            />
+          </label>
+        </div>
+        <div className="filter-actions">
+          <button
+            className="button button-secondary"
+            onClick={() =>
+              setDraft({
+                ...draft,
+                category: "",
+                merchant: "",
+                direction: "all",
+              })
+            }
+            type="button"
+          >
+            清除条件
+          </button>
+          <button
+            className="button button-primary"
+            onClick={() => onApply(draft)}
+            type="button"
+          >
+            应用筛选
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function TransactionDrawer({
+  transaction,
+  onClose,
+  onPrompt,
+}: {
+  transaction: Transaction;
+  onClose: () => void;
+  onPrompt: (prompt: string) => void;
+}) {
+  return (
+    <SideDrawer
+      onClose={onClose}
+      subtitle="Transaction detail"
+      title={transaction.merchant}
+    >
+      <div className="transaction-detail">
+        <div className="transaction-detail-amount">
+          <span>{transaction.direction === "income" ? "收入" : "支出"}</span>
+          <strong>
+            {transaction.direction === "income" ? "+" : "−"}
+            {money(transaction.amount_minor, transaction.currency)}
+          </strong>
+          <small>{dateLabel(transaction.occurred_at)}</small>
+        </div>
+        <dl>
+          <div>
+            <dt>交易类别</dt>
+            <dd>{transaction.category}</dd>
+          </div>
+          <div>
+            <dt>交易说明</dt>
+            <dd>{transaction.description}</dd>
+          </div>
+          <div>
+            <dt>来源卡片</dt>
+            <dd>
+              {transaction.source_card_suffix
+                ? `尾号 ${transaction.source_card_suffix}`
+                : "模拟账户交易"}
+            </dd>
+          </div>
+          <div>
+            <dt>交易编号</dt>
+            <dd>
+              <code>{transaction.id}</code>
+            </dd>
+          </div>
+        </dl>
+        {transaction.anomaly_reason ? (
+          <div className="transaction-risk-note">
+            <span>
+              <AppIcon name="info" size={16} />
+              为什么出现提示
+            </span>
+            <p>{transaction.anomaly_reason}</p>
+            <small>这是确定性规则提示，不是欺诈结论。</small>
+          </div>
+        ) : null}
+        <div className="drawer-actions">
+          <button
+            className="button button-primary"
+            onClick={() => {
+              onClose();
+              onPrompt(
+                transaction.anomaly_reason
+                  ? `处理异常扣款：${transaction.merchant}，卡片尾号 ${transaction.source_card_suffix ?? "1042"}`
+                  : `帮我查看 ${transaction.merchant} 这笔交易并说明影响`,
+              );
+            }}
+            type="button"
+          >
+            交给 FinOrch 处理
+          </button>
+          <button
+            className="button button-secondary"
+            onClick={onClose}
+            type="button"
+          >
+            返回账单
+          </button>
+        </div>
+      </div>
+    </SideDrawer>
+  );
+}
+
+export function BillsPage({
+  busy,
+  onPrompt,
+}: {
+  busy: boolean;
+  onPrompt: (prompt: string) => void;
+}) {
+  const [filters, setFilters] = useState<Filters>({
+    month: currentMonth(),
+    category: "",
+    merchant: "",
+    direction: "all",
+  });
+  const [summary, setSummary] = useState<BillSummaryResponse | null>(null);
+  const [transactions, setTransactions] =
+    useState<TransactionPageResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selected, setSelected] = useState<Transaction | null>(null);
+
+  const load = useCallback(async (currentFilters: Filters) => {
+    try {
+      const [nextSummary, nextTransactions] = await Promise.all([
+        apiClient.readBillSummary(
+          currentFilters.month,
+          currentFilters.category || undefined,
+        ),
+        apiClient.readTransactions({
+          month: currentFilters.month,
+          category: currentFilters.category || undefined,
+          merchant: currentFilters.merchant || undefined,
+          direction:
+            currentFilters.direction === "all"
+              ? undefined
+              : currentFilters.direction,
+          limit: 100,
+        }),
+      ]);
+      setSummary(nextSummary);
+      setTransactions(nextTransactions);
+      setError(null);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "暂时无法读取账单数据。",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load(filters);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [filters, load]);
+
+  const maxCategory = summary?.categories[0]?.amount_minor ?? 1;
+  const categoryOptions = summary?.categories ?? [];
+
+  return (
+    <div className="page-stack">
+      <PageHeader
+        actionLabel="询问账单"
+        busy={busy}
+        description="理解钱花在哪里、为什么出现异常，以及现金流是否健康。"
+        eyebrow="Spending intelligence"
+        onAction={() => onPrompt("分析我本月的账单和异常消费")}
+        title="账单分析"
+      />
+
+      <div className="bills-toolbar">
+        <div className="active-filters">
+          <span>{summary?.month ?? filters.month}</span>
+          {filters.category ? <span>{filters.category}</span> : null}
+          {filters.direction !== "all" ? (
+            <span>{filters.direction === "expense" ? "仅支出" : "仅收入"}</span>
+          ) : null}
+          {filters.merchant ? <span>{filters.merchant}</span> : null}
+        </div>
+        <button
+          className="filter-button"
+          onClick={() => setFilterOpen(true)}
+          type="button"
+        >
+          <AppIcon name="menu" size={16} />
+          筛选
+        </button>
+      </div>
+
+      {error ? (
+        <div className="page-error" role="alert">
+          {error}
+          <button
+            onClick={() => {
+              setLoading(true);
+              void load(filters);
+            }}
+            type="button"
+          >
+            重新读取
+          </button>
+        </div>
+      ) : null}
+
+      <div className="bills-layout">
+        <section className="bills-main-card">
+          <header>
+            <div>
+              <p className="eyebrow">Cash flow</p>
+              <h2>收支趋势</h2>
+            </div>
+            <span>{loading ? "读取中" : "真实合成数据"}</span>
+          </header>
+          <div className="bills-kpis">
+            <div>
+              <span>本月收入</span>
+              <strong>
+                {loading ? (
+                  <SkeletonLine width="86px" />
+                ) : (
+                  money(summary?.income_minor ?? 0)
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>本月支出</span>
+              <strong>
+                {loading ? (
+                  <SkeletonLine width="86px" />
+                ) : (
+                  money(summary?.expense_minor ?? 0)
+                )}
+              </strong>
+            </div>
+            <div>
+              <span>净现金流</span>
+              <strong>
+                {loading ? (
+                  <SkeletonLine width="86px" />
+                ) : (
+                  money(summary?.net_minor ?? 0)
+                )}
+              </strong>
+            </div>
+          </div>
+          {loading ? (
+            <div aria-hidden="true" className="chart-skeleton">
+              {Array.from({ length: 6 }, (_, index) => (
+                <span key={index} />
+              ))}
+            </div>
+          ) : summary?.trends.length ? (
+            <CashflowChart
+              expenseMinor={summary.expense_minor}
+              incomeMinor={summary.income_minor}
+              trends={summary.trends}
+            />
+          ) : (
+            <div className="page-empty">暂无可视化数据</div>
+          )}
+        </section>
+
+        <section className="category-card">
+          <header>
+            <div>
+              <p className="eyebrow">Categories</p>
+              <h2>消费类别</h2>
+            </div>
+            <span>{categoryOptions.length} 类</span>
+          </header>
+          {loading ? (
+            <SkeletonRows count={6} lead={false} />
+          ) : categoryOptions.length ? (
+            <div className="category-list">
+              {categoryOptions.map((category) => (
+                <button
+                  className="category-row"
+                  key={category.category}
+                  onClick={() =>
+                    setFilters((value) => ({
+                      ...value,
+                      category:
+                        value.category === category.category
+                          ? ""
+                          : category.category,
+                    }))
+                  }
+                  type="button"
+                >
+                  <span className="category-row-mark" />
+                  <span>
+                    <strong>{category.category}</strong>
+                    <small>{category.transaction_count} 笔交易</small>
+                  </span>
+                  <strong>{money(category.amount_minor)}</strong>
+                  <i
+                    style={{
+                      width: `${Math.max(8, (category.amount_minor / maxCategory) * 100)}%`,
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="page-empty">当前条件下没有消费。</p>
+          )}
+        </section>
+      </div>
+
+      <section className="transactions-card">
+        <header>
+          <div>
+            <p className="eyebrow">Transactions</p>
+            <h2>交易明细</h2>
+          </div>
+          <span>{transactions?.total ?? 0} 笔</span>
+        </header>
+        {loading ? (
+          <SkeletonRows count={7} />
+        ) : transactions?.items.length ? (
+          <div className="data-table transaction-table">
+            {transactions.items.map((transaction) => (
+              <button
+                className="data-row"
+                key={transaction.id}
+                onClick={() => setSelected(transaction)}
+                type="button"
+              >
+                <span className="transaction-icon">
+                  <AppIcon
+                    name={
+                      transaction.direction === "income" ? "overview" : "bill"
+                    }
+                    size={17}
+                  />
+                </span>
+                <span className="data-row-main">
+                  <strong>{transaction.merchant}</strong>
+                  <small>
+                    {transaction.category} ·{" "}
+                    {dateLabel(transaction.occurred_at)}
+                  </small>
+                </span>
+                {transaction.anomaly_reason ? (
+                  <span className="risk-badge">需复核</span>
+                ) : null}
+                <strong
+                  className={
+                    transaction.direction === "income" ? "amount-income" : ""
+                  }
+                >
+                  {transaction.direction === "income" ? "+" : "−"}
+                  {money(transaction.amount_minor, transaction.currency)}
+                </strong>
+                <AppIcon name="arrow-right" size={16} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="page-empty">当前筛选没有交易。</p>
+        )}
+      </section>
+
+      {filterOpen ? (
+        <FilterModal
+          categories={categoryOptions}
+          filters={filters}
+          onApply={(next) => {
+            setLoading(true);
+            setFilters(next);
+            setFilterOpen(false);
+          }}
+          onClose={() => setFilterOpen(false)}
+        />
+      ) : null}
+      {selected ? (
+        <TransactionDrawer
+          onClose={() => setSelected(null)}
+          onPrompt={onPrompt}
+          transaction={selected}
+        />
+      ) : null}
+    </div>
+  );
+}

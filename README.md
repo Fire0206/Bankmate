@@ -21,7 +21,7 @@
 
 ## 技术架构
 
-- **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm。shadcn/ui 仅作为后续可选集成方案，当前未安装。
+- **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm，使用 Lightweight Charts 展示现金流时间序列。shadcn/ui 仅作为后续可选集成方案，当前未安装。
 - **API**：Python、FastAPI、Pydantic、uv、pytest；包括账户、收款人、转账、AA 分账、模拟理财产品/持仓/订单，以及 Agent Task、确认、取消和审计 API。资金变更只经 Agent 服务端确认流程执行。
 - **Agent**：有界单 Agent Runtime、Typed Tool Registry 和模型无关 Provider 接口。默认 Fake Provider 仅做确定性的本地演示，不是 LLM 推理；可选 OpenAI-compatible Chat Completions Adapter 需要自行配置服务端密钥。
 - **数据**：SQLAlchemy 2.x、SQLite、Alembic；包括合成账户、银行卡、交易、订阅、收款人、转账、分账、理财产品/持仓/订单、持久化 Agent Workflow、确认挑战和追加式审计。没有真实资金流或外部商户操作。

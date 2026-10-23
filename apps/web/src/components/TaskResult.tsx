@@ -118,7 +118,7 @@ function TransactionList({
   return (
     <section
       aria-label={anomaliesOnly ? "异常交易" : "交易明细"}
-      className="task-result"
+      className={"task-result" + (anomaliesOnly ? " task-result-risky" : "")}
     >
       <div className="task-result-heading">
         <strong>{anomaliesOnly ? "异常提示" : `${month} 交易明细`}</strong>
@@ -651,9 +651,19 @@ export function TaskResult({ task }: { task: Task }) {
     )
       latestByTool.set(step.tool_name, step);
   }
-  const results = [...latestByTool.values()].sort(
+  const allResults = [...latestByTool.values()].sort(
     (a, b) => a.sequence - b.sequence,
   );
+  const hasSubscriptionChange = allResults.some((step) =>
+    [
+      "subscription.pause",
+      "subscription.resume",
+      "subscription.cancel",
+    ].includes(step.tool_name ?? ""),
+  );
+  const results = hasSubscriptionChange
+    ? allResults.filter((step) => step.tool_name !== "subscription.list")
+    : allResults;
   if (!results.length) return null;
 
   return (

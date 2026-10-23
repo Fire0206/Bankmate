@@ -9,11 +9,21 @@ import type {
 } from "./api/client";
 import { AppIcon } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
-import { ConfirmationCard } from "./components/ConfirmationCard";
+import { ConfirmationModal } from "./components/ConfirmationModal";
+import { DemoGate } from "./components/DemoGate";
+import { FocusedOverview } from "./components/FocusedOverview";
 import { Navigation } from "./components/Navigation";
+import { SideDrawer } from "./components/SideDrawer";
 import { TaskResult } from "./components/TaskResult";
 import { TaskDetails, TaskOverview } from "./components/TaskDetails";
 import { statusLabel, taskMessage } from "./components/taskFormat";
+import { Toast, type ToastMessage } from "./components/Toast";
+import { pageFromHash, pageMeta, type PageKey } from "./pageConfig";
+import { BillsPage } from "./pages/BillsPage";
+import { CardsPage } from "./pages/CardsPage";
+import { InvestmentsPage } from "./pages/InvestmentsPage";
+import { SubscriptionsPage } from "./pages/SubscriptionsPage";
+import { TransfersPage } from "./pages/TransfersPage";
 
 type Message = {
   id: string;
@@ -61,6 +71,31 @@ type PendingWrite =
     };
 
 const pendingWriteStorageKey = "finorch.demo.pending-write";
+const demoEntryStorageKey = "finorch.demo.entered.v1";
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => unknown;
+};
+
+function readDemoEntry(): boolean {
+  try {
+    return sessionStorage.getItem(demoEntryStorageKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function withViewTransition(update: () => void) {
+  const transitionDocument = document as ViewTransitionDocument;
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  if (transitionDocument.startViewTransition && !reducedMotion) {
+    transitionDocument.startViewTransition(update);
+  } else {
+    update();
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -395,11 +430,13 @@ export default function App() {
   );
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<"assistant" | "cards">(
-    "assistant",
-  );
+  const [enteredDemo, setEnteredDemo] = useState(readDemoEntry);
+  const [activePage, setActivePage] = useState<PageKey>(pageFromHash);
   const [contextOpen, setContextOpen] = useState(initialContextOpen);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
   const activeTaskId = activeTask?.id;
   const activeTaskStatus = activeTask?.status;
@@ -416,6 +453,7 @@ export default function App() {
 
   const applyTask = useCallback((task: AgentTaskResponse) => {
     setActiveTask(task);
+    setConfirmationOpen(Boolean(task.confirmation));
     setMessages((current) => {
       const response: Message = {
         id: "task-" + task.id,
@@ -427,6 +465,34 @@ export default function App() {
         ...current.filter((message) => message.task?.id !== task.id),
         response,
       ];
+    });
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
+  const closeConfirmation = useCallback(() => setConfirmationOpen(false), []);
+  const closeDetailsDrawer = useCallback(() => {
+    setDetailsDrawerOpen(false);
+    setDetailsOpen(false);
+  }, []);
+
+  const notify = useCallback(
+    (title: string, message: string, tone: ToastMessage["tone"]) => {
+      setToast({
+        id: crypto.randomUUID(),
+        title,
+        message,
+        tone,
+      });
+    },
+    [],
+  );
+
+  const navigate = useCallback((page: PageKey) => {
+    withViewTransition(() => {
+      setActivePage(page);
+      setMobileNavOpen(false);
+      window.history.pushState(null, "", "#/" + page);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   }, []);
 
@@ -520,6 +586,20 @@ export default function App() {
       current = false;
     };
   }, [applyTask, conversationId, lookupPendingWrite, storePendingWrite]);
+
+  useEffect(() => {
+    function onHashChange() {
+      withViewTransition(() => {
+        setActivePage(pageFromHash());
+        setMobileNavOpen(false);
+      });
+    }
+    if (!window.location.hash) {
+      window.history.replaceState(null, "", "#/overview");
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     const desktopContext = window.matchMedia("(min-width: 1100px)");
@@ -670,6 +750,13 @@ export default function App() {
       const task = await executeWrite(write);
       applyTask(task);
       storePendingWrite(null);
+      if (task.status === "completed") {
+        notify("任务已完成", task.message, "success");
+      } else if (task.status === "awaiting_confirmation") {
+        notify("等待你的确认", "操作尚未执行，请核对后再确认。", "warning");
+      } else if (task.status === "failed") {
+        notify("操作未完成", taskMessage(task), "error");
+      }
       if (
         task.status === "completed" ||
         (write.kind === "confirm" &&
@@ -736,6 +823,11 @@ export default function App() {
       const task = await executeWrite(pendingWrite);
       applyTask(task);
       storePendingWrite(null);
+      if (task.status === "completed") {
+        notify("任务已完成", task.message, "success");
+      } else if (task.status === "awaiting_confirmation") {
+        notify("等待你的确认", "操作尚未执行，请核对后再确认。", "warning");
+      }
       if (task.status === "completed") await refreshCards();
     } catch (error) {
       try {
@@ -838,33 +930,64 @@ export default function App() {
     });
   }
 
-  function showTaskDetails() {
-    setDetailsOpen(true);
-    setContextOpen(true);
-    setMobileNavOpen(false);
-    window.requestAnimationFrame(() => {
-      document.getElementById("task-details")?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
+  function askFinOrch(prompt: string) {
+    navigate("assistant");
+    void sendMessage(prompt);
+  }
+
+  function enterDemo() {
+    withViewTransition(() => {
+      try {
+        sessionStorage.setItem(demoEntryStorageKey, "1");
+      } catch {
+        // Entry state is a presentation aid, not an authorization source.
+      }
+      setEnteredDemo(true);
+      setActivePage("overview");
+      window.history.replaceState(null, "", "#/overview");
+    });
+  }
+
+  function exitDemo() {
+    withViewTransition(() => {
+      try {
+        sessionStorage.removeItem(demoEntryStorageKey);
+      } catch {
+        // Ignore storage restrictions; the current session can still exit.
+      }
+      setEnteredDemo(false);
     });
   }
 
   const mode = activeTask?.provider_mode ?? session?.agent_provider ?? "fake";
+  const overviewRefreshKey = activeTask
+    ? `${activeTask.id}:${activeTask.version}`
+    : (session?.dataset_version ?? "initial");
+  const demoDisplayName =
+    !session || session.display_name === "Demo User One"
+      ? "林知远"
+      : userName(session);
+
+  if (!enteredDemo) {
+    return (
+      <DemoGate
+        apiState={apiState}
+        onEnter={enterDemo}
+        onRetry={() => void retryConnection()}
+        session={session}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">
       <Navigation
-        activeSection={activeSection}
-        hasTask={Boolean(activeTask)}
+        activePage={activePage}
+        displayName={demoDisplayName}
         mobileOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
-        onSelect={(section) => {
-          setActiveSection(section);
-          if (section === "cards") setContextOpen(true);
-        }}
-        onShowDetails={showTaskDetails}
-        onPrompt={(prompt) => void sendMessage(prompt)}
+        onExit={exitDemo}
+        onNavigate={navigate}
       />
 
       <div className="app-main">
@@ -881,23 +1004,55 @@ export default function App() {
               >
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
+              <div className="topbar-path">
+                <span>FinOrch</span>
+                <i aria-hidden="true">/</i>
+                <strong>{pageMeta(activePage).label}</strong>
+              </div>
             </div>
             <div className="topbar-actions">
-              <span className="account-name">{userName(session)}</span>
+              <button
+                className="topbar-new-task"
+                onClick={() => {
+                  navigate("assistant");
+                  document.getElementById("agent-request")?.focus();
+                }}
+                type="button"
+              >
+                <span aria-hidden="true">+</span>
+                新任务
+              </button>
               <EnvironmentDetails
                 apiVersion={apiVersion}
                 mode={mode}
                 session={session}
               />
               <StatusIndicator status={apiState} />
+              <button
+                aria-label="退出演示账户"
+                className="account-avatar"
+                onClick={exitDemo}
+                title="退出演示"
+                type="button"
+              >
+                LZ
+              </button>
             </div>
           </div>
         </header>
 
         <main className="page-content">
-          <div className="workspace-heading">
-            <h1>智能助手</h1>
-          </div>
+          {activePage === "overview" ? (
+            <FocusedOverview
+              activeTask={activeTask}
+              audit={audit}
+              busy={busy}
+              cards={cards}
+              onPrompt={askFinOrch}
+              refreshKey={overviewRefreshKey}
+              session={session}
+            />
+          ) : null}
 
           {requestError ? (
             <ErrorBanner
@@ -936,229 +1091,369 @@ export default function App() {
             />
           ) : null}
 
-          <div className="workbench-grid">
-            <section
-              aria-labelledby="assistant-title"
-              className="assistant-panel"
-              id="assistant"
-            >
-              <div className="assistant-header">
+          {activePage === "assistant" ? (
+            <>
+              <div className="workspace-stage-heading">
                 <div>
-                  <h2 id="assistant-title">对话</h2>
-                  <p>银行卡、账单、订阅、转账与理财</p>
+                  <p className="eyebrow">Agent workspace</p>
+                  <h2>把目标交给 FinOrch，先理解，再执行</h2>
                 </div>
+                <span>
+                  <AppIcon name="info" size={15} />
+                  所有变更以服务端结果为准
+                </span>
               </div>
 
-              <div
-                aria-live="polite"
-                className="conversation"
-                ref={conversationRef}
-                role="log"
-              >
-                {messages.length === 0 ? (
-                  <div className="welcome-state">
-                    <span aria-hidden="true" className="welcome-mark">
-                      F
-                    </span>
-                    <h3>你好，{userName(session)}</h3>
-                    <p>
-                      {loading
-                        ? "正在读取演示账户…"
-                        : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
-                    </p>
-                    {!loading ? (
-                      <div className="suggestion-group">
-                        <span className="suggestion-label">你可以试试</span>
-                        <div className="suggestions">
-                          {promptSuggestions(cards).map((prompt) => (
-                            <button
-                              className="suggestion-button"
-                              disabled={
-                                busy || Boolean(pendingWrite) || !session
-                              }
-                              key={prompt}
-                              onClick={() => void sendMessage(prompt)}
-                              type="button"
-                            >
-                              {prompt}
-                              <AppIcon name="arrow-right" size={16} />
-                            </button>
-                          ))}
-                        </div>
+              <div className="workbench-grid">
+                <section
+                  aria-labelledby="assistant-title"
+                  className="assistant-panel"
+                  id="assistant"
+                >
+                  <div className="assistant-header">
+                    <div>
+                      <h2 id="assistant-title">对话</h2>
+                      <p>银行卡、账单、订阅、转账与理财</p>
+                    </div>
+                  </div>
+
+                  <div
+                    aria-live="polite"
+                    className="conversation"
+                    ref={conversationRef}
+                    role="log"
+                  >
+                    {messages.length === 0 ? (
+                      <div className="welcome-state">
+                        <span aria-hidden="true" className="welcome-mark">
+                          F
+                        </span>
+                        <h3>你好，{userName(session)}</h3>
+                        <p>
+                          {loading
+                            ? "正在读取演示账户…"
+                            : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
+                        </p>
+                        {!loading ? (
+                          <div className="suggestion-group">
+                            <span className="suggestion-label">你可以试试</span>
+                            <div className="suggestions">
+                              {promptSuggestions(cards).map((prompt) => (
+                                <button
+                                  className="suggestion-button"
+                                  disabled={
+                                    busy || Boolean(pendingWrite) || !session
+                                  }
+                                  key={prompt}
+                                  onClick={() => void sendMessage(prompt)}
+                                  type="button"
+                                >
+                                  {prompt}
+                                  <AppIcon name="arrow-right" size={16} />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
+                    ) : (
+                      <div className="message-list">
+                        {messages.map((message) => (
+                          <article
+                            className={"message message-" + message.role}
+                            key={message.id}
+                          >
+                            <div className="message-author">
+                              {message.role === "user"
+                                ? userName(session)
+                                : "FinOrch"}
+                            </div>
+                            <div
+                              className={
+                                "message-bubble message-bubble-" + message.role
+                              }
+                            >
+                              <p>{message.text}</p>
+                            </div>
+                            {message.task ? (
+                              <>
+                                <div className="message-status">
+                                  <span
+                                    className={
+                                      "task-status task-status-" +
+                                      message.task.status
+                                    }
+                                  >
+                                    {statusLabel(message.task.status)}
+                                  </span>
+                                </div>
+                                <TaskResult task={message.task} />
+                              </>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                    {busy ? (
+                      <p className="processing-indicator" role="status">
+                        <span aria-hidden="true" className="processing-dot" />
+                        正在处理…
+                      </p>
                     ) : null}
                   </div>
-                ) : (
-                  <div className="message-list">
-                    {messages.map((message) => (
-                      <article
-                        className={"message message-" + message.role}
-                        key={message.id}
-                      >
-                        <div className="message-author">
-                          {message.role === "user"
-                            ? userName(session)
-                            : "FinOrch"}
-                        </div>
-                        <div
-                          className={
-                            "message-bubble message-bubble-" + message.role
-                          }
-                        >
-                          <p>{message.text}</p>
-                        </div>
-                        {message.task ? (
-                          <>
-                            <div className="message-status">
-                              <span
-                                className={
-                                  "task-status task-status-" +
-                                  message.task.status
-                                }
-                              >
-                                {statusLabel(message.task.status)}
-                              </span>
-                            </div>
-                            {message.task.confirmation ? (
-                              <ConfirmationCard
-                                busy={busy}
-                                confirmation={message.task.confirmation}
-                                onCancel={() => void cancelTask(message.task!)}
-                                onConfirm={() =>
-                                  void confirmTask(message.task!)
-                                }
-                              />
-                            ) : null}
-                            <TaskResult task={message.task} />
-                          </>
-                        ) : null}
-                      </article>
-                    ))}
-                  </div>
-                )}
-                {busy ? (
-                  <p className="processing-indicator" role="status">
-                    <span aria-hidden="true" className="processing-dot" />
-                    正在处理…
-                  </p>
-                ) : null}
-              </div>
 
-              <form
-                className="composer"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void sendMessage();
-                }}
-              >
-                {pendingWrite ? (
-                  <p className="composer-hint">
-                    上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
-                  </p>
-                ) : activeTask?.status === "awaiting_input" ? (
-                  <p className="composer-hint">补充信息将继续当前任务。</p>
-                ) : activeTask?.status === "awaiting_confirmation" ? (
-                  <p className="composer-hint">
-                    修改请求会取消当前确认，并重新核对操作内容。
-                  </p>
-                ) : activeTask?.status === "failed" &&
-                  activeTask.steps.some(
-                    (step) =>
-                      step.step_type === "tool" && step.status === "succeeded",
-                  ) ? (
-                  <p className="composer-hint">
-                    部分步骤已完成；补充要求可继续当前任务，已完成操作不会重做。
-                  </p>
-                ) : null}
-                <label className="visually-hidden" htmlFor="agent-request">
-                  输入请求
-                </label>
-                <div className="composer-row">
-                  <textarea
-                    id="agent-request"
-                    disabled={Boolean(pendingWrite)}
-                    maxLength={1000}
-                    onChange={(event) => setDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === "Enter" &&
-                        !event.shiftKey &&
-                        !event.nativeEvent.isComposing
-                      ) {
-                        event.preventDefault();
-                        void sendMessage();
-                      }
+                  <form
+                    className="composer"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void sendMessage();
                     }}
-                    placeholder="例如：我这个月花了多少钱"
-                    rows={2}
-                    value={draft}
-                  />
-                  <button
-                    aria-label="发送请求"
-                    className="send-button"
-                    disabled={
-                      busy || Boolean(pendingWrite) || !draft.trim() || !session
-                    }
-                    type="submit"
                   >
-                    <AppIcon name="send" size={19} />
-                  </button>
-                </div>
-                <div className="composer-foot">
-                  <span>Enter 发送，Shift + Enter 换行</span>
-                  <span>仅处理模拟数据</span>
-                </div>
-              </form>
-            </section>
+                    {pendingWrite ? (
+                      <p className="composer-hint">
+                        上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
+                      </p>
+                    ) : activeTask?.status === "awaiting_input" ? (
+                      <p className="composer-hint">补充信息将继续当前任务。</p>
+                    ) : activeTask?.status === "awaiting_confirmation" ? (
+                      <p className="composer-hint">
+                        修改请求会取消当前确认，并重新核对操作内容。
+                      </p>
+                    ) : activeTask?.status === "failed" &&
+                      activeTask.steps.some(
+                        (step) =>
+                          step.step_type === "tool" &&
+                          step.status === "succeeded",
+                      ) ? (
+                      <p className="composer-hint">
+                        部分步骤已完成；补充要求可继续当前任务，已完成操作不会重做。
+                      </p>
+                    ) : null}
+                    <label className="visually-hidden" htmlFor="agent-request">
+                      输入请求
+                    </label>
+                    <div className="composer-row">
+                      <textarea
+                        id="agent-request"
+                        disabled={Boolean(pendingWrite)}
+                        maxLength={1000}
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            !event.shiftKey &&
+                            !event.nativeEvent.isComposing
+                          ) {
+                            event.preventDefault();
+                            void sendMessage();
+                          }
+                        }}
+                        placeholder="例如：我这个月花了多少钱"
+                        rows={2}
+                        value={draft}
+                      />
+                      <button
+                        aria-label="发送请求"
+                        className="send-button"
+                        disabled={
+                          busy ||
+                          Boolean(pendingWrite) ||
+                          !draft.trim() ||
+                          !session
+                        }
+                        type="submit"
+                      >
+                        <AppIcon name="send" size={19} />
+                      </button>
+                    </div>
+                    <div className="composer-foot">
+                      <span>Enter 发送，Shift + Enter 换行</span>
+                      <span>仅处理模拟数据</span>
+                    </div>
+                  </form>
+                </section>
 
-            <details
-              className="context-disclosure"
-              onToggle={(event) => setContextOpen(event.currentTarget.open)}
-              open={contextOpen}
-            >
-              <summary className="context-summary">
-                <span className="context-summary-icon">
-                  <AppIcon name="overview" size={19} />
-                </span>
-                <span className="context-summary-copy">
-                  <strong>账户信息</strong>
-                  <small>银行卡与处理进度</small>
-                </span>
-                <AppIcon
-                  className="context-chevron"
-                  name="chevron-down"
-                  size={18}
-                />
-              </summary>
-              <div className="context-content">
-                <CardList
-                  cards={cards}
-                  loading={loading}
-                  onRefresh={() => void refreshCards()}
-                  refreshing={refreshing}
-                />
-                <TaskOverview
-                  busy={busy}
-                  refreshing={refreshingTask}
-                  onRefresh={() => void refreshTask()}
-                  onCancel={() => {
-                    if (activeTask) void cancelTask(activeTask);
-                  }}
-                  task={activeTask}
-                />
-                <TaskDetails
-                  audit={audit}
-                  auditError={auditError}
-                  auditLoading={auditLoading}
-                  onOpenChange={setDetailsOpen}
-                  open={detailsOpen}
-                  task={activeTask}
-                />
+                <details
+                  className="context-disclosure"
+                  onToggle={(event) => setContextOpen(event.currentTarget.open)}
+                  open={contextOpen}
+                >
+                  <summary className="context-summary">
+                    <span className="context-summary-icon">
+                      <AppIcon name="overview" size={19} />
+                    </span>
+                    <span className="context-summary-copy">
+                      <strong>执行上下文</strong>
+                      <small>账户、卡片与处理进度</small>
+                    </span>
+                    <AppIcon
+                      className="context-chevron"
+                      name="chevron-down"
+                      size={18}
+                    />
+                  </summary>
+                  <div className="context-content">
+                    <CardList
+                      cards={cards}
+                      loading={loading}
+                      manageDisabled={busy || Boolean(pendingWrite)}
+                      onManage={(card) =>
+                        void sendMessage(
+                          card.status === "active"
+                            ? `冻结尾号 ${card.card_suffix} 的银行卡`
+                            : `解冻尾号 ${card.card_suffix} 的银行卡`,
+                        )
+                      }
+                      onRefresh={() => void refreshCards()}
+                      refreshing={refreshing}
+                    />
+                    <TaskOverview
+                      busy={busy}
+                      refreshing={refreshingTask}
+                      onRefresh={() => void refreshTask()}
+                      onCancel={() => {
+                        if (activeTask) void cancelTask(activeTask);
+                      }}
+                      onOpenConfirmation={() => {
+                        setDetailsDrawerOpen(false);
+                        setConfirmationOpen(true);
+                      }}
+                      task={activeTask}
+                    />
+                    <TaskDetails
+                      audit={audit}
+                      auditError={auditError}
+                      auditLoading={auditLoading}
+                      onOpenChange={setDetailsOpen}
+                      open={detailsOpen}
+                      task={activeTask}
+                    />
+                  </div>
+                </details>
               </div>
-            </details>
-          </div>
+            </>
+          ) : null}
+
+          {activePage === "bills" ? (
+            <BillsPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
+          {activePage === "cards" ? (
+            <CardsPage
+              busy={busy || Boolean(pendingWrite)}
+              cards={cards}
+              loading={loading}
+              onManage={(card) =>
+                askFinOrch(
+                  card.status === "active"
+                    ? `冻结尾号 ${card.card_suffix} 的银行卡`
+                    : `解冻尾号 ${card.card_suffix} 的银行卡`,
+                )
+              }
+              onPrompt={askFinOrch}
+              onRefresh={() => void refreshCards()}
+              refreshing={refreshing}
+            />
+          ) : null}
+          {activePage === "transfers" ? (
+            <TransfersPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
+          {activePage === "subscriptions" ? (
+            <SubscriptionsPage
+              busy={busy || Boolean(pendingWrite)}
+              onPrompt={askFinOrch}
+              refreshKey={overviewRefreshKey}
+            />
+          ) : null}
+          {activePage === "investments" ? (
+            <InvestmentsPage busy={busy} onPrompt={askFinOrch} />
+          ) : null}
         </main>
       </div>
+
+      <nav aria-label="移动端快捷导航" className="mobile-dock">
+        <button
+          aria-current={activePage === "overview" ? "page" : undefined}
+          className={activePage === "overview" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("overview")}
+          type="button"
+        >
+          <AppIcon name="overview" size={19} />
+          <span>总览</span>
+        </button>
+        <button
+          aria-current={activePage === "assistant" ? "page" : undefined}
+          className={activePage === "assistant" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("assistant")}
+          type="button"
+        >
+          <AppIcon name="assistant" size={19} />
+          <span>助手</span>
+        </button>
+        <button
+          aria-current={activePage === "bills" ? "page" : undefined}
+          className={activePage === "bills" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("bills")}
+          type="button"
+        >
+          <AppIcon name="bill" size={19} />
+          <span>账单</span>
+        </button>
+        <button
+          aria-current={activePage === "cards" ? "page" : undefined}
+          className={activePage === "cards" ? "mobile-dock-active" : ""}
+          onClick={() => navigate("cards")}
+          type="button"
+        >
+          <AppIcon name="cards" size={19} />
+          <span>卡片</span>
+        </button>
+        <button onClick={() => setMobileNavOpen(true)} type="button">
+          <AppIcon name="menu" size={19} />
+          <span>更多</span>
+        </button>
+      </nav>
+
+      {activeTask?.confirmation && confirmationOpen ? (
+        <ConfirmationModal
+          busy={busy}
+          confirmation={activeTask.confirmation}
+          onCancel={() => void cancelTask(activeTask)}
+          onClose={closeConfirmation}
+          onConfirm={() => void confirmTask(activeTask)}
+        />
+      ) : null}
+
+      {detailsDrawerOpen ? (
+        <SideDrawer
+          onClose={closeDetailsDrawer}
+          subtitle="Task evidence and audit"
+          title="执行记录"
+        >
+          <TaskOverview
+            busy={busy}
+            onCancel={() => {
+              if (activeTask) void cancelTask(activeTask);
+            }}
+            onOpenConfirmation={() => {
+              setDetailsDrawerOpen(false);
+              setConfirmationOpen(true);
+            }}
+            onRefresh={() => void refreshTask()}
+            refreshing={refreshingTask}
+            task={activeTask}
+          />
+          <TaskDetails
+            audit={audit}
+            auditError={auditError}
+            auditLoading={auditLoading}
+            onOpenChange={setDetailsOpen}
+            open
+            task={activeTask}
+          />
+        </SideDrawer>
+      ) : null}
+
+      {toast ? <Toast onDismiss={dismissToast} toast={toast} /> : null}
     </div>
   );
 }

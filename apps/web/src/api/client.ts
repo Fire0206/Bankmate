@@ -1,4 +1,20 @@
 import type { components, paths } from "../generated/api";
+import {
+  demoAccounts,
+  demoBills,
+  demoCards,
+  demoHealth,
+  demoOrders,
+  demoPayees,
+  demoPortfolio,
+  demoProducts,
+  demoRiskProfile,
+  demoSession,
+  demoSplits,
+  demoSubscriptions,
+  demoTransactions,
+  demoTransfers,
+} from "../demoData";
 
 type HealthResponse =
   paths["/api/v1/health"]["get"]["responses"][200]["content"]["application/json"];
@@ -7,6 +23,22 @@ type CardListResponse =
 type DemoSessionResponse = components["schemas"]["DemoSessionResponse"];
 type AgentTaskResponse = components["schemas"]["AgentTaskResponse"];
 type AuditResponse = components["schemas"]["AgentAuditResponse"];
+type AccountBalanceListResponse =
+  components["schemas"]["AccountBalanceListResponse"];
+type BillSummaryResponse = components["schemas"]["BillSummaryResponse"];
+type TransactionPageResponse = components["schemas"]["TransactionPageResponse"];
+type SubscriptionListResponse =
+  components["schemas"]["SubscriptionListResponse"];
+type TransferListResponse = components["schemas"]["TransferListResponse"];
+type SplitBillListResponse = components["schemas"]["SplitBillListResponse"];
+type PayeeListResponse = components["schemas"]["PayeeListResponse"];
+type RiskProfileResponse = components["schemas"]["RiskProfileResponse"];
+type InvestmentProductListResponse =
+  components["schemas"]["InvestmentProductListResponse"];
+type InvestmentPortfolioResponse =
+  components["schemas"]["InvestmentPortfolioResponse"];
+type InvestmentOrderListResponse =
+  components["schemas"]["InvestmentOrderListResponse"];
 type CreateTaskRequest =
   paths["/api/v1/agent/tasks"]["post"]["requestBody"]["content"]["application/json"];
 type RecentTaskResponse =
@@ -36,6 +68,25 @@ export class ApiError extends Error {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+export const staticPreviewMode =
+  import.meta.env.VITE_STATIC_DEMO === "true" &&
+  import.meta.env.MODE === "production";
+
+function preview<T>(value: T): Promise<T> {
+  return Promise.resolve(structuredClone(value));
+}
+
+function previewWrite(): Promise<never> {
+  return Promise.reject(
+    new ApiError(
+      "当前是静态展示包。页面可以浏览，资金类操作请连接本地 API 后体验。",
+      503,
+      "static_preview_read_only",
+      null,
+      [],
+    ),
+  );
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiBaseUrl + path, {
@@ -73,22 +124,140 @@ function idempotencyKey(): string {
 }
 
 export const apiClient = {
-  readHealth: () => request<HealthResponse>("/api/v1/health"),
-  readSession: () => request<DemoSessionResponse>("/api/v1/demo/session"),
-  readCards: () => request<CardListResponse>("/api/v1/cards?limit=100"),
+  readHealth: () =>
+    staticPreviewMode
+      ? preview(demoHealth)
+      : request<HealthResponse>("/api/v1/health"),
+  readSession: () =>
+    staticPreviewMode
+      ? preview(demoSession)
+      : request<DemoSessionResponse>("/api/v1/demo/session"),
+  readCards: () =>
+    staticPreviewMode
+      ? preview(demoCards)
+      : request<CardListResponse>("/api/v1/cards?limit=100"),
+  readAccounts: () =>
+    staticPreviewMode
+      ? preview(demoAccounts)
+      : request<AccountBalanceListResponse>("/api/v1/accounts"),
+  readBillSummary: (month?: string, category?: string) => {
+    if (staticPreviewMode) {
+      const data = structuredClone(demoBills);
+      if (month) data.month = month;
+      if (category) {
+        data.selected_category = category;
+        data.selected_category_expense_minor =
+          data.categories.find((item) => item.category === category)
+            ?.amount_minor ?? 0;
+      }
+      return preview(data);
+    }
+    const query = new URLSearchParams();
+    if (month) query.set("month", month);
+    if (category) query.set("category", category);
+    return request<BillSummaryResponse>(
+      "/api/v1/bills/summary" + (query.size ? "?" + query.toString() : ""),
+    );
+  },
+  readTransactions: (params?: {
+    month?: string;
+    category?: string;
+    merchant?: string;
+    direction?: "income" | "expense";
+    offset?: number;
+    limit?: number;
+  }) => {
+    if (staticPreviewMode) {
+      const items = demoTransactions.items.filter((item) => {
+        if (params?.category && item.category !== params.category) return false;
+        if (params?.merchant && !item.merchant.includes(params.merchant))
+          return false;
+        if (params?.direction && item.direction !== params.direction)
+          return false;
+        return true;
+      });
+      const offset = params?.offset ?? 0;
+      const limit = params?.limit ?? items.length;
+      return preview({
+        ...demoTransactions,
+        items: items.slice(offset, offset + limit),
+        total: items.length,
+        offset,
+        limit,
+        next_offset:
+          offset + limit < items.length ? offset + limit : null,
+      } as TransactionPageResponse);
+    }
+    const query = new URLSearchParams();
+    if (params?.month) query.set("month", params.month);
+    if (params?.category) query.set("category", params.category);
+    if (params?.merchant) query.set("merchant", params.merchant);
+    if (params?.direction) query.set("direction", params.direction);
+    if (params?.offset !== undefined)
+      query.set("offset", String(params.offset));
+    if (params?.limit !== undefined) query.set("limit", String(params.limit));
+    return request<TransactionPageResponse>(
+      "/api/v1/transactions" + (query.size ? "?" + query.toString() : ""),
+    );
+  },
+  readSubscriptions: () =>
+    staticPreviewMode
+      ? preview(demoSubscriptions)
+      : request<SubscriptionListResponse>("/api/v1/subscriptions"),
+  readPayees: () =>
+    staticPreviewMode
+      ? preview(demoPayees)
+      : request<PayeeListResponse>("/api/v1/payees"),
+  readTransfers: (limit = 50) =>
+    staticPreviewMode
+      ? preview(demoTransfers)
+      : request<TransferListResponse>(
+          "/api/v1/transfers?limit=" + String(limit),
+        ),
+  readSplits: (limit = 50) =>
+    staticPreviewMode
+      ? preview(demoSplits)
+      : request<SplitBillListResponse>("/api/v1/splits?limit=" + String(limit)),
+  readRiskProfile: () =>
+    staticPreviewMode
+      ? preview(demoRiskProfile)
+      : request<RiskProfileResponse>("/api/v1/investments/profile"),
+  readInvestmentProducts: () =>
+    staticPreviewMode
+      ? preview(demoProducts)
+      : request<InvestmentProductListResponse>(
+          "/api/v1/investments/products",
+        ),
+  readInvestmentPortfolio: () =>
+    staticPreviewMode
+      ? preview(demoPortfolio)
+      : request<InvestmentPortfolioResponse>(
+          "/api/v1/investments/portfolio",
+        ),
+  readInvestmentOrders: () =>
+    staticPreviewMode
+      ? preview(demoOrders)
+      : request<InvestmentOrderListResponse>("/api/v1/investments/orders"),
   readTask: (id: string) =>
-    request<AgentTaskResponse>("/api/v1/agent/tasks/" + encodeURIComponent(id)),
+    staticPreviewMode
+      ? previewWrite()
+      : request<AgentTaskResponse>(
+          "/api/v1/agent/tasks/" + encodeURIComponent(id),
+        ),
   readRecentTask: (conversationId: string) =>
-    request<RecentTaskResponse>(
-      "/api/v1/agent/tasks/recent?conversation_id=" +
-        encodeURIComponent(conversationId),
-    ),
+    staticPreviewMode
+      ? Promise.resolve(null)
+      : request<RecentTaskResponse>(
+          "/api/v1/agent/tasks/recent?conversation_id=" +
+            encodeURIComponent(conversationId),
+        ),
   readTaskByIdempotencyKey: (
     key: string,
     conversationId: string,
     operation: IdempotencyOperation,
     taskId?: string,
   ) => {
+    if (staticPreviewMode) return Promise.resolve(null);
     const params = new URLSearchParams({
       conversation_id: conversationId,
       operation,
@@ -102,34 +271,41 @@ export const apiClient = {
     );
   },
   readAudit: (id: string) =>
-    request<AuditResponse>(
-      "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/audit",
-    ),
+    staticPreviewMode
+      ? previewWrite()
+      : request<AuditResponse>(
+          "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/audit",
+        ),
   createTask: (body: CreateTaskRequest, key = idempotencyKey()) =>
-    request<AgentTaskResponse>("/api/v1/agent/tasks", {
-      method: "POST",
-      headers: { "Idempotency-Key": key },
-      body: JSON.stringify(body),
-    }),
+    staticPreviewMode
+      ? previewWrite()
+      : request<AgentTaskResponse>("/api/v1/agent/tasks", {
+          method: "POST",
+          headers: { "Idempotency-Key": key },
+          body: JSON.stringify(body),
+        }),
   provideTaskInput: (
     id: string,
     body: TaskInputRequest,
     key = idempotencyKey(),
   ) =>
-    request<AgentTaskResponse>(
-      "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/input",
-      {
-        method: "POST",
-        headers: { "Idempotency-Key": key },
-        body: JSON.stringify(body),
-      },
-    ),
+    staticPreviewMode
+      ? previewWrite()
+      : request<AgentTaskResponse>(
+          "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/input",
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": key },
+            body: JSON.stringify(body),
+          },
+        ),
   confirmTask: (
     taskId: string,
     challengeId: string,
     parametersHash: string,
     key: string,
   ) => {
+    if (staticPreviewMode) return previewWrite();
     const body: ConfirmationRequest = {
       challenge_id: challengeId,
       parameters_hash: parametersHash,
@@ -144,19 +320,32 @@ export const apiClient = {
     );
   },
   cancelTask: (id: string, key = idempotencyKey()) =>
-    request<AgentTaskResponse>(
-      "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/cancel",
-      {
-        method: "POST",
-        headers: { "Idempotency-Key": key },
-      },
-    ),
+    staticPreviewMode
+      ? previewWrite()
+      : request<AgentTaskResponse>(
+          "/api/v1/agent/tasks/" + encodeURIComponent(id) + "/cancel",
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": key },
+          },
+        ),
 };
 
 export type {
+  AccountBalanceListResponse,
   AgentTaskResponse,
   AuditResponse,
+  BillSummaryResponse,
   CardListResponse,
   DemoSessionResponse,
   HealthResponse,
+  InvestmentOrderListResponse,
+  InvestmentPortfolioResponse,
+  InvestmentProductListResponse,
+  PayeeListResponse,
+  RiskProfileResponse,
+  SplitBillListResponse,
+  SubscriptionListResponse,
+  TransactionPageResponse,
+  TransferListResponse,
 };
