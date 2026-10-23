@@ -39,6 +39,31 @@ class DemoUser(Base):
     accounts: Mapped[list["Account"]] = relationship(back_populates="demo_user")
 
 
+class RiskAssessment(Base):
+    __tablename__ = "risk_assessments"
+    __table_args__ = (
+        UniqueConstraint("actor_id", "idempotency_key", name="uq_risk_assessments_actor_key"),
+        CheckConstraint("risk_level between 1 and 5", name="risk_assessment_level_allowed"),
+        Index("ix_risk_assessments_actor_created", "actor_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey(
+            "demo_users.id", name="fk_risk_assessments_actor_id_demo_users", ondelete="RESTRICT"
+        ),
+        nullable=False,
+    )
+    questionnaire_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    answers: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
+    answers_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    risk_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class Account(Base):
     __tablename__ = "accounts"
     __table_args__ = (

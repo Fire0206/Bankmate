@@ -35,6 +35,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
 - `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；`payees.phone_number` 可空且每 actor 唯一，仅精确匹配当前用户的模拟收款人，对外只返回掩码；`transfers.remark` 可空，作为不可信用户数据存储并参与确认参数摘要。转账/收款执行由 Application 用例在事务内更新余额与关联流水。
 - `investment_products`、`investment_holdings`、`investment_orders`：确定性模拟产品和价格、风险等级、用户持仓及申购/赎回订单；不代表真实理财产品或收益。
+- `risk_assessments`：用户主动提交的四项模拟风险问卷答案、问卷版本、确定性得分和风险等级；按时间追加保存，`demo_users.risk_level` 是最新测评等级的受控投影。提交由服务端按答案评分并写审计，Agent 只能读取问卷，不能代填或直接提高等级。重复 Seed 不覆盖已有用户等级；显式 Reset 清除测评并恢复合成初始值。
 - `confirmation_challenges`：一次性绑定 actor、单一目标资源（银行卡、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
 - `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。可选 `card_id` 将来源卡与交易关联，以支持可解释的重复扣费证据。
 - `audit_events`：通用 actor、event type、resource、request/task/tool execution ID、outcome、可选前后状态摘要和 UTC 时间；兼容既有卡片状态语义。正常业务路径只追加，不覆盖或删除历史。不得在审计事件中存密钥、原始敏感数据或完整 Prompt。

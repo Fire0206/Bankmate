@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RiskProfileResponse(BaseModel):
@@ -10,6 +10,42 @@ class RiskProfileResponse(BaseModel):
 
     risk_level: int
     risk_label: str
+
+
+class RiskQuestionOption(BaseModel):
+    value: int
+    label: str
+
+
+class RiskQuestion(BaseModel):
+    key: str
+    title: str
+    options: list[RiskQuestionOption]
+
+
+class RiskQuestionnaireResponse(BaseModel):
+    questionnaire_version: str
+    questions: list[RiskQuestion]
+    notice: str
+
+
+class RiskAssessmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    questionnaire_version: str
+    time_horizon: int = Field(ge=1, le=5)
+    loss_tolerance: int = Field(ge=1, le=5)
+    liquidity_capacity: int = Field(ge=1, le=5)
+    investment_experience: int = Field(ge=1, le=5)
+
+
+class RiskAssessmentResponse(BaseModel):
+    id: UUID
+    questionnaire_version: str
+    score: int
+    risk_level: int
+    risk_label: str
+    assessed_at: datetime
 
 
 class InvestmentProductResponse(BaseModel):

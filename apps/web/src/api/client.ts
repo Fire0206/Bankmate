@@ -27,6 +27,10 @@ type ProductListResponse =
   components["schemas"]["InvestmentProductListResponse"];
 type PortfolioResponse = components["schemas"]["InvestmentPortfolioResponse"];
 type RiskProfileResponse = components["schemas"]["RiskProfileResponse"];
+type RiskQuestionnaireResponse =
+  components["schemas"]["RiskQuestionnaireResponse"];
+type RiskAssessmentResponse = components["schemas"]["RiskAssessmentResponse"];
+type RiskAssessmentRequest = components["schemas"]["RiskAssessmentRequest"];
 type OrderListResponse = components["schemas"]["InvestmentOrderListResponse"];
 type RecommendationsResponse =
   components["schemas"]["FinancialRecommendationsResponse"];
@@ -116,6 +120,20 @@ export const apiClient = {
     request<PortfolioResponse>("/api/v1/investments/portfolio"),
   readRiskProfile: () =>
     request<RiskProfileResponse>("/api/v1/investments/profile"),
+  readRiskQuestionnaire: () =>
+    request<RiskQuestionnaireResponse>(
+      "/api/v1/investments/risk-assessment/questionnaire",
+    ),
+  readLatestRiskAssessment: () =>
+    request<RiskAssessmentResponse | null>(
+      "/api/v1/investments/risk-assessment/latest",
+    ),
+  submitRiskAssessment: (body: RiskAssessmentRequest, key: string) =>
+    request<RiskAssessmentResponse>("/api/v1/investments/risk-assessment", {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify(body),
+    }),
   readOrders: () => request<OrderListResponse>("/api/v1/investments/orders"),
   readRecommendations: (month: string) =>
     request<RecommendationsResponse>(
@@ -223,6 +241,9 @@ export type {
   ProductListResponse,
   RecommendationsResponse,
   RiskProfileResponse,
+  RiskQuestionnaireResponse,
+  RiskAssessmentResponse,
+  RiskAssessmentRequest,
   SplitListResponse,
   SubscriptionListResponse,
   TaskInputRequest,

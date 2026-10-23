@@ -11,6 +11,7 @@ from finorch_api.infrastructure.models import (
     DemoUser,
     InvestmentProduct,
     Payee,
+    RiskAssessment,
     Subscription,
     Transaction,
 )
@@ -44,10 +45,11 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
         "investment_products",
         "investment_holdings",
         "investment_orders",
+        "risk_assessments",
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0007_transfer_phone_remark"
+        assert revision == "0008_risk_assessments"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
@@ -88,6 +90,7 @@ def test_seed_is_repeatable_without_duplicate_rows(seeded_database) -> None:
 
     assert second_state == first_state == (2, 3, 3, 0, 31, 3, 3, 3, DATASET_VERSION)
     with seeded_database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(RiskAssessment)) == 0
         assert (
             session.scalar(select(Payee.phone_number).where(Payee.display_name == "储蓄账户"))
             is None
@@ -193,7 +196,7 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0007_transfer_phone_remark"
+                "0008_risk_assessments"
             )
     finally:
         engine.dispose()

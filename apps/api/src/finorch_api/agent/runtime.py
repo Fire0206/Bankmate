@@ -999,7 +999,10 @@ class FakeProvider(LLMProvider):
             next((name for name in product_names if name in full_request), None),
         )
         investment_intent = (
-            any(word in request for word in ("理财", "产品", "基金", "申购", "赎回"))
+            any(
+                word in request
+                for word in ("理财", "产品", "基金", "申购", "赎回", "风险测评", "风险评估")
+            )
             or ("比较" in full_request or "对比" in full_request)
             and any(
                 name in full_request or any(alias in full_request for alias in aliases)
@@ -1007,6 +1010,10 @@ class FakeProvider(LLMProvider):
             )
         )
         if investment_intent:
+            if any(
+                word in full_request for word in ("风险测评", "风险评估", "重新测评", "风险问卷")
+            ):
+                return call("investment.assessment_questions", {})
             if "产品" in full_request and any(
                 word in full_request for word in ("哪些", "符合", "适合", "匹配", "产品有")
             ):

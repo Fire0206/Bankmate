@@ -2060,3 +2060,79 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+.risk-assessment {
+  max-width: 680px;
+  padding: 20px 0;
+}
+
+.risk-assessment h4 {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 0 0 10px;
+}
+
+.risk-assessment p {
+  color: #666;
+  line-height: 1.6;
+}
+
+.risk-assessment .risk-assessment-current {
+  color: #111;
+  font-weight: 600;
+}
+
+.risk-assessment fieldset {
+  border: 0;
+  border-top: 1px solid #e8e8e8;
+  margin: 18px 0 0;
+  min-width: 0;
+  padding: 18px 0 0;
+}
+
+.risk-assessment legend {
+  font-weight: 600;
+  padding: 0 0 4px;
+}
+
+.risk-assessment-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px 14px;
+}
+
+.risk-assessment-options label {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-height: 42px;
+}
+
+.risk-assessment-options input {
+  accent-color: #111;
+}
+
+.risk-assessment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.risk-assessment-actions button {
+  background: #111;
+  border: 1px solid #111;
+  border-radius: 10px;
+  color: #fff;
+  min-height: 44px;
+  padding: 0 18px;
+}
+
+.risk-assessment-actions button + button {
+  background: #fff;
+  border-color: #e8e8e8;
+  color: #111;
+}
+
+.risk-assessment-actions button:disabled {
+  opacity: 0.55;
+}

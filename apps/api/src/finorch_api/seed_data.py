@@ -265,7 +265,6 @@ def seed_demo_data(session: Session) -> None:
             )
         else:
             user.dataset_version = DATASET_VERSION
-            user.risk_level = risk_level
     session.flush()
 
     for account_id, user_id, label, currency, opening_balance_minor in _ACCOUNTS:

@@ -37,6 +37,7 @@
 
 转账和理财受控工具包括 `transfer.accounts`、`transfer.payees`、`transfer.history`、`transfer.create`、`transfer.schedule`、`transfer.cancel_scheduled`、`transfer.simulate_due`、`transfer.splits`、`transfer.split_create`、`transfer.split_collect`；`investment.products`、`investment.compare`、`investment.profile`、`investment.portfolio`、`investment.orders`、`investment.buy`、`investment.redeem`。`finance.payday_plan` 是只读确定性 Application 用例，按账户余额、月度收支、用户指令和预留金额计算可用资金，不由模型计算余额或资金额度。所有读取按 actor 限定；资金变更工具只创建服务端 challenge，确认时再次校验账户归属、余额/持仓、参数摘要、资源版本、策略版本、有效期及幂等键。定时转账只由开发/测试环境里的显式模拟器执行。
 `transfer.create` 与 `transfer.schedule` 可用已保存姓名或用户明确给出的完整模拟手机号定位收款人，服务端精确匹配，找不到即拒绝；可选备注视为不可信数据，写入记录并绑定确认摘要。Agent 不能根据掩码猜出完整号码，也不能把用户给出的号码替换为其他号码。
+`investment.assessment_questions` 只读返回固定版本问卷。Agent 可以引导用户测评，但不能代填答案或直接设置风险等级；用户在应用内自行提交，服务端确定性评分并持久化。申购确认会重新读取最新画像核对适当性。
 
 跨场景 Workflow 由受控工具序列组合，不新建业务旁路：可疑扣款主线先读 `bill.anomalies` 和 `subscription.list`，只在重复扣费规则命中且能关联来源卡与活动订阅时提出冻结/暂停操作；发薪日主线读取账户、账单并调用 `finance.payday_plan`，之后才可提出转账与理财操作。发薪日联动缺少转账额或预留额时保持 `awaiting_input`，后续输入会附加到原任务目标。每个写操作各自暂停等待服务端确认；确认后续跑原 Task。Application 在完成态校验明确请求的写操作是否存在成功 ToolExecution；若仍缺少明确操作，最多触发两轮有界重规划，之后模型仍不能只读数据后把未完成写目标标为成功。部分成功保留已提交的账本与审计记录，失败后可由用户重新输入继续；取消只阻止未执行步骤，不回滚已成功步骤。
 
