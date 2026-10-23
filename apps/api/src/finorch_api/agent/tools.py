@@ -40,6 +40,55 @@ class CardGetOutput(CardToolItem):
     pass
 
 
+class CardApplicationInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_label: str | None = Field(default=None, min_length=1, max_length=80)
+    card_label: str = Field(default="模拟借记卡", min_length=1, max_length=80)
+
+
+class CardApplicationItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    account_id: UUID
+    account_label: str
+    label: str
+    status: Literal["pending_confirmation", "submitted", "approved", "rejected", "cancelled"]
+    issued_card_id: UUID | None
+    issued_card_suffix: str | None
+    version: int
+    created_at: datetime
+    reviewed_at: datetime | None
+
+
+class CardApplicationsOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[CardApplicationItem]
+
+
+class CardApplicationProposalOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["awaiting_confirmation"]
+    confirmation_required: Literal[True]
+    challenge_id: UUID
+    application_id: UUID
+    account_id: UUID
+    account_label: str
+    card_label: str
+    current_status: Literal["pending_confirmation"]
+    target_status: Literal["submitted"]
+    parameters_hash: str
+    idempotency_key: str
+    expires_at: datetime
+    resource_type: Literal["card_application"]
+    resource_id: UUID
+    resource_label: str
+    resource_version: int
+
+
 class CardChangeProposalOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

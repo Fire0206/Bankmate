@@ -831,6 +831,7 @@ class FakeProvider(LLMProvider):
                 "card.unfreeze": "银行卡已解冻。",
                 "card.report_lost": "银行卡已挂失。",
                 "card.replace": "已申请模拟补卡。",
+                "card.apply": "模拟借记卡申请已提交，等待本地模拟审核。",
                 "subscription.pause": "自动扣费已暂停。",
                 "subscription.resume": "自动扣费已恢复。",
                 "subscription.cancel": "已取消该项自动扣费。",
@@ -1175,13 +1176,46 @@ class FakeProvider(LLMProvider):
                 "", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, json.dumps(args)),)
             )
         requested_card_action = requested_card_tool(full_request)
+        if (
+            requested_card_action is None
+            and any(
+                phrase in full_request
+                for phrase in ("申请状态", "申请进度", "申请记录", "审核结果")
+            )
+            and any(phrase in full_request for phrase in ("银行卡", "借记卡", "卡片"))
+        ):
+            return ModelTurn(
+                "", (ModelToolCall("fake-card-applications", "card.applications", "{}"),)
+            )
         is_unfreeze = requested_card_action == "card.unfreeze"
         is_freeze = requested_card_action == "card.freeze"
         is_lost = requested_card_action == "card.report_lost"
         is_replace = requested_card_action == "card.replace"
+        is_apply = requested_card_action == "card.apply"
         suffix_source = request if has_followup else full_request
         suffix_match = re.search(r"(?<!\d)(\d{4})(?!\d)", suffix_source)
 
+        if is_apply:
+            name = "card.apply"
+            account_label = (
+                "Everyday account"
+                if any(label in full_request for label in ("日常账户", "Everyday account"))
+                else "Savings account"
+                if any(label in full_request for label in ("储蓄账户", "Savings account"))
+                else None
+            )
+            if account_label is None:
+                return ModelTurn("请说明要绑定日常账户还是储蓄账户。", status="awaiting_input")
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        "fake-card-apply",
+                        name,
+                        json.dumps({"account_label": account_label, "card_label": "模拟借记卡"}),
+                    ),
+                ),
+            )
         if is_freeze or is_unfreeze or is_lost or is_replace:
             suffix = suffix_match.group(1) if suffix_match else None
             if suffix is None and any(word in request for word in ("刚才", "刚刚", "上一张")):

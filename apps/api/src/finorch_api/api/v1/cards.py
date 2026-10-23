@@ -1,12 +1,19 @@
 import base64
 import binascii
+from dataclasses import asdict
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from finorch_api.api.v1.card_schemas import CardListResponse, CardResponse
+from finorch_api.api.v1.card_schemas import (
+    CardApplicationResponse,
+    CardApplicationsResponse,
+    CardListResponse,
+    CardResponse,
+)
+from finorch_api.application.card_applications import list_card_applications
 from finorch_api.application.cards import (
     CardNotFoundError,
     CardView,
@@ -70,6 +77,22 @@ def read_cards(
     return CardListResponse(
         items=[_to_response(card) for card in page.items],
         next_cursor=next_cursor,
+    )
+
+
+@router.get(
+    "/applications",
+    response_model=CardApplicationsResponse,
+    summary="List the current demo user's synthetic debit-card applications",
+)
+def read_card_applications(
+    session: DatabaseSession, actor: CurrentDemoActor
+) -> CardApplicationsResponse:
+    return CardApplicationsResponse(
+        items=[
+            CardApplicationResponse.model_validate(asdict(item))
+            for item in list_card_applications(session, actor_id=actor.user_id)
+        ]
     )
 
 

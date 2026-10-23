@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cards/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the current demo user's synthetic debit-card applications */
+        get: operations["read_card_applications_api_v1_cards_applications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -896,6 +913,46 @@ export interface components {
             /** Expense Minor */
             expense_minor: number;
         };
+        /** CardApplicationResponse */
+        CardApplicationResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Label */
+            account_label: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending_confirmation" | "submitted" | "approved" | "rejected" | "cancelled";
+            /** Issued Card Id */
+            issued_card_id: string | null;
+            /** Issued Card Suffix */
+            issued_card_suffix: string | null;
+            /** Version */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Reviewed At */
+            reviewed_at: string | null;
+        };
+        /** CardApplicationsResponse */
+        CardApplicationsResponse: {
+            /** Items */
+            items: components["schemas"]["CardApplicationResponse"][];
+        };
         /** CardListResponse */
         CardListResponse: {
             /** Items */
@@ -951,7 +1008,7 @@ export interface components {
              * Resource Type
              * @enum {string}
              */
-            resource_type: "card" | "subscription" | "transfer" | "split" | "investment_order";
+            resource_type: "card" | "card_application" | "subscription" | "transfer" | "split" | "investment_order";
             /**
              * Resource Id
              * Format: uuid
@@ -1722,6 +1779,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CardListResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_card_applications_api_v1_cards_applications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardApplicationsResponse"];
                 };
             };
             /** @description Authentication required. */

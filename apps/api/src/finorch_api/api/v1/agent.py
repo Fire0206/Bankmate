@@ -262,6 +262,8 @@ def confirm_task_operation(
         raise _conflict("Simulated second verification was not accepted.", task.error_code)
     if task.error_code in {
         "card_version_conflict",
+        "card_application_version_conflict",
+        "card_application_exists",
         "subscription_version_conflict",
         "transfer_version_conflict",
         "transfer_state_conflict",

@@ -900,6 +900,7 @@ type Step = Task["steps"][number];
 const resultTitles: Record<string, string> = {
   "card.list": "银行卡",
   "card.get": "银行卡状态",
+  "card.applications": "模拟银行卡申请",
   "bill.monthly_summary": "月度账单",
   "bill.annual_report": "年度账单",
   "bill.transactions": "交易明细",
@@ -925,6 +926,7 @@ const writeTitles: Record<string, string> = {
   "card.unfreeze": "银行卡已解冻",
   "card.report_lost": "银行卡已挂失",
   "card.replace": "模拟补卡已创建",
+  "card.apply": "模拟借记卡申请已提交",
   "subscription.pause": "自动续费已暂停",
   "subscription.resume": "自动续费已恢复",
   "subscription.cancel": "自动续费已取消",
@@ -983,6 +985,20 @@ function conciseValue(step: Step): string[] {
         `${cardLabel(stringValue(card.label))} · 尾号 ${stringValue(card.card_suffix)} · ${statusLabel(card.status)}`,
       ];
     }
+    case "card.applications":
+      return items.length
+        ? items.slice(0, 3).map((item) => {
+            const status =
+              {
+                pending_confirmation: "待确认",
+                submitted: "待模拟审核",
+                approved: "模拟审核通过",
+                rejected: "模拟审核未通过",
+                cancelled: "已取消",
+              }[stringValue(item.status)] ?? "状态待更新";
+            return `${stringValue(item.label)} · ${status}${item.issued_card_suffix ? ` · 新卡尾号 ${stringValue(item.issued_card_suffix)}` : ""}`;
+          })
+        : ["暂无模拟银行卡申请"];
     case "bill.monthly_summary": {
       const categories = objectArray(data.categories);
       return [
@@ -1094,6 +1110,13 @@ function writeSummary(step: Step): { title: string; detail: string } {
   const toolName = step.tool_name ?? "";
   const data = isObjectResult(step) ? step.result_data : {};
   if (toolName.startsWith("card.")) {
+    if (toolName === "card.apply") {
+      const application = isObject(data.application) ? data.application : data;
+      return {
+        title: writeTitles[toolName],
+        detail: `${stringValue(application.label)} · 等待本地模拟审核，尚未发卡`,
+      };
+    }
     const card = isObject(data.card) ? data.card : data;
     const replacement = isObject(data.replacement_card)
       ? data.replacement_card

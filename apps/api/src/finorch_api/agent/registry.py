@@ -19,6 +19,10 @@ from finorch_api.agent.tools import (
     BillSummaryOutput,
     BillTransactionsInput,
     BillTransactionsOutput,
+    CardApplicationInput,
+    CardApplicationItem,
+    CardApplicationProposalOutput,
+    CardApplicationsOutput,
     CardChangeProposalOutput,
     CardGetOutput,
     CardListOutput,
@@ -37,6 +41,10 @@ from finorch_api.application.bills import (
     get_month_anomalies,
     get_monthly_summary,
     list_transactions,
+)
+from finorch_api.application.card_applications import (
+    list_card_applications,
+    propose_card_application,
 )
 from finorch_api.application.cards import CardNotFoundError, CardView, list_cards
 from finorch_api.application.confirmation import parameters_hash as hash_parameters
@@ -211,6 +219,29 @@ def _bill_transaction_output(value: Any) -> dict[str, Any]:
 
 
 def build_tool_registry() -> ToolRegistry:
+    def applications_handler(
+        _arguments: BaseModel, context: ToolCallContext
+    ) -> CardApplicationsOutput:
+        return CardApplicationsOutput(
+            items=[
+                CardApplicationItem.model_validate(asdict(item))
+                for item in list_card_applications(context.session, actor_id=context.actor_id)
+            ]
+        )
+
+    def apply_handler(
+        arguments: BaseModel, context: ToolCallContext
+    ) -> CardApplicationProposalOutput:
+        typed = CardApplicationInput.model_validate(arguments)
+        return CardApplicationProposalOutput.model_validate(
+            propose_card_application(
+                context.session,
+                context=context,
+                account_label=typed.account_label,
+                card_label=typed.card_label,
+            )
+        )
+
     def list_handler(_arguments: BaseModel, context: ToolCallContext) -> CardListOutput:
         page = list_cards(context.session, actor_id=context.actor_id, limit=100)
         return CardListOutput(
@@ -355,6 +386,34 @@ def build_tool_registry() -> ToolRegistry:
 
     return ToolRegistry(
         (
+            ToolSpec(
+                name="card.applications",
+                description=(
+                    "List this demo user's synthetic debit-card applications and review status."
+                ),
+                version=TOOL_VERSION,
+                input_model=EmptyToolInput,
+                output_model=CardApplicationsOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=applications_handler,
+            ),
+            ToolSpec(
+                name="card.apply",
+                description=(
+                    "Propose a synthetic debit-card application for an owned account. "
+                    "Submission requires confirmation; local demo review occurs separately. "
+                    "Never imply real bank issuance or credit approval."
+                ),
+                version=TOOL_VERSION,
+                input_model=CardApplicationInput,
+                output_model=CardApplicationProposalOutput,
+                permission_level="reversible_write",
+                risk_level="medium",
+                confirmation_requirement="always",
+                handler=apply_handler,
+            ),
             ToolSpec(
                 name="card.list",
                 description="List the current authenticated demo user's synthetic cards.",

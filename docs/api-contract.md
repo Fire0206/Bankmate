@@ -120,6 +120,8 @@ Demo Session 与 Agent Task 端点：
 
 `card.freeze`、`card.unfreeze`、`card.report_lost`、`subscription.pause`、`subscription.resume`、`subscription.cancel`、转账、分账和理财写工具 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
 
+`card.replace` 和 `card.apply` 同样走受控 Agent 确认。`GET /api/v1/cards/applications` 只返回当前 actor 已提交的模拟借记卡申请及本地审核状态；未确认提案不作为正式申请展示。审核脚本不通过 HTTP 或 Agent 暴露。
+
 任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`subscription_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
 
 任务读取发现已过期的 pending confirmation 时，由服务端将挑战、ToolExecution、TaskStep 和 Task 状态在同一事务中结算为过期/失败并追加审计；业务状态保持不变。这个惰性过期处理保证刷新恢复显示服务端实际状态，不依赖前端时钟。

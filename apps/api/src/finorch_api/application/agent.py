@@ -44,6 +44,10 @@ from finorch_api.application.agent_workflow import (
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
 )
+from finorch_api.application.card_applications import (
+    POLICY_VERSION as CARD_APPLICATION_POLICY_VERSION,
+)
+from finorch_api.application.card_applications import submit_card_application
 from finorch_api.application.cards import (
     CardNotFoundError,
     CardWriteConflictError,
@@ -71,6 +75,7 @@ from finorch_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
+    CardApplication,
     ConfirmationChallenge,
     InvestmentOrder,
     InvestmentProduct,
@@ -749,6 +754,7 @@ def _dispatch_tool(
                 "scheduled": "创建定时转账",
                 "open": "创建分账",
                 "settled": "模拟收取分账",
+                "submitted": "提交",
             }.get(target_status, "变更")
             label = str(result_data.get("resource_label", "")).strip()
             if resource_type == "card":
@@ -762,6 +768,8 @@ def _dispatch_tool(
             elif resource_type == "investment_order":
                 action = "模拟申购" if result_data.get("order_type") == "buy" else "模拟赎回"
                 target = f"{label}理财产品"
+            elif resource_type == "card_application":
+                target = f"{label}模拟借记卡申请"
             else:
                 target = label
             return ToolDispatchResult(
@@ -872,6 +880,31 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                 card_label=card.label,
                 card_version=challenge.card_version,
             )
+        elif challenge.card_application_id is not None:
+            application = session.scalar(
+                select(CardApplication).where(
+                    CardApplication.id == challenge.card_application_id,
+                    CardApplication.actor_id == actor_id,
+                )
+            )
+            if application is not None:
+                account = session.get(Account, application.account_id)
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="card_application",
+                    resource_id=application.id,
+                    resource_label=application.label,
+                    resource_version=challenge.card_application_version or application.version,
+                    current_status=application.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    details={"account_label": account.label if account else "模拟账户"},
+                )
         elif challenge.subscription_id is not None:
             subscription = get_owned_subscription(
                 session, actor_id=actor_id, subscription_id=challenge.subscription_id
@@ -1546,6 +1579,7 @@ def continue_confirmed_task(
 def _challenge_resource(challenge: ConfirmationChallenge) -> tuple[str, UUID]:
     for kind, resource_id in (
         ("card", challenge.card_id),
+        ("card_application", challenge.card_application_id),
         ("subscription", challenge.subscription_id),
         ("transfer", challenge.transfer_id),
         ("split", challenge.split_bill_id),
@@ -1559,6 +1593,13 @@ def _challenge_resource(challenge: ConfirmationChallenge) -> tuple[str, UUID]:
 def _cancel_unexecuted_proposal(
     session: Session, challenge: ConfirmationChallenge
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if challenge.card_application_id is not None:
+        application = session.get(CardApplication, challenge.card_application_id)
+        if application is not None and application.status == "pending_confirmation":
+            before = {"status": application.status, "version": application.version}
+            application.status = "cancelled"
+            session.flush()
+            return before, {"status": application.status, "version": application.version}
     resource: Transfer | SplitBill | InvestmentOrder | None = None
     if challenge.transfer_id is not None and challenge.target_status != "cancelled":
         resource = session.get(Transfer, challenge.transfer_id)
@@ -2170,6 +2211,113 @@ def confirm_task_operation(
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
             task.error_code = None
+
+            if challenge.card_application_id is not None:
+                application = session.scalar(
+                    select(CardApplication).where(
+                        CardApplication.id == challenge.card_application_id,
+                        CardApplication.actor_id == actor_id,
+                    )
+                )
+                if application is None:
+                    raise AgentTaskNotFoundError
+                normalized = {
+                    "tool_name": challenge.tool_name,
+                    "tool_version": challenge.tool_version,
+                    "application_id": str(application.id),
+                    "account_id": str(application.account_id),
+                    "label": application.label,
+                    "target_status": "submitted",
+                }
+                if (
+                    application.version != challenge.card_application_version
+                    or application.status != "pending_confirmation"
+                    or challenge.target_status != "submitted"
+                    or challenge.tool_name != "card.apply"
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != CARD_APPLICATION_POLICY_VERSION
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="card_application_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                if session.scalar(
+                    select(CardApplication.id).where(
+                        CardApplication.actor_id == actor_id,
+                        CardApplication.account_id == application.account_id,
+                        CardApplication.status == "submitted",
+                        CardApplication.id != application.id,
+                    )
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="card_application_exists",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                _transition(task, "running")
+                execution.status = "running"
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                submitted = submit_card_application(
+                    session,
+                    actor_id=actor_id,
+                    application_id=application.id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                )
+                execution.status = "succeeded"
+                execution.result_data = {
+                    "application": {
+                        "id": str(submitted.id),
+                        "label": submitted.label,
+                        "account_label": submitted.account_label,
+                        "status": submitted.status,
+                    },
+                    "status": "succeeded",
+                }
+                execution.result_summary = (
+                    "Synthetic debit-card application submitted for local review."
+                )
+                execution.completed_at = utc_now()
+                step = session.get(TaskStep, execution.step_id)
+                if step is not None:
+                    step.status = "succeeded"
+                    step.summary = execution.result_summary
+                    step.completed_at = utc_now()
+                task.message = "模拟借记卡申请已提交，等待本地模拟审核；尚未发卡。"
+                task.error_code = None
+                _audit(
+                    session,
+                    actor_id=actor_id,
+                    event_type="card.application_confirmation_consumed",
+                    resource_type="card_application",
+                    resource_id=application.id,
+                    request_id=request_id,
+                    task_id=task.id,
+                    tool_execution_id=execution.id,
+                    outcome="succeeded",
+                    before_state={"status": "pending_confirmation"},
+                    after_state={"status": submitted.status, "version": submitted.version},
+                )
+                session.flush()
+                return _task_view(session, actor_id=actor_id, task_id=task.id)
 
             if challenge.subscription_id is not None:
                 subscription = get_owned_subscription(
