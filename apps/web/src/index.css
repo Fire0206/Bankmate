@@ -2136,3 +2136,36 @@ button:disabled {
 .risk-assessment-actions button:disabled {
   opacity: 0.55;
 }
+
+.reminder-preference {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.reminder-preference label {
+  color: #666;
+  font-size: 14px;
+}
+
+.reminder-preference select,
+.reminder-preference button,
+.reminder-refresh {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  color: #111;
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.reminder-preference button:disabled,
+.reminder-refresh:disabled {
+  opacity: 0.55;
+}
+
+.reminder-refresh {
+  margin: 0 0 10px;
+}

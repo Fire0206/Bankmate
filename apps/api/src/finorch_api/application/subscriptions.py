@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -39,6 +39,8 @@ class SubscriptionView:
     next_charge_at: datetime
     version: int
     detected_charge_count: int
+    reminder_days_before: int
+    last_reminded_charge_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,18 @@ class SubscriptionListView:
     items: tuple[SubscriptionView, ...]
     monthly_total_minor: int
     currency: str
+
+
+@dataclass(frozen=True)
+class SubscriptionReminderView:
+    subscription_id: UUID
+    merchant: str
+    amount_minor: int
+    currency: str
+    next_charge_at: datetime
+    remind_at: datetime
+    reminder_days_before: int
+    delivered: bool
 
 
 def _utc(value: datetime) -> datetime:
@@ -64,6 +78,10 @@ def _view(value: Subscription) -> SubscriptionView:
         next_charge_at=_utc(value.next_charge_at),
         version=value.version,
         detected_charge_count=len(value.source_transaction_ids),
+        reminder_days_before=value.reminder_days_before,
+        last_reminded_charge_at=(
+            _utc(value.last_reminded_charge_at) if value.last_reminded_charge_at else None
+        ),
     )
 
 
@@ -95,6 +113,119 @@ def list_subscriptions(session: Session, *, actor_id: UUID) -> SubscriptionListV
         monthly_total_minor=active_total,
         currency="CNY",
     )
+
+
+def list_subscription_reminders(
+    session: Session, *, actor_id: UUID, now: datetime | None = None
+) -> tuple[SubscriptionReminderView, ...]:
+    """Return upcoming active synthetic renewals; reading does not emit a notice."""
+    at = _utc(now or utc_now())
+    rows = session.scalars(_owned_statement(actor_id).where(Subscription.status == "active"))
+    result = []
+    for item in rows:
+        charge_at = _utc(item.next_charge_at)
+        if charge_at < at or charge_at > at + timedelta(days=30):
+            continue
+        result.append(
+            SubscriptionReminderView(
+                subscription_id=item.id,
+                merchant=item.merchant,
+                amount_minor=item.amount_minor,
+                currency=item.currency,
+                next_charge_at=charge_at,
+                remind_at=charge_at - timedelta(days=item.reminder_days_before),
+                reminder_days_before=item.reminder_days_before,
+                delivered=(
+                    item.last_reminded_charge_at is not None
+                    and _utc(item.last_reminded_charge_at) == charge_at
+                ),
+            )
+        )
+    return tuple(sorted(result, key=lambda value: (value.next_charge_at, value.merchant)))
+
+
+def generate_due_subscription_reminders(
+    session: Session, *, actor_id: UUID, request_id: str, now: datetime | None = None
+) -> tuple[SubscriptionReminderView, ...]:
+    """Record one local notice per billing cycle under the shared write transaction."""
+    at = _utc(now or utc_now())
+    created = []
+    with write_transaction(session, immediate=True):
+        for reminder in list_subscription_reminders(session, actor_id=actor_id, now=at):
+            if reminder.delivered or at < reminder.remind_at:
+                continue
+            subscription = get_owned_subscription(
+                session, actor_id=actor_id, subscription_id=reminder.subscription_id
+            )
+            if subscription is None or subscription.status != "active":
+                continue
+            subscription.last_reminded_charge_at = reminder.next_charge_at
+            session.flush()
+            session.add(
+                AuditEvent(
+                    actor_id=actor_id,
+                    event_type="subscription.renewal_reminder_created",
+                    resource_type="subscription",
+                    resource_id=subscription.id,
+                    resource_version=subscription.version,
+                    request_id=request_id,
+                    outcome="succeeded",
+                    after_state={
+                        "billing_at": reminder.next_charge_at.isoformat(),
+                        "reminder_days_before": reminder.reminder_days_before,
+                        "delivery": "in_app",
+                    },
+                    occurred_at=at,
+                )
+            )
+            created.append(replace(reminder, delivered=True))
+        session.flush()
+    return tuple(created)
+
+
+def set_subscription_reminder_days(
+    session: Session,
+    *,
+    actor_id: UUID,
+    subscription_id: UUID,
+    days_before: int,
+    expected_version: int,
+    request_id: str,
+) -> SubscriptionView:
+    if type(days_before) is not int or not 0 <= days_before <= 30:
+        raise ValueError("Reminder lead time must be between 0 and 30 days.")
+    try:
+        with write_transaction(session, immediate=True):
+            subscription = get_owned_subscription(
+                session, actor_id=actor_id, subscription_id=subscription_id
+            )
+            if subscription is None:
+                raise SubscriptionNotFoundError
+            if subscription.reminder_days_before == days_before:
+                return _view(subscription)
+            if subscription.version != expected_version:
+                raise SubscriptionWriteConflictError("Subscription changed since it was read.")
+            before = subscription.reminder_days_before
+            subscription.reminder_days_before = days_before
+            session.flush()
+            session.add(
+                AuditEvent(
+                    actor_id=actor_id,
+                    event_type="subscription.reminder_preference_changed",
+                    resource_type="subscription",
+                    resource_id=subscription.id,
+                    resource_version=subscription.version,
+                    request_id=request_id,
+                    outcome="succeeded",
+                    before_state={"days_before": before},
+                    after_state={"days_before": days_before},
+                    occurred_at=utc_now(),
+                )
+            )
+            session.flush()
+            return _view(subscription)
+    except StaleDataError as exc:
+        raise SubscriptionWriteConflictError("Subscription changed during the operation.") from exc
 
 
 def find_owned_subscription(
@@ -160,6 +291,7 @@ __all__ = [
     "InvalidSubscriptionTransition",
     "SubscriptionAmbiguousError",
     "SubscriptionListView",
+    "SubscriptionReminderView",
     "SubscriptionNotFoundError",
     "SubscriptionView",
     "SubscriptionWriteConflictError",
@@ -167,4 +299,7 @@ __all__ = [
     "find_owned_subscription",
     "get_owned_subscription",
     "list_subscriptions",
+    "list_subscription_reminders",
+    "generate_due_subscription_reminders",
+    "set_subscription_reminder_days",
 ]

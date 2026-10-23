@@ -1104,6 +1104,12 @@ class FakeProvider(LLMProvider):
                 ),
             )
 
+        if "提醒" in request and any(
+            word in request for word in ("订阅", "自动扣费", "代扣", "续费")
+        ):
+            name = "subscription.reminders"
+            return ModelTurn("", (ModelToolCall("fake-subscription-reminders", name, "{}"),))
+
         if any(word in request for word in ("订阅", "自动扣费", "代扣", "续费")):
             name = "subscription.list"
             return ModelTurn("", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, "{}"),))
