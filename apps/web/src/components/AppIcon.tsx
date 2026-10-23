@@ -18,6 +18,7 @@ export type IconName =
   | "chevron-down"
   | "info"
   | "check"
+  | "shield"
   | "alert"
   | "lock";
 
@@ -106,6 +107,12 @@ const drawings: Record<IconName, ReactNode> = {
     <>
       <rect x="5" y="10" width="14" height="11" rx="2" />
       <path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2" />
+    </>
+  ),
+  shield: (
+    <>
+      <path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" />
+      <path d="m9 12 2 2 4-4" />
     </>
   ),
 };
