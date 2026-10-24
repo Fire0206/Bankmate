@@ -129,6 +129,24 @@ def requested_card_tool(request_text: str) -> str | None:
     if is_planning_only_request(request):
         return None
 
+    if re.search(
+        r"(?:单笔|单日|每日|每天).{0,12}限额|限额.{0,12}(?:单笔|单日|每日|每天)", request
+    ) and re.search(r"(?:改|调|设置|设为|提高|降低|调整)", request):
+        return "card.controls"
+    if re.search(
+        r"(?:开启|打开|允许|恢复|关闭|禁用|停用).{0,15}(?:线上|网络支付|网上支付)|(?:线上|网络支付|网上支付).{0,15}(?:开启|打开|允许|恢复|关闭|禁用|停用)",
+        request,
+    ):
+        return "card.controls"
+    if (
+        not any(word in request for word in ("生日", "预约", "定时", "计划", "到时候"))
+        and re.search(
+            r"(?:购买|买|支付).{0,20}(?:鲜花|蛋糕)|(?:鲜花|蛋糕).{0,20}(?:购买|买|支付)", request
+        )
+        and any(word in request for word in ("卡", "尾号"))
+    ):
+        return "card.purchase"
+
     application_match = _active_action_match(
         request,
         re.compile(r"(?:申请|办)(?:一张|张|个)?(?:模拟)?(?:借记卡|银行卡|新卡)"),
@@ -256,6 +274,8 @@ def has_explicit_investment_write_intent(request_text: str) -> bool:
     """Recognize a buy/redeem command; product and risk questions remain read-only."""
     request = request_text.casefold()
     if is_planning_only_request(request):
+        return False
+    if requested_card_tool(request_text) == "card.purchase":
         return False
     action = re.compile(
         r"(?:申购|买入|购买|买|赎回)(?:.{0,18})(?:产品|理财|基金|[\u4e00-\u9fff]|\d|全部|剩余|余款|它|该产品)"

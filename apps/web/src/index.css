@@ -4161,6 +4161,13 @@ textarea:focus-visible {
   gap: 3px;
 }
 
+.management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .management-row strong {
   color: var(--ink);
   font-size: 11px;
@@ -4827,6 +4834,15 @@ textarea:focus-visible {
     grid-column: 2;
     justify-self: start;
     margin-bottom: 8px;
+  }
+
+  .management-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .management-actions button {
+    margin-bottom: 0;
   }
 
   .payee-grid {

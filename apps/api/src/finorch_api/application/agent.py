@@ -10,6 +10,10 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.card_control_tools import (
+    CardControlProposalOutput,
+    CardPurchaseProposalOutput,
+)
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.agent.intent import is_planning_only_request
 from finorch_api.agent.providers import ProviderSelection
@@ -48,6 +52,14 @@ from finorch_api.application.card_applications import (
     POLICY_VERSION as CARD_APPLICATION_POLICY_VERSION,
 )
 from finorch_api.application.card_applications import submit_card_application
+from finorch_api.application.card_controls import (
+    CATALOG,
+    execute_card_controls,
+    execute_card_purchase,
+)
+from finorch_api.application.card_controls import (
+    POLICY_VERSION as CARD_CONTROLS_POLICY_VERSION,
+)
 from finorch_api.application.cards import (
     CardNotFoundError,
     CardWriteConflictError,
@@ -56,6 +68,7 @@ from finorch_api.application.cards import (
     report_card_lost,
     unfreeze_card,
 )
+from finorch_api.application.confirmation import parameters_hash as card_parameters_hash
 from finorch_api.application.errors import BankingRuleError
 from finorch_api.application.investments import confirm_order
 from finorch_api.application.subscriptions import (
@@ -755,9 +768,12 @@ def _dispatch_tool(
                 "open": "创建分账",
                 "settled": "模拟收取分账",
                 "submitted": "提交",
+                "updated": "调整",
             }.get(target_status, "变更")
             label = str(result_data.get("resource_label", "")).strip()
             if resource_type == "card":
+                if spec.name == "card.purchase":
+                    action = "购买"
                 target = f"尾号 {result_data['card_suffix']} 的银行卡"
             elif resource_type == "subscription":
                 target = f"{label} 自动续费"
@@ -861,6 +877,24 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
             else None
         )
         if card is not None:
+            card_details = None
+            if challenge.tool_name in {"card.controls", "card.purchase"}:
+                card_execution = session.get(ToolExecution, challenge.tool_execution_id)
+                if card_execution is not None and isinstance(card_execution.result_data, dict):
+                    card_details = {
+                        key: card_execution.result_data[key]
+                        for key in (
+                            "single_limit_minor",
+                            "daily_limit_minor",
+                            "online_enabled",
+                            "product_code",
+                            "product_name",
+                            "quantity",
+                            "channel",
+                            "amount_minor",
+                        )
+                        if key in card_execution.result_data
+                    }
             confirmation = ConfirmationView(
                 id=challenge.id,
                 resource_type="card",
@@ -879,6 +913,7 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                 card_suffix=card.card_suffix,
                 card_label=card.label,
                 card_version=challenge.card_version,
+                details=card_details,
             )
         elif challenge.card_application_id is not None:
             application = session.scalar(
@@ -2791,6 +2826,137 @@ def confirm_task_operation(
                     user_message=message,
                     before_state=before_state,
                     after_state=after_state,
+                )
+
+            if challenge.tool_name in {"card.controls", "card.purchase"}:
+                card = get_owned_card(session, actor_id=actor_id, card_id=challenge.card_id)
+                proposal = execution.result_data
+                valid = card is not None and isinstance(proposal, dict)
+                if valid:
+                    try:
+                        if challenge.tool_name == "card.controls":
+                            typed = CardControlProposalOutput.model_validate(proposal)
+                            parameters = {
+                                "single_limit_minor": typed.single_limit_minor,
+                                "daily_limit_minor": typed.daily_limit_minor,
+                                "online_enabled": typed.online_enabled,
+                            }
+                        else:
+                            typed = CardPurchaseProposalOutput.model_validate(proposal)
+                            parameters = {
+                                "product_code": typed.product_code,
+                                "quantity": typed.quantity,
+                                "channel": typed.channel,
+                                "amount_minor": typed.amount_minor,
+                            }
+                            valid = (
+                                CATALOG[typed.product_code][1] * typed.quantity
+                                == typed.amount_minor
+                            )
+                        normalized = {
+                            "tool_name": challenge.tool_name,
+                            "tool_version": challenge.tool_version,
+                            "card_id": str(challenge.card_id),
+                            "target_status": challenge.target_status,
+                            **parameters,
+                        }
+                        valid = valid and (
+                            typed.card_id == card.id
+                            and typed.card_version == challenge.card_version
+                            and typed.challenge_id == challenge.id
+                            and typed.parameters_hash == challenge.parameters_hash
+                            and card.version == challenge.card_version
+                            and challenge.tool_version == TOOL_VERSION
+                            and challenge.policy_version == CARD_CONTROLS_POLICY_VERSION
+                            and challenge.target_status
+                            == ("updated" if challenge.tool_name == "card.controls" else "executed")
+                            and card_parameters_hash(normalized) == challenge.parameters_hash
+                            and execution.input_hash == challenge.parameters_hash
+                            and execution.idempotency_key == challenge.idempotency_key
+                        )
+                    except (ValidationError, KeyError, TypeError, ValueError):
+                        valid = False
+                if not valid:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="card_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                before = {
+                    "status": card.status.value,
+                    "version": card.version,
+                    "single_limit_minor": card.single_limit_minor,
+                    "daily_limit_minor": card.daily_limit_minor,
+                    "online_enabled": card.online_enabled,
+                }
+                try:
+                    with session.begin_nested():
+                        if challenge.tool_name == "card.controls":
+                            if (
+                                parameters["single_limit_minor"] > parameters["daily_limit_minor"]
+                                or parameters["daily_limit_minor"] > 10_000_000
+                                or card.status.value not in {"active", "frozen"}
+                            ):
+                                raise BankingRuleError("invalid_card_limit", "卡片设置已不再适用。")
+                            result = execute_card_controls(
+                                session,
+                                card=card,
+                                actor_id=actor_id,
+                                details=parameters,
+                                request_id=request_id,
+                                task_id=task.id,
+                                tool_execution_id=execution.id,
+                            )
+                            message = f"尾号 {card.card_suffix} 的消费设置已更新。"
+                        else:
+                            result = execute_card_purchase(
+                                session,
+                                card=card,
+                                actor_id=actor_id,
+                                details=parameters,
+                                request_id=request_id,
+                                task_id=task.id,
+                                tool_execution_id=execution.id,
+                            )
+                            message = (
+                                f"已使用尾号 {card.card_suffix} 的模拟卡"
+                                f"购买{result['product_name']}。"
+                            )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                _transition(task, "running")
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="card",
+                    resource_id=card.id,
+                    result_data=result,
+                    result_summary=message,
+                    user_message=message,
+                    before_state=before,
+                    after_state={"status": card.status.value, "version": card.version, **result},
                 )
 
             card = get_owned_card(session, actor_id=actor_id, card_id=challenge.card_id)

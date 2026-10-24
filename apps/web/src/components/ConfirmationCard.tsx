@@ -50,6 +50,7 @@ function statusName(status: string): string {
     awaiting_confirmation: "待确认",
     scheduled: "待执行",
     executed: "已执行",
+    updated: "已更新",
     open: "待收款",
     settled: "已结清",
   };
@@ -59,13 +60,17 @@ function statusName(status: string): string {
 function actionName(confirmation: Confirmation): string {
   const details = confirmation.details;
   if (confirmation.resource_type === "card")
-    return confirmation.target_status === "frozen"
-      ? "冻结银行卡"
-      : confirmation.target_status === "lost"
-        ? "挂失银行卡"
-        : confirmation.target_status === "replaced"
-          ? "模拟补卡"
-          : "解冻银行卡";
+    return confirmation.tool_name === "card.controls"
+      ? "调整银行卡消费设置"
+      : confirmation.tool_name === "card.purchase"
+        ? "购买模拟商品"
+        : confirmation.target_status === "frozen"
+          ? "冻结银行卡"
+          : confirmation.target_status === "lost"
+            ? "挂失银行卡"
+            : confirmation.target_status === "replaced"
+              ? "模拟补卡"
+              : "解冻银行卡";
   if (confirmation.resource_type === "card_application")
     return "提交模拟借记卡申请";
   if (confirmation.resource_type === "subscription") {
@@ -131,9 +136,13 @@ export function ConfirmationCard({
   };
   const impactLabels: Record<Confirmation["resource_type"], string> = {
     card:
-      confirmation.target_status === "replaced"
-        ? "旧卡将永久停用，并创建一张新的模拟银行卡。新卡尾号由服务端生成。"
-        : "只影响这张模拟银行卡。",
+      confirmation.tool_name === "card.purchase"
+        ? "确认后将从这张卡绑定的模拟账户扣款，并生成模拟交易记录。"
+        : confirmation.tool_name === "card.controls"
+          ? "确认后会改变这张卡的模拟消费限制。"
+          : confirmation.target_status === "replaced"
+            ? "旧卡将永久停用，并创建一张新的模拟银行卡。新卡尾号由服务端生成。"
+            : "只影响这张模拟银行卡。",
     card_application:
       "确认后仅提交模拟申请，等待本地模拟审核；不会立即发卡或产生真实授信。",
     subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
@@ -143,7 +152,37 @@ export function ConfirmationCard({
   };
   const detailsRows: Array<[string, string | null]> = [];
 
-  if (confirmation.resource_type === "card_application") {
+  if (
+    confirmation.resource_type === "card" &&
+    confirmation.tool_name === "card.controls"
+  ) {
+    detailsRows.push(
+      ["单笔限额", amount(details, "single_limit_minor")],
+      ["每日限额", amount(details, "daily_limit_minor")],
+      [
+        "线上消费",
+        value(details, "online_enabled") === true ? "允许" : "已关闭",
+      ],
+    );
+  } else if (
+    confirmation.resource_type === "card" &&
+    confirmation.tool_name === "card.purchase"
+  ) {
+    detailsRows.push(
+      ["商品", text(details, "product_name")],
+      [
+        "数量",
+        typeof value(details, "quantity") === "number"
+          ? `${String(value(details, "quantity"))} 件`
+          : null,
+      ],
+      ["金额", amount(details, "amount_minor")],
+      [
+        "消费方式",
+        text(details, "channel") === "online" ? "模拟线上消费" : "模拟线下消费",
+      ],
+    );
+  } else if (confirmation.resource_type === "card_application") {
     const account = text(details, "account_label");
     detailsRows.push([
       "绑定账户",
@@ -266,17 +305,24 @@ export function ConfirmationCard({
         </dl>
       ) : null}
 
-      <div aria-label="状态变化" className="state-change">
-        <div>
-          <span>当前状态</span>
-          <strong>{statusName(confirmation.current_status)}</strong>
+      {confirmation.tool_name !== "card.controls" &&
+      confirmation.tool_name !== "card.purchase" ? (
+        <div aria-label="状态变化" className="state-change">
+          <div>
+            <span>当前状态</span>
+            <strong>{statusName(confirmation.current_status)}</strong>
+          </div>
+          <AppIcon
+            className="state-change-arrow"
+            name="arrow-right"
+            size={18}
+          />
+          <div>
+            <span>操作后</span>
+            <strong>{statusName(confirmation.target_status)}</strong>
+          </div>
         </div>
-        <AppIcon className="state-change-arrow" name="arrow-right" size={18} />
-        <div>
-          <span>操作后</span>
-          <strong>{statusName(confirmation.target_status)}</strong>
-        </div>
-      </div>
+      ) : null}
 
       <p className="confirmation-impact">
         {impactLabels[confirmation.resource_type]}

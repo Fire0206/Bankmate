@@ -26,6 +26,9 @@ class CardToolItem(BaseModel):
     card_suffix: str
     status: Literal["active", "frozen", "lost", "replaced"]
     version: int = Field(ge=1)
+    single_limit_minor: int = Field(gt=0)
+    daily_limit_minor: int = Field(gt=0)
+    online_enabled: bool
     replaced_by_card_id: UUID | None = None
 
 

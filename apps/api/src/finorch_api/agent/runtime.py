@@ -211,6 +211,12 @@ class AgentRuntime:
                     "do not stop after reading accounts or payees. Omit source_account_label when "
                     "the user did not choose an account; the server selects their default account. "
                     "Never propose a write for an unknown recipient or an unsuitable product. "
+                    "Card spending controls use card.controls with exactly one requested field "
+                    "and an explicit four-digit card suffix. Convert requested yuan limits to "
+                    "integer fen. For an immediate synthetic flower or cake purchase, use "
+                    "card.catalog for prices and card.purchase for the explicitly named item, "
+                    "quantity and card suffix. Do not use investment.buy for gifts. Card purchases "
+                    "need server confirmation and must not be described as completed beforehand. "
                     "Money amounts sent to transfer tools use integer fen; convert each yuan by "
                     "multiplying by 100 (999999 yuan is 99999900 fen). For transfer.create use "
                     "exactly one of recipient_name or recipient_phone plus amount_minor; include "
@@ -832,6 +838,8 @@ class FakeProvider(LLMProvider):
                 "card.report_lost": "银行卡已挂失。",
                 "card.replace": "已申请模拟补卡。",
                 "card.apply": "模拟借记卡申请已提交，等待本地模拟审核。",
+                "card.controls": "银行卡消费设置已更新。",
+                "card.purchase": "模拟商品购买已完成。",
                 "subscription.pause": "自动扣费已暂停。",
                 "subscription.resume": "自动扣费已恢复。",
                 "subscription.cancel": "已取消该项自动扣费。",
@@ -1192,8 +1200,61 @@ class FakeProvider(LLMProvider):
         is_lost = requested_card_action == "card.report_lost"
         is_replace = requested_card_action == "card.replace"
         is_apply = requested_card_action == "card.apply"
+        is_controls = requested_card_action == "card.controls"
+        is_purchase = requested_card_action == "card.purchase"
         suffix_source = request if has_followup else full_request
         suffix_match = re.search(r"(?<!\d)(\d{4})(?!\d)", suffix_source)
+
+        if is_controls or is_purchase:
+            if suffix_match is None:
+                return ModelTurn("请告诉我需要操作的银行卡尾号。", status="awaiting_input")
+            suffix = suffix_match.group(1)
+            if is_purchase:
+                code = (
+                    "flowers"
+                    if "鲜花" in full_request
+                    else "cake"
+                    if "蛋糕" in full_request
+                    else None
+                )
+                if code is None:
+                    return ModelTurn("请选择模拟鲜花或模拟蛋糕。", status="awaiting_input")
+                tool_name = "card.purchase"
+                count = re.search(
+                    r"(?<!\d)([1-3])\s*(?:束|个|份|件)\s*(?:模拟)?(?:鲜花|蛋糕)",
+                    full_request,
+                )
+                args = {
+                    "card_suffix": suffix,
+                    "product_code": code,
+                    "quantity": int(count.group(1)) if count else 1,
+                    "channel": "in_store"
+                    if any(word in full_request for word in ("线下", "店内", "门店"))
+                    else "online",
+                }
+            else:
+                tool_name = "card.controls"
+                args = {"card_suffix": suffix}
+                if any(word in full_request for word in ("线上", "网络支付", "网上支付")):
+                    args["online_enabled"] = any(
+                        word in full_request for word in ("开启", "打开", "允许", "恢复")
+                    )
+                else:
+                    money = re.search(r"(\d+(?:\.\d{1,2})?)\s*(?:元|块钱|块)", full_request)
+                    if money is None:
+                        return ModelTurn("请说明新的限额金额。", status="awaiting_input")
+                    from finorch_api.domain.transfers import parse_money_to_minor
+
+                    field = "single_limit_minor" if "单笔" in full_request else "daily_limit_minor"
+                    args[field] = parse_money_to_minor(money.group(1))
+            return ModelTurn(
+                "",
+                (
+                    ModelToolCall(
+                        f"fake-{tool_name.replace('.', '-')}", tool_name, json.dumps(args)
+                    ),
+                ),
+            )
 
         if is_apply:
             name = "card.apply"

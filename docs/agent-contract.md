@@ -31,6 +31,9 @@
 | `card.replace`         | `card_suffix` / 操作提案与挑战         | `high_risk_write` / `high` / `always`    | 挂失卡经确认及本地模拟验证码后停用旧卡、生成新合成卡                             |
 | `card.apply`           | 账户标签/卡片标签 / 申请提案与挑战     | `reversible_write` / `medium` / `always` | 确认后仅提交模拟借记卡申请；本地审核独立进行                                     |
 | `card.applications`    | 空输入 / 当前用户已提交申请列表        | `read_only` / `low` / `never`            | 查询提交、批准或驳回状态，未确认提案不显示                                       |
+| `card.catalog`         | 空输入 / 固定合成商品与价格            | `read_only` / `low` / `never`            | 只列出模拟鲜花和蛋糕，不接真实商户                                               |
+| `card.controls`        | 卡尾号与一项设置 / 确认提案            | `reversible_write` / `medium` / `always` | 更改单笔、单日限额或线上开关；重大额度上调需本地模拟 OTP                         |
+| `card.purchase`        | 卡尾号、商品、数量、渠道 / 确认提案    | `high_risk_write` / `medium` / `always`  | 服务端定价并在确认后复核限制、扣减模拟余额、写交易和审计；无真实支付             |
 | `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额                            |
 | `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                                        |
 | `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 标记非住房大额支出及同账户/商户/金额/币种/UTC 日重复收费；仅为提示，不是欺诈检测 |

@@ -32,6 +32,9 @@ class CardView:
     card_suffix: str
     status: CardStatus
     version: int
+    single_limit_minor: int
+    daily_limit_minor: int
+    online_enabled: bool
     replaced_by_card_id: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -57,6 +60,9 @@ def _to_view(card: Card) -> CardView:
         card_suffix=card.card_suffix,
         status=card.status,
         version=card.version,
+        single_limit_minor=card.single_limit_minor,
+        daily_limit_minor=card.daily_limit_minor,
+        online_enabled=card.online_enabled,
         replaced_by_card_id=card.replaced_by_card_id,
         created_at=_as_utc(card.created_at),
         updated_at=_as_utc(card.updated_at),

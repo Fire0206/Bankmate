@@ -31,6 +31,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 - `accounts`：所属 DemoUser、标签、币种、`opening_balance_minor` 和由服务端事务维护的 `balance_minor` 投影；金额变化与对应交易记录在同一事务提交。
 - `cards`：所属 Account、展示标签、假卡号后四位、`active`/`frozen`/`lost`/`replaced` 状态、乐观并发 `version`。`lost` 不能通过解冻恢复；经确认及本地模拟验证码可补发新合成卡，旧卡标记为 `replaced` 并通过 `replaced_by_card_id` 关联新卡。
 - `card_applications`：当前模拟用户对已有账户提交的借记卡申请；`pending_confirmation` 仅为未提交提案，用户确认后变为 `submitted`；本地模拟审核给出 `approved`/`rejected`，批准时创建新合成卡并记录 `issued_card_id`。不得将其解释为真实银行信用审核或授信。
+- `cards` 的模拟消费控制（Implemented）：单笔、同一 UTC+8 业务日累计上限和线上支付开关；限额仅约束明确选择该卡的固定目录模拟消费，不等于信用额度，也不直接限制独立的账户转账。服务端在确认事务中复核限制与余额，同事务写账户扣款、`transactions` 流水、卡版本和审计；不连接真实支付网络。
 - `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
