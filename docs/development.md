@@ -48,7 +48,7 @@ Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银
 
 输入“我有哪些即将续费的提醒”可通过只读 Agent Tool 查看未来 30 天的合成订阅。展开自动扣费查询结果可设置每项提前 0–30 天的应用内提醒偏好；“检查到期提醒”按服务端当前时间生成本地提醒，同一扣款周期只生成一次。当前没有后台定时调度或短信/商户通知；需要本地演示到期生成时，可在临时测试数据库中调用 `generate_due_subscription_reminders(..., now=...)` 注入模拟时间，不能将客户端时间当作服务端执行依据。
 
-Phase 3 本地模拟二次验证：单笔或当日累计转账超过 ¥1,000，以及 R4/R5 模拟产品申购，需要在普通确认外输入随机六位验证码。保持同一仓库根目录和同一个本地开发数据库，在**另一个本机终端**运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest`；该终端显示的验证码只在本地使用，最多有效三分钟，不能复制进聊天、Issue 或日志。`--latest` 只选当前配置的演示用户最新待确认操作；并行演示多个任务时使用 `--confirmation-id <ID>` 指定挑战。错误尝试最多五次。没有本地终端就不能完成红色操作；此机制不是短信、人脸或生产级多因素认证。定时转账到期时再次按当日累计金额评估；若升为红色则失败并留下审计，必须重新发起授权，不会静默扣款。
+Phase 3 本地模拟二次验证：单笔或当日累计转账超过 ¥1,000、R4/R5 模拟产品申购，以及策略要求强验证的卡片限额上调，需要在普通确认外输入随机六位验证码。保持同一仓库根目录和同一个本地开发数据库，在**另一个本机终端**运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest`；该终端显示的验证码只在本地使用，最多有效三分钟，不能复制进聊天、Issue 或日志。`--latest` 只选当前配置的演示用户最新待确认操作；并行演示多个任务时使用 `--confirmation-id <ID>` 指定挑战。错误尝试最多五次。没有本地终端就不能完成红色操作；此机制不是短信、人脸或生产级多因素认证。定时转账到期时再次按当日累计金额评估；若升为红色则失败并留下审计，必须重新发起授权，不会静默扣款。
 
 工作台还提供只读 `GET /api/v1/financial-insights/recommendations` 和 `POST /api/v1/cashflow/payday-plan-preview`，前者基于模拟流水规则生成提示，后者预览不同资金分配输入；两者不创建转账或理财订单。任何实际写操作仍应从 Agent 任务发起，并遵循服务端确认。
 
@@ -91,13 +91,23 @@ uv run --project apps/api python -m finorch_api.seed
 uv run --project apps/api python -m finorch_api
 ```
 
-另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8123`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。开始评测前确认该端口未被占用，并核验本地 API 返回 `agent_provider=openai-compatible`；API 与评测脚本必须使用同一临时数据库 URL，禁止指向已有服务或默认 Demo 数据库。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。评测脚本包含 15 个 `cross_` 用例；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
+另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8123`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。开始评测前确认该端口未被占用，并核验本地 API 返回 `agent_provider=openai-compatible`；API 与评测脚本必须使用同一临时数据库 URL，禁止指向已有服务或默认 Demo 数据库。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。默认数据集是 15 个 `cross_` 开发案例；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
 
 ```powershell
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
 Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+
+新增功能的真实模型留出集使用被冻结的 `phase3-feature-holdout-v1`（10 个案例），与开发案例分开保存，并由 SHA-256 manifest 校验。它覆盖年度账单、续费提醒、多只读查询、办卡申请、挂失、补卡、风险问卷边界、适当性查询和卡片限额强验证。留出评测会在每个案例前重置数据库，并只允许在 `FINORCH_ENVIRONMENT=test`、显式 `FINORCH_EVAL_RESET_SYNTHETIC=1` 且临时 `finorch-test*.sqlite3` 数据库中运行；测试 OTP 仅由评测脚本服务端签发，不打印到报告。请按上面的双终端方法启动 API，在评测终端设置：
+
+```powershell
+$env:FINORCH_EVAL_DATASET = 'phase3-holdout'
+$env:FINORCH_EVAL_REPORT = '.data/phase3-feature-holdout-report.json'
+uv run --project apps/api python apps/api/scripts/deepseek_eval.py
+```
+
+完整运行将依次执行 10 个案例；`FINORCH_EVAL_CASES` 可用于本地定向调试，但定向子集不能替代完整留出验收。评测前不得查看或针对留出提示词调优；如需修改案例或评分规则，应创建新版本和新的冻结摘要。没有本地安全配置的 API Key 时，不运行真实评测，也不以 Fake Provider 结果替代。
 
 ### Phase 2F 工作流收尾与演示验证（2026-10-20）
 

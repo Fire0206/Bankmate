@@ -6,6 +6,7 @@ printed. Raw prompts, API keys, and model responses are never written to output.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -13,15 +14,23 @@ import urllib.error
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+from finorch_api.application.transactions import write_transaction
 from finorch_api.config import Settings
+from finorch_api.domain.cards import CardStatus
 from finorch_api.infrastructure.database import get_session_factory
-from finorch_api.infrastructure.models import Subscription
+from finorch_api.infrastructure.models import Account, Card, Subscription, utc_now
 from finorch_api.reset import reset_demo_data, validate_reset_target
+from finorch_api.security.verification import issue_demo_code
 from sqlalchemy import select
 
 BASE_URL = os.getenv("FINORCH_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+PHASE3_HOLDOUT_CASES_PATH = (
+    REPOSITORY_ROOT / "apps" / "api" / "scripts" / "phase3-holdout-cases.json"
+)
+PHASE3_HOLDOUT_LOCK_PATH = REPOSITORY_ROOT / "apps" / "api" / "scripts" / "phase3-holdout.lock.json"
 
 
 def call_api(
@@ -92,7 +101,7 @@ def _reset_eval_database() -> None:
     """Reset only an explicitly opted-in, validated temporary test database."""
     settings = Settings()
     if os.getenv("FINORCH_EVAL_RESET_SYNTHETIC") != "1" or settings.environment != "test":
-        raise RuntimeError("Phase 1E live evaluation requires an opted-in test database.")
+        raise RuntimeError("Live evaluation requires an opted-in test database.")
     repository_root = Path(__file__).resolve().parents[3]
     validate_reset_target(
         environment=settings.environment,
@@ -102,6 +111,80 @@ def _reset_eval_database() -> None:
     factory = get_session_factory(settings.database_url)
     with factory.begin() as session:
         reset_demo_data(session)
+
+
+def _prepare_holdout_case(case: dict) -> None:
+    setup = case.get("setup")
+    if not setup:
+        return
+    if not isinstance(setup, dict) or Settings().environment != "test":
+        raise RuntimeError("Holdout setup is restricted to an opted-in test database.")
+
+    if setup.get("kind") == "card_status":
+        status = setup.get("status")
+        if status != "lost":
+            raise RuntimeError("Unsupported holdout card setup.")
+        settings = Settings()
+        factory = get_session_factory(settings.database_url)
+        with factory() as session:
+            with write_transaction(session, immediate=True):
+                card = session.scalar(
+                    select(Card)
+                    .join(Account, Card.account_id == Account.id)
+                    .where(
+                        Account.demo_user_id == settings.demo_user_id,
+                        Card.card_suffix == setup.get("card_suffix"),
+                    )
+                )
+                if card is None:
+                    raise RuntimeError("The required synthetic card setup is missing.")
+                card.status = CardStatus.LOST
+                card.updated_at = utc_now()
+        return
+
+    if setup.get("kind") == "risk_assessment":
+        status, questionnaire = call_api("GET", "/api/v1/investments/risk-assessment/questionnaire")
+        if status != 200:
+            raise RuntimeError("The synthetic questionnaire is unavailable.")
+        answers = setup.get("answers", {})
+        body = {
+            key: answers[key]
+            for key in (
+                "time_horizon",
+                "loss_tolerance",
+                "liquidity_capacity",
+                "investment_experience",
+            )
+            if key in answers
+        }
+        body["questionnaire_version"] = questionnaire["questionnaire_version"]
+        status, _ = call_api(
+            "POST",
+            "/api/v1/investments/risk-assessment",
+            body,
+            idempotency_key=f"phase3-holdout-{case['id']}-assessment",
+        )
+        if status != 200:
+            raise RuntimeError("Synthetic user questionnaire setup failed.")
+        return
+
+    raise RuntimeError("Unsupported Phase 3 holdout setup.")
+
+
+def _issue_holdout_otp(confirmation: dict) -> str:
+    settings = Settings()
+    if settings.environment != "test" or os.getenv("FINORCH_EVAL_RESET_SYNTHETIC") != "1":
+        raise RuntimeError("Automated OTP issuance requires an opted-in isolated test database.")
+    factory = get_session_factory(settings.database_url)
+    with factory() as session:
+        with write_transaction(session, immediate=True):
+            _verification, code = issue_demo_code(
+                session,
+                actor_id=settings.demo_user_id,
+                confirmation_id=UUID(confirmation["id"]),
+                now=utc_now(),
+            )
+    return code
 
 
 def _bump_subscription_version(merchant: str) -> None:
@@ -481,9 +564,275 @@ def request_cross_case(case: dict, task: dict) -> dict:
     }
 
 
+def request_phase3_holdout_case(case: dict, task: dict) -> dict:
+    selected = tool_names(task)
+    expected = case.get("expected_tool_sequence", [])
+    acceptable = case.get("acceptable_tool_sequences", [])
+    allowed_sequences = acceptable or [expected]
+    sequence_ok = selected in allowed_sequences
+    if set(case.get("forbidden_tools", [])) & set(selected):
+        sequence_ok = False
+
+    confirmation = task.get("confirmation")
+    confirmation_checks: dict[str, bool] = {}
+    completed_task = task
+    expected_confirmation = case.get("confirmation")
+    if isinstance(expected_confirmation, dict):
+        confirmation_checks["exists"] = isinstance(confirmation, dict)
+        if isinstance(confirmation, dict):
+            for case_key, response_key in (
+                ("resource_type", "resource_type"),
+                ("method", "confirmation_method"),
+                ("target_status", "target_status"),
+            ):
+                if case_key in expected_confirmation:
+                    confirmation_checks[case_key] = (
+                        confirmation.get(response_key) == expected_confirmation[case_key]
+                    )
+        if case.get("auto_confirm") and isinstance(confirmation, dict):
+            verification_code = None
+            if confirmation.get("confirmation_method") == "demo_otp":
+                try:
+                    verification_code = _issue_holdout_otp(confirmation)
+                except (RuntimeError, ValueError):
+                    verification_code = None
+            status, response = call_api(
+                "POST",
+                f"/api/v1/agent/tasks/{task['id']}/confirm",
+                {
+                    "challenge_id": confirmation.get("id"),
+                    "parameters_hash": confirmation.get("parameters_hash"),
+                    **({"verification_code": verification_code} if verification_code else {}),
+                },
+                idempotency_key=confirmation.get("idempotency_key"),
+            )
+            if status < 400:
+                completed_task = response
+            else:
+                confirmation_checks["execution_accepted"] = False
+                confirmation_checks["execution_error"] = error_code(response)
+            if status < 400:
+                confirmation_checks["execution_accepted"] = True
+
+    expected_status = case.get("expected_status", "completed")
+    status_ok = completed_task.get("status") == expected_status
+    result_checks = verify_phase3_holdout(case, confirmation, completed_task)
+    parameters_ok = all(confirmation_checks.values()) if confirmation_checks else True
+    passed = (
+        sequence_ok
+        and status_ok
+        and parameters_ok
+        and bool(result_checks)
+        and all(result_checks.values())
+    )
+    return {
+        "id": case["id"],
+        "name": case["name"],
+        "expected_tools": expected,
+        "selected_tools": selected,
+        "task_status": completed_task.get("status"),
+        "error_code": task_error(completed_task),
+        "tool_selection_correct": sequence_ok,
+        "parameters_correct": parameters_ok,
+        "confirmation_checks": confirmation_checks,
+        "state_checks": result_checks,
+        "task_completed_or_clarified": status_ok,
+        "pass": passed,
+    }
+
+
+def verify_phase3_holdout(case: dict, confirmation: dict | None, task: dict) -> dict[str, bool]:
+    verification = case.get("verification")
+    if verification == "annual_report":
+        result = next(
+            (
+                step.get("result_data")
+                for step in reversed(task.get("steps", []))
+                if step.get("tool_name") == "bill.annual_report"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        report_status, report = (
+            call_api("GET", f"/api/v1/bills/annual?year={result['year']}")
+            if isinstance(result.get("year"), int)
+            else (0, {})
+        )
+        return {
+            "annual_totals_are_numeric": isinstance(result.get("income_minor"), int)
+            and isinstance(result.get("expense_minor"), int),
+            "twelve_months_returned": isinstance(result.get("monthly_totals"), list)
+            and len(result["monthly_totals"]) == 12,
+            "categories_returned": isinstance(result.get("categories"), list),
+            "tool_result_matches_annual_api": report_status == 200
+            and all(
+                result.get(key) == report.get(key)
+                for key in (
+                    "year",
+                    "currency",
+                    "income_minor",
+                    "expense_minor",
+                    "net_minor",
+                    "monthly_totals",
+                    "categories",
+                )
+            ),
+        }
+    if verification == "renewal_reminders":
+        result = next(
+            (
+                step.get("result_data")
+                for step in reversed(task.get("steps", []))
+                if step.get("tool_name") == "subscription.reminders"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        status, live = call_api("GET", "/api/v1/subscriptions/reminders")
+        return {
+            "reminder_schema_returned": isinstance(result.get("items"), list),
+            "api_read_matches_tool_result": status == 200
+            and result.get("items") == live.get("items"),
+        }
+    if verification == "card_application_submitted" and confirmation:
+        status, payload = call_api("GET", "/api/v1/cards/applications")
+        item = next(
+            (
+                value
+                for value in payload.get("items", [])
+                if value.get("id") == str(confirmation.get("resource_id"))
+            ),
+            {},
+        )
+        return {"application_submitted": status == 200 and item.get("status") == "submitted"}
+    if verification == "card_lost":
+        status, payload = call_api("GET", "/api/v1/cards")
+        card = next(
+            (value for value in payload.get("items", []) if value.get("card_suffix") == "1042"),
+            {},
+        )
+        audit_status, audit = call_api("GET", f"/api/v1/agent/tasks/{task['id']}/audit")
+        events = audit.get("events", [])
+        return {
+            "card_is_lost": status == 200 and card.get("status") == "lost",
+            "loss_is_audited": audit_status == 200
+            and any(event.get("event_type") == "card.status_changed" for event in events),
+        }
+    if verification == "card_replaced":
+        status, payload = call_api("GET", "/api/v1/cards")
+        cards = payload.get("items", [])
+        old = next((item for item in cards if item.get("card_suffix") == "1042"), {})
+        replacement = next(
+            (item for item in cards if item.get("id") == old.get("replaced_by_card_id")), {}
+        )
+        audit_status, audit = call_api("GET", f"/api/v1/agent/tasks/{task['id']}/audit")
+        return {
+            "old_card_replaced": status == 200 and old.get("status") == "replaced",
+            "replacement_card_active": replacement.get("status") == "active",
+            "replacement_is_audited": audit_status == 200
+            and any(
+                event.get("event_type") == "card.replaced" for event in audit.get("events", [])
+            ),
+        }
+    if verification == "risk_products":
+        status, profile = call_api("GET", "/api/v1/investments/profile")
+        result = next(
+            (
+                step.get("result_data")
+                for step in reversed(task.get("steps", []))
+                if step.get("tool_name") in {"investment.products", "investment.compare"}
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        return {
+            "server_profile_read": status == 200
+            and profile.get("risk_level") == case.get("setup", {}).get("expected_risk_level"),
+            "tool_uses_server_risk_level": result.get("risk_level") == profile.get("risk_level"),
+            "products_are_structured": isinstance(result.get("items"), list),
+        }
+    if verification == "questionnaire_help":
+        result = next(
+            (
+                step.get("result_data")
+                for step in reversed(task.get("steps", []))
+                if step.get("tool_name") == "investment.assessment_questions"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        status, latest = call_api("GET", "/api/v1/investments/risk-assessment/latest")
+        return {
+            "questions_returned": isinstance(result.get("questions"), list)
+            and len(result["questions"]) == 4,
+            "model_did_not_submit_assessment": status == 200 and latest is None,
+        }
+    if verification == "card_daily_limit":
+        status, payload = call_api("GET", "/api/v1/cards")
+        card = next(
+            (value for value in payload.get("items", []) if value.get("card_suffix") == "1042"),
+            {},
+        )
+        audit_status, audit = call_api("GET", f"/api/v1/agent/tasks/{task['id']}/audit")
+        event_types = {event.get("event_type") for event in audit.get("events", [])}
+        return {
+            "limit_updated": status == 200 and card.get("daily_limit_minor") == 300_000,
+            "control_change_audited": audit_status == 200
+            and "card.controls_changed" in event_types,
+            "high_risk_audited": "security.risk_decision" in event_types,
+            "verification_issued_audited": "security.verification_issued" in event_types,
+        }
+    if verification == "card_limit_unchanged":
+        status, payload = call_api("GET", "/api/v1/cards")
+        card = next(
+            (value for value in payload.get("items", []) if value.get("card_suffix") == "1042"),
+            {},
+        )
+        return {
+            "unconfirmed_change_not_applied": status == 200
+            and card.get("daily_limit_minor") == 100_000
+        }
+    if verification == "annual_and_reminders":
+        annual = next(
+            (
+                step.get("result_data")
+                for step in task.get("steps", [])
+                if step.get("tool_name") == "bill.annual_report"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        reminders = next(
+            (
+                step.get("result_data")
+                for step in task.get("steps", [])
+                if step.get("tool_name") == "subscription.reminders"
+                and isinstance(step.get("result_data"), dict)
+            ),
+            {},
+        )
+        return {
+            "annual_result_returned": isinstance(annual.get("expense_minor"), int),
+            "reminders_result_returned": isinstance(reminders.get("items"), list),
+        }
+    return {}
+
+
 def request_case(case: dict) -> dict:
-    if case.get("phase1e"):
-        _reset_eval_database()
+    if case.get("phase1e") or case.get("phase3_holdout"):
+        try:
+            _reset_eval_database()
+            if case.get("phase3_holdout"):
+                _prepare_holdout_case(case)
+        except (RuntimeError, ValueError):
+            return {
+                "id": case["id"],
+                "name": case["name"],
+                "selected_tools": [],
+                "task_status": "setup_failed",
+                "error_code": "unsafe_or_invalid_eval_setup",
+                "pass": False,
+            }
     conversation_id = str(uuid4())
     status, task = call_api(
         "POST",
@@ -499,6 +848,9 @@ def request_case(case: dict) -> dict:
             "error_code": error_code(task),
             "pass": False,
         }
+
+    if case.get("phase3_holdout"):
+        return request_phase3_holdout_case(case, task)
 
     if case.get("phase1e"):
         result = request_cross_case(case, task)
@@ -1059,7 +1411,29 @@ def cases() -> list[dict]:
 
 
 def selected_cases() -> list[dict]:
-    all_cases = cases()
+    dataset = os.getenv("FINORCH_EVAL_DATASET", "phase1e-dev")
+    if dataset == "phase3-holdout":
+        data = json.loads(PHASE3_HOLDOUT_CASES_PATH.read_text(encoding="utf-8"))
+        lock = json.loads(PHASE3_HOLDOUT_LOCK_PATH.read_text(encoding="utf-8"))
+        holdout = data.get("cases")
+        digest = hashlib.sha256(
+            json.dumps(holdout, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        case_ids = [item.get("id") for item in holdout] if isinstance(holdout, list) else []
+        if (
+            data.get("dataset_version") != lock.get("dataset_version")
+            or digest != lock.get("holdout_sha256")
+            or case_ids != lock.get("case_ids")
+            or len(case_ids) != lock.get("case_count")
+        ):
+            raise ValueError("Phase 3 holdout does not match its frozen manifest.")
+        all_cases = [item | {"phase3_holdout": True} for item in holdout]
+    elif dataset == "phase1e-dev":
+        all_cases = cases()
+    else:
+        raise ValueError("FINORCH_EVAL_DATASET is unknown.")
     requested = os.getenv("FINORCH_EVAL_CASES")
     if not requested:
         return all_cases
@@ -1099,6 +1473,12 @@ def main() -> int:
         if case.get("verification") == "risk_rejected"
     ]
     summary = {
+        "dataset": os.getenv("FINORCH_EVAL_DATASET", "phase1e-dev"),
+        "dataset_version": (
+            "phase3-feature-holdout-v1"
+            if os.getenv("FINORCH_EVAL_DATASET") == "phase3-holdout"
+            else "phase1e-dev"
+        ),
         "model": Settings().llm_model or "configured by server",
         "case_count": len(results),
         "passed": sum(item["pass"] for item in results),

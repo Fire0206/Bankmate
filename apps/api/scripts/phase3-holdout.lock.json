@@ -1,0 +1,19 @@
+{
+  "dataset_version": "phase3-feature-holdout-v1",
+  "source_commit": "910cc6dea9d890afc195aea280dbda6bf05d0592",
+  "holdout_sha256": "d2dbac460695827b1ce4f193b37fd734e717600f1d2b858f8af0c0a0df3c556e",
+  "case_count": 10,
+  "case_ids": [
+    "P3H-001",
+    "P3H-002",
+    "P3H-003",
+    "P3H-004",
+    "P3H-005",
+    "P3H-006",
+    "P3H-007",
+    "P3H-008",
+    "P3H-009",
+    "P3H-010"
+  ],
+  "frozen_at_utc": "2026-10-24T13:36:42Z"
+}

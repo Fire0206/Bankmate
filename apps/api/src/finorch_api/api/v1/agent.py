@@ -30,6 +30,7 @@ from finorch_api.application.agent import (
 from finorch_api.application.agent import (
     confirm_task_operation as confirm_agent_task_operation,
 )
+from finorch_api.application.handoffs import create_failure_handoff_if_needed
 from finorch_api.config import Settings, get_settings
 from finorch_api.infrastructure.database import get_db_session
 from finorch_api.security.demo_identity import DemoActor, get_current_demo_actor
@@ -63,6 +64,16 @@ def _task_response(value) -> AgentTaskResponse:
     return AgentTaskResponse.model_validate(asdict(value))
 
 
+def _create_failure_handoff_if_needed(session: Session, *, actor_id: UUID, task, request_id: str):
+    if task.status == "failed":
+        create_failure_handoff_if_needed(
+            session,
+            actor_id=actor_id,
+            task_id=task.id,
+            request_id=request_id,
+        )
+
+
 @router.post("", response_model=AgentTaskResponse, summary="Submit a natural-language banking task")
 def submit_task(
     body: AgentTaskCreateRequest,
@@ -86,6 +97,9 @@ def submit_task(
         raise _conflict(
             "Idempotency key was already used for different input.", "idempotency_conflict"
         ) from None
+    _create_failure_handoff_if_needed(
+        session, actor_id=actor.user_id, task=task, request_id=request.state.request_id
+    )
     return _task_response(task)
 
 
@@ -195,6 +209,9 @@ def provide_task_input(
         raise _conflict(
             "Task is not waiting for user input or confirmation.", "task_state_conflict"
         ) from None
+    _create_failure_handoff_if_needed(
+        session, actor_id=actor.user_id, task=task, request_id=request.state.request_id
+    )
     return _task_response(task)
 
 
@@ -239,6 +256,9 @@ def confirm_task_operation(
             request_id=request.state.request_id,
             selection=selection,
         )
+    _create_failure_handoff_if_needed(
+        session, actor_id=actor.user_id, task=task, request_id=request.state.request_id
+    )
     if task.error_code == "confirmation_parameters_mismatch":
         raise _conflict(
             "Confirmation details changed; the challenge was invalidated.",

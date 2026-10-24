@@ -1134,6 +1134,9 @@ def test_unconfigured_real_provider_persists_failure_without_execution(api_conte
     assert task["provider_mode"] == "openai-compatible"
     assert task["status"] == "failed"
     assert task["error_code"] == "provider_not_configured"
+    handoff = client.get(f"/api/v1/agent/tasks/{task['id']}/handoff")
+    assert handoff.status_code == 200, handoff.text
+    assert handoff.json()["reason"] == "cannot_continue"
     with database.session_factory() as session:
         assert session.get(Card, ALICE_ACTIVE_CARD_ID).status is CardStatus.ACTIVE
         assert session.scalar(select(func.count()).select_from(ToolExecution)) == 0
