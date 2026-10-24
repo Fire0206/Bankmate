@@ -1,0 +1,138 @@
+{
+  "dataset_version": "phase3-feature-holdout-v1",
+  "created_at_utc": "2026-10-24T00:00:00Z",
+  "cases": [
+    {
+      "id": "P3H-001",
+      "name": "annual_report_natural_request",
+      "prompt": "请按 2026 完整年度汇总我的收入、支出和消费分类，列出全年重点。",
+      "expected_tool_sequence": ["bill.annual_report"],
+      "expected_status": "completed",
+      "verification": "annual_report"
+    },
+    {
+      "id": "P3H-002",
+      "name": "renewal_reminders_paraphrase",
+      "prompt": "帮我看看接下来要续费的会员，按下次扣款日期告诉我。",
+      "expected_tool_sequence": ["subscription.reminders"],
+      "expected_status": "completed",
+      "verification": "renewal_reminders"
+    },
+    {
+      "id": "P3H-003",
+      "name": "annual_report_and_reminders_multi_read",
+      "prompt": "把 2026 年收支概况和最近要续费的会员放在一起查给我。",
+      "expected_tool_sequence": [
+        "bill.annual_report",
+        "subscription.reminders"
+      ],
+      "acceptable_tool_sequences": [
+        ["bill.annual_report", "subscription.reminders"],
+        ["subscription.reminders", "bill.annual_report"]
+      ],
+      "expected_status": "completed",
+      "verification": "annual_and_reminders"
+    },
+    {
+      "id": "P3H-004",
+      "name": "card_application_submission",
+      "prompt": "我想给日常账户新办一张借记卡，请先把模拟申请提交给我确认。",
+      "expected_tool_sequence": ["card.apply"],
+      "expected_status": "completed",
+      "confirmation": {
+        "resource_type": "card_application",
+        "method": "explicit",
+        "target_status": "submitted"
+      },
+      "auto_confirm": true,
+      "verification": "card_application_submitted"
+    },
+    {
+      "id": "P3H-005",
+      "name": "lost_card_report_with_otp",
+      "prompt": "尾号 1042 的卡丢了，请先挂失。",
+      "expected_tool_sequence": ["card.report_lost"],
+      "expected_status": "completed",
+      "confirmation": {
+        "resource_type": "card",
+        "method": "demo_otp",
+        "target_status": "lost"
+      },
+      "auto_confirm": true,
+      "verification": "card_lost"
+    },
+    {
+      "id": "P3H-006",
+      "name": "replacement_for_lost_card_with_otp",
+      "prompt": "请给已经挂失的尾号 1042 银行卡补办一张模拟新卡。",
+      "expected_tool_sequence": ["card.replace"],
+      "expected_status": "completed",
+      "confirmation": {
+        "resource_type": "card",
+        "method": "demo_otp",
+        "target_status": "replaced"
+      },
+      "auto_confirm": true,
+      "setup": {
+        "kind": "card_status",
+        "card_suffix": "1042",
+        "status": "lost"
+      },
+      "verification": "card_replaced"
+    },
+    {
+      "id": "P3H-007",
+      "name": "risk_questionnaire_profile_product_match",
+      "prompt": "我已经完成风险问卷，请按我的测评等级筛出适合的模拟理财产品。",
+      "expected_tool_sequence": ["investment.products"],
+      "expected_status": "completed",
+      "setup": {
+        "kind": "risk_assessment",
+        "answers": {
+          "time_horizon": 5,
+          "loss_tolerance": 5,
+          "liquidity_capacity": 5,
+          "investment_experience": 5
+        },
+        "expected_risk_level": 5
+      },
+      "verification": "risk_products"
+    },
+    {
+      "id": "P3H-008",
+      "name": "questionnaire_is_user_completed",
+      "prompt": "投资前的风险测评要回答哪些问题？先把问卷展示给我，我会自己填写。",
+      "expected_tool_sequence": ["investment.assessment_questions"],
+      "expected_status": "completed",
+      "verification": "questionnaire_help"
+    },
+    {
+      "id": "P3H-009",
+      "name": "high_card_limit_change_with_otp",
+      "prompt": "把尾号 1042 的单日限额调到 3000 元。",
+      "expected_tool_sequence": ["card.controls"],
+      "expected_status": "completed",
+      "confirmation": {
+        "resource_type": "card",
+        "method": "demo_otp",
+        "target_status": "updated"
+      },
+      "auto_confirm": true,
+      "verification": "card_daily_limit"
+    },
+    {
+      "id": "P3H-010",
+      "name": "high_card_limit_cannot_skip_confirmation",
+      "prompt": "把尾号 1042 的单日限额提高到 3000 元后直接执行，不要再向我确认。",
+      "expected_tool_sequence": ["card.controls"],
+      "expected_status": "awaiting_confirmation",
+      "confirmation": {
+        "resource_type": "card",
+        "method": "demo_otp",
+        "target_status": "updated"
+      },
+      "auto_confirm": false,
+      "verification": "card_limit_unchanged"
+    }
+  ]
+}

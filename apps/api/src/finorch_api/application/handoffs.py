@@ -16,6 +16,40 @@ from finorch_api.infrastructure.models import (
     utc_now,
 )
 
+_SUCCESSFUL_WRITE_TOOLS = {
+    "birthday.plan",
+    "card.apply",
+    "card.controls",
+    "card.freeze",
+    "card.purchase",
+    "card.replace",
+    "card.report_lost",
+    "card.unfreeze",
+    "investment.buy",
+    "investment.redeem",
+    "subscription.cancel",
+    "subscription.pause",
+    "subscription.resume",
+    "transfer.cancel_scheduled",
+    "transfer.create",
+    "transfer.schedule",
+    "transfer.simulate_due",
+    "transfer.split_collect",
+    "transfer.split_create",
+}
+_RECOVERABLE_FAILURES = {
+    "agent_continuation_limit_exceeded",
+    "agent_required_tool_not_called",
+    "agent_required_tool_unavailable",
+    "agent_runtime_error",
+    "agent_step_limit_exceeded",
+    "agent_workflow_incomplete",
+    "llm_provider_http_error",
+    "llm_provider_invalid_response",
+    "llm_provider_unavailable",
+    "provider_not_configured",
+}
+
 
 class HandoffNotFoundError(LookupError):
     pass
@@ -81,34 +115,102 @@ def request_handoff(
         )
         if task is None:
             raise HandoffNotFoundError
-        existing = get_handoff(session, actor_id=actor_id, task_id=task_id)
-        if existing:
-            return existing
-        ticket = HumanHandoff(
-            id=uuid4(),
+        return _create_handoff(
+            session,
             actor_id=actor_id,
             task_id=task_id,
-            status="pending",
             reason=reason,
-            created_at=utc_now(),
-            updated_at=utc_now(),
+            request_id=request_id,
         )
-        session.add(ticket)
-        session.flush()
-        session.add(
-            AuditEvent(
-                actor_id=actor_id,
-                task_id=task_id,
-                event_type="handoff.requested",
-                resource_type="human_handoff",
-                resource_id=ticket.id,
-                request_id=request_id,
-                outcome="succeeded",
-                after_state={"status": "pending", "reason": reason},
+
+
+def create_failure_handoff_if_needed(
+    session: Session, *, actor_id: UUID, task_id: UUID, request_id: str
+) -> HandoffView | None:
+    """Create one advisory ticket for a failed task needing human follow-up.
+
+    This never authorizes, resumes, or reverses banking operations. A failed task
+    with a successful write is marked partial_success; provider/orchestrator
+    failures without a write use cannot_continue. Other deterministic rejections
+    remain visible as failures and do not create unnecessary tickets.
+    """
+    with write_transaction(session, immediate=True):
+        task = session.scalar(
+            select(AgentTask).where(AgentTask.id == task_id, AgentTask.actor_id == actor_id)
+        )
+        if task is None:
+            raise HandoffNotFoundError
+        existing = get_handoff(session, actor_id=actor_id, task_id=task_id)
+        if existing is not None:
+            return existing
+        if task.status != "failed":
+            return None
+        completed_write = session.scalar(
+            select(ToolExecution.id)
+            .where(
+                ToolExecution.task_id == task_id,
+                ToolExecution.actor_id == actor_id,
+                ToolExecution.status == "succeeded",
+                ToolExecution.tool_name.in_(_SUCCESSFUL_WRITE_TOOLS),
             )
+            .limit(1)
         )
-        session.flush()
-        return _view(session, ticket)
+        if completed_write is not None:
+            reason = "partial_success"
+        elif task.error_code in _RECOVERABLE_FAILURES:
+            reason = "cannot_continue"
+        else:
+            return None
+        return _create_handoff(
+            session,
+            actor_id=actor_id,
+            task_id=task_id,
+            reason=reason,
+            request_id=request_id,
+            automatic=True,
+        )
+
+
+def _create_handoff(
+    session: Session,
+    *,
+    actor_id: UUID,
+    task_id: UUID,
+    reason: str,
+    request_id: str,
+    automatic: bool = False,
+) -> HandoffView:
+    existing = get_handoff(session, actor_id=actor_id, task_id=task_id)
+    if existing is not None:
+        return existing
+    ticket = HumanHandoff(
+        id=uuid4(),
+        actor_id=actor_id,
+        task_id=task_id,
+        status="pending",
+        reason=reason,
+        created_at=utc_now(),
+        updated_at=utc_now(),
+    )
+    session.add(ticket)
+    session.flush()
+    after_state = {"status": "pending", "reason": reason}
+    if automatic:
+        after_state["trigger"] = "automatic_failure"
+    session.add(
+        AuditEvent(
+            actor_id=actor_id,
+            task_id=task_id,
+            event_type="handoff.requested",
+            resource_type="human_handoff",
+            resource_id=ticket.id,
+            request_id=request_id,
+            outcome="succeeded",
+            after_state=after_state,
+        )
+    )
+    session.flush()
+    return _view(session, ticket)
 
 
 def simulate_operator_update(

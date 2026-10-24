@@ -1,5 +1,6 @@
 """Confirmed synthetic card controls and purchases use real ledger rows."""
 
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 import pytest
@@ -9,7 +10,14 @@ from finorch_api.agent.runtime import FakeProvider
 from finorch_api.api.v1.agent import get_provider_selection
 from finorch_api.application.transactions import write_transaction
 from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import Account, AuditEvent, Card, Transaction, utc_now
+from finorch_api.infrastructure.models import (
+    Account,
+    AuditEvent,
+    Card,
+    StrongVerification,
+    Transaction,
+    utc_now,
+)
 from finorch_api.main import app
 from finorch_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
@@ -224,3 +232,223 @@ def test_major_daily_limit_increase_requires_demo_otp(shared_api_context) -> Non
     assert response.status_code == 200, response.text
     with database.session_factory() as session:
         assert session.get(Card, ALICE_ACTIVE_CARD_ID).daily_limit_minor == 300_000
+
+
+def test_reduced_single_limit_blocks_purchase_and_audits_actual_control_change(
+    shared_api_context,
+) -> None:
+    client, _actor, database = shared_api_context
+    control = submit(
+        client,
+        "把尾号1042的卡单笔限额改成200元",
+        key="single-limit-200",
+    )
+    assert control["status"] == "awaiting_confirmation", control
+    assert confirm(client, control).status_code == 200
+
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card is not None
+        assert card.single_limit_minor == 20_000
+        audit = session.scalar(
+            select(AuditEvent).where(
+                AuditEvent.card_id == card.id,
+                AuditEvent.event_type == "card.controls_changed",
+            )
+        )
+        assert audit is not None
+        assert audit.before_state == {
+            "single_limit_minor": 50_000,
+            "daily_limit_minor": 100_000,
+            "online_enabled": True,
+        }
+        assert audit.after_state == {
+            "single_limit_minor": 20_000,
+            "daily_limit_minor": 100_000,
+            "online_enabled": True,
+        }
+        balance = session.get(Account, card.account_id).balance_minor
+
+    blocked = submit(client, "用尾号1042的卡购买模拟鲜花", key="blocked-single-limit")
+    assert blocked["status"] != "awaiting_confirmation", blocked
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert session.get(Account, card.account_id).balance_minor == balance
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Transaction)
+                .where(Transaction.card_id == card.id, Transaction.merchant == "模拟鲜花")
+            )
+            == 0
+        )
+
+
+def test_wrong_otp_does_not_change_limits_and_valid_retry_is_idempotent(shared_api_context) -> None:
+    client, _actor, database = shared_api_context
+    task = submit(client, "把尾号1042的卡单日限额改成3000元", key="otp-limit-retry")
+    challenge = task["confirmation"]
+    with database.session_factory() as session:
+        with write_transaction(session, immediate=True):
+            _, code = issue_demo_code(
+                session,
+                actor_id=DEMO_USER_ONE_ID,
+                confirmation_id=UUID(challenge["id"]),
+                now=utc_now(),
+            )
+
+    wrong_code = "000000" if code != "000000" else "000001"
+    payload = {
+        "challenge_id": challenge["id"],
+        "parameters_hash": challenge["parameters_hash"],
+        "verification_code": wrong_code,
+    }
+    response = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json=payload,
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert response.status_code == 409, response.text
+    with database.session_factory() as session:
+        assert session.get(Card, ALICE_ACTIVE_CARD_ID).daily_limit_minor == 100_000
+        record = session.scalar(
+            select(StrongVerification).where(
+                StrongVerification.confirmation_id == UUID(challenge["id"])
+            )
+        )
+        assert record is not None
+        assert record.attempts == 1
+        assert record.status == "pending"
+
+    payload["verification_code"] = code
+    accepted = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json=payload,
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "completed"
+    replay = client.post(
+        f"/api/v1/agent/tasks/{task['id']}/confirm",
+        json=payload,
+        headers={"Idempotency-Key": challenge["idempotency_key"]},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["status"] == "completed"
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        assert card.daily_limit_minor == 300_000
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.card_id == card.id,
+                    AuditEvent.event_type == "card.controls_changed",
+                )
+            )
+            == 1
+        )
+        record = session.scalar(
+            select(StrongVerification).where(
+                StrongVerification.confirmation_id == UUID(challenge["id"])
+            )
+        )
+        assert record is not None and record.status == "consumed"
+
+
+def test_concurrent_card_purchases_cannot_exceed_daily_limit(shared_api_context) -> None:
+    client, _actor, database = shared_api_context
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        initial_balance = session.get(Account, card.account_id).balance_minor
+    control = submit(client, "把尾号1042的卡单日限额改成500元", key="daily-limit-500")
+    assert control["status"] == "awaiting_confirmation", control
+    assert confirm(client, control).status_code == 200
+
+    tasks = [
+        submit(client, "用尾号1042的卡购买模拟鲜花", key=f"concurrent-flower-{index}")
+        for index in range(2)
+    ]
+    assert all(task["status"] == "awaiting_confirmation" for task in tasks)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda task: confirm(client, task), tasks))
+
+    assert sorted(response.status_code for response in responses) == [200, 409], [
+        response.text for response in responses
+    ]
+    successful = next(response.json() for response in responses if response.status_code == 200)
+    rejected = next(response.json() for response in responses if response.status_code == 409)
+    assert successful["status"] == "completed"
+    assert rejected["error"]["code"] == "card_version_conflict"
+
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        account = session.get(Account, card.account_id)
+        assert account.balance_minor == initial_balance - 29_900
+        assert card.daily_limit_minor == 50_000
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Transaction)
+                .where(Transaction.card_id == card.id, Transaction.merchant == "模拟鲜花")
+            )
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.card_id == card.id,
+                    AuditEvent.event_type == "card.purchase_executed",
+                )
+            )
+            == 1
+        )
+
+
+def test_concurrent_duplicate_purchase_confirmation_has_one_ledger_effect(
+    shared_api_context,
+) -> None:
+    client, _actor, database = shared_api_context
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        initial_balance = session.get(Account, card.account_id).balance_minor
+
+    task = submit(client, "用尾号1042的卡购买模拟鲜花", key="same-purchase-confirmation")
+    assert task["status"] == "awaiting_confirmation", task
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda _index: confirm(client, task), range(2)))
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert all(response.json()["status"] in {"completed", "running"} for response in responses), [
+        response.text for response in responses
+    ]
+    final_task = client.get(f"/api/v1/agent/tasks/{task['id']}")
+    assert final_task.status_code == 200, final_task.text
+    assert final_task.json()["status"] == "completed", final_task.text
+    with database.session_factory() as session:
+        card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        account = session.get(Account, card.account_id)
+        assert account.balance_minor == initial_balance - 29_900
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(Transaction)
+                .where(Transaction.card_id == card.id, Transaction.merchant == "模拟鲜花")
+            )
+            == 1
+        )
+        assert (
+            session.scalar(
+                select(func.count())
+                .select_from(AuditEvent)
+                .where(
+                    AuditEvent.card_id == card.id,
+                    AuditEvent.event_type == "card.purchase_executed",
+                )
+            )
+            == 1
+        )
