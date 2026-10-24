@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from finorch_api.infrastructure.models import (
     AuditEvent,
+    Card,
     ConfirmationChallenge,
     InvestmentOrder,
     InvestmentProduct,
     StrongVerification,
+    ToolExecution,
     Transfer,
 )
 from finorch_api.security.risk_policy import (
@@ -35,6 +37,22 @@ def challenge_risk(
 ) -> RiskDecision:
     if challenge.tool_name in {"card.report_lost", "card.replace"}:
         return decide_risk(operation="sensitive_card")
+    if challenge.tool_name in {"card.controls", "card.purchase"}:
+        execution = session.get(ToolExecution, challenge.tool_execution_id)
+        proposal = execution.result_data if execution else None
+        card = session.get(Card, challenge.card_id) if challenge.card_id else None
+        if not isinstance(proposal, dict) or card is None:
+            raise ValueError("Invalid card control proposal.")
+        if challenge.tool_name == "card.controls":
+            single = proposal.get("single_limit_minor")
+            daily = proposal.get("daily_limit_minor")
+            if type(single) is not int or type(daily) is not int:
+                raise ValueError("Invalid card control limits.")
+            if single > 100_000 or daily > 200_000:
+                return decide_risk(operation="sensitive_card")
+        if challenge.tool_name == "card.purchase" and proposal.get("amount_minor", 0) > 100_000:
+            return decide_risk(operation="sensitive_card")
+        return decide_risk(operation="write")
     if challenge.transfer_id and challenge.target_status != "cancelled":
         transfer = session.get(Transfer, challenge.transfer_id)
         if transfer is None or transfer.actor_id != challenge.actor_id:

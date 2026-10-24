@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -110,6 +111,8 @@ class Card(Base):
             "status in ('active', 'frozen', 'lost', 'replaced')", name="status_allowed"
         ),
         CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint("single_limit_minor > 0", name="card_single_limit_positive"),
+        CheckConstraint("daily_limit_minor > 0", name="card_daily_limit_positive"),
         Index("ix_cards_account_id", "account_id"),
     )
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
@@ -131,6 +134,15 @@ class Card(Base):
         nullable=False,
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    single_limit_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=50_000, server_default="50000"
+    )
+    daily_limit_minor: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=100_000, server_default="100000"
+    )
+    online_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     replaced_by_card_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("cards.id", ondelete="RESTRICT"), nullable=True
     )
@@ -790,7 +802,7 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
             "target_status in ('active', 'frozen', 'paused', 'cancelled', 'executed', "
-            "'scheduled', 'open', 'settled', 'lost', 'replaced', 'submitted')",
+            "'scheduled', 'open', 'settled', 'lost', 'replaced', 'submitted', 'updated')",
             name="challenge_target_status_allowed",
         ),
         CheckConstraint(

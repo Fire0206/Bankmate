@@ -927,6 +927,8 @@ const writeTitles: Record<string, string> = {
   "card.report_lost": "银行卡已挂失",
   "card.replace": "模拟补卡已创建",
   "card.apply": "模拟借记卡申请已提交",
+  "card.controls": "银行卡消费设置已更新",
+  "card.purchase": "模拟商品购买已完成",
   "subscription.pause": "自动续费已暂停",
   "subscription.resume": "自动续费已恢复",
   "subscription.cancel": "自动续费已取消",
@@ -1110,6 +1112,18 @@ function writeSummary(step: Step): { title: string; detail: string } {
   const toolName = step.tool_name ?? "";
   const data = isObjectResult(step) ? step.result_data : {};
   if (toolName.startsWith("card.")) {
+    if (toolName === "card.purchase") {
+      return {
+        title: writeTitles[toolName],
+        detail: `${stringValue(data.product_name)} · ${formatAmount(data.amount_minor)} · 尾号 ${stringValue(data.card_suffix)}`,
+      };
+    }
+    if (toolName === "card.controls") {
+      return {
+        title: writeTitles[toolName],
+        detail: `尾号 ${stringValue(data.card_suffix)} · 单笔 ${formatAmount((isObject(data.card) ? data.card : data).single_limit_minor)} · 每日 ${formatAmount((isObject(data.card) ? data.card : data).daily_limit_minor)}`,
+      };
+    }
     if (toolName === "card.apply") {
       const application = isObject(data.application) ? data.application : data;
       return {

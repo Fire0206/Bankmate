@@ -44,6 +44,8 @@ def user_authorized_write(request_text: str, tool_name: str) -> bool:
         "card.report_lost",
         "card.replace",
         "card.apply",
+        "card.controls",
+        "card.purchase",
     }:
         return requested_card_tool(request) == tool_name
     if tool_name in {"subscription.pause", "subscription.resume", "subscription.cancel"}:

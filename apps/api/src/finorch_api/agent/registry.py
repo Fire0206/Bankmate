@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.card_control_tools import card_control_tool_specs
 from finorch_api.agent.cashflow_tools import cashflow_tool_specs
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.agent.investment_tools import investment_tool_specs
@@ -75,6 +76,9 @@ def card_result_payload(card: CardView) -> dict[str, Any]:
         "card_suffix": card.card_suffix,
         "status": card.status.value,
         "version": card.version,
+        "single_limit_minor": card.single_limit_minor,
+        "daily_limit_minor": card.daily_limit_minor,
+        "online_enabled": card.online_enabled,
         "replaced_by_card_id": str(card.replaced_by_card_id) if card.replaced_by_card_id else None,
     }
 
@@ -602,5 +606,6 @@ def build_tool_registry() -> ToolRegistry:
             *transfer_tool_specs(),
             *investment_tool_specs(),
             *cashflow_tool_specs(),
+            *card_control_tool_specs(),
         )
     )

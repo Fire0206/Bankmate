@@ -238,7 +238,14 @@ def missing_write_input_message(
     request = request_text.casefold()
     if any(
         tool in missing_tools
-        for tool in ("card.freeze", "card.unfreeze", "card.report_lost", "card.replace")
+        for tool in (
+            "card.freeze",
+            "card.unfreeze",
+            "card.report_lost",
+            "card.replace",
+            "card.controls",
+            "card.purchase",
+        )
     ) and not re.search(r"(?<!\d)\d{4}(?!\d)", request):
         return "请提供要操作的银行卡尾号。"
 
@@ -355,6 +362,8 @@ def missing_explicit_write_parameters_message(request_text: str) -> str | None:
         "card.unfreeze",
         "card.report_lost",
         "card.replace",
+        "card.controls",
+        "card.purchase",
     }
     if card_change:
         suffix_source = active_text if len(supplement) > 1 else request

@@ -979,6 +979,12 @@ export interface components {
             status: components["schemas"]["CardStatus"];
             /** Version */
             version: number;
+            /** Single Limit Minor */
+            single_limit_minor: number;
+            /** Daily Limit Minor */
+            daily_limit_minor: number;
+            /** Online Enabled */
+            online_enabled: boolean;
             /** Replaced By Card Id */
             replaced_by_card_id: string | null;
             /**

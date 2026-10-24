@@ -4,6 +4,10 @@ import { PageHeader } from "../components/PageHeader";
 import { SkeletonRows } from "../components/Skeleton";
 import { cardLabel } from "../components/cardFormat";
 
+function yuan(minor: number): string {
+  return `¥${(minor / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
+}
+
 export function CardsPage({
   cards,
   loading,
@@ -29,7 +33,7 @@ export function CardsPage({
       <PageHeader
         actionLabel="咨询卡片安全"
         busy={busy}
-        description="查看卡片状态，并在服务端确认后冻结或解冻模拟银行卡。"
+        description="查看模拟银行卡状态、消费限额与线上支付设置。变更需确认。"
         eyebrow="Card controls"
         onAction={() =>
           onPrompt("帮我检查银行卡状态，并告诉我有哪些安全控制可以做")
@@ -166,6 +170,11 @@ export function CardsPage({
                           ? "旧卡已停用"
                           : "支付已停用"}
                   </small>
+                  <small>
+                    单笔 {yuan(card.single_limit_minor)} · 每日{" "}
+                    {yuan(card.daily_limit_minor)} · 线上消费
+                    {card.online_enabled ? "已开启" : "已关闭"}
+                  </small>
                 </span>
                 {card.status === "lost" ? (
                   <button
@@ -180,7 +189,7 @@ export function CardsPage({
                     申请模拟补卡
                   </button>
                 ) : card.status !== "replaced" ? (
-                  <>
+                  <div className="management-actions">
                     <button
                       disabled={busy}
                       onClick={() => onManage(card)}
@@ -197,7 +206,18 @@ export function CardsPage({
                     >
                       挂失此卡
                     </button>
-                  </>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        onPrompt(
+                          `${card.online_enabled ? "关闭" : "开启"}尾号${card.card_suffix}的卡线上支付`,
+                        )
+                      }
+                      type="button"
+                    >
+                      {card.online_enabled ? "关闭线上支付" : "开启线上支付"}
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ))
