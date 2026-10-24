@@ -104,19 +104,20 @@ Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
 `POST /api/v1/payees` 可选填写合成 `phone_number`，每位 actor 的手机号唯一；`GET /api/v1/payees` 仅返回掩码。转账 Tool 传精确 `recipient_phone` 或 `recipient_name`，不能两者兼传。转账查询返回可空 `remark`；备注不被执行为指令，确认时须保持一致。
 Demo Session 与 Agent Task 端点：
 
-| 方法与路径                                                                                       | 说明                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                                          |
-| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                                  |
-| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                                       |
-| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                                               |
-| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                                   |
-| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                                                |
-| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片、订阅、转账、分账或理财确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
-| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                                              |
-| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                                  |
-| `GET /api/v1/agent/tasks/{task_id}/handoff`                                                      | 查询当前 actor 任务的本地模拟人工处理工单；没有工单返回 `null`。                                                                        |
-| `POST /api/v1/agent/tasks/{task_id}/handoff`                                                     | 为当前 actor 的任务申请本地模拟人工处理；重复提交返回同一工单，不授权金融写操作。                                                       |
+| 方法与路径                                                                                       | 说明                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                                                    |
+| `GET /api/v1/birthday-plans`                                                                     | 返回当前 Demo actor 已确认的生日预算意向与到期提醒；不代表资金冻结或自动下单。                                                                    |
+| `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                                            |
+| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                                                 |
+| `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                                                         |
+| `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                                             |
+| `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                                                          |
+| `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片、生日计划、订阅、转账、分账或理财确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |
+| `POST /api/v1/agent/tasks/{task_id}/cancel`                                                      | 取消尚未完成的本地任务；必须带 `Idempotency-Key`，相同键重试返回持久化结果                                                                        |
+| `GET /api/v1/agent/tasks/{task_id}/audit`                                                        | 返回 actor 可见的任务审计摘要，不返回原始 prompt、API Key 或敏感上下文                                                                            |
+| `GET /api/v1/agent/tasks/{task_id}/handoff`                                                      | 查询当前 actor 任务的本地模拟人工处理工单；没有工单返回 `null`。                                                                                  |
+| `POST /api/v1/agent/tasks/{task_id}/handoff`                                                     | 为当前 actor 的任务申请本地模拟人工处理；重复提交返回同一工单，不授权金融写操作。                                                                 |
 
 `card.freeze`、`card.unfreeze`、`card.report_lost`、`subscription.pause`、`subscription.resume`、`subscription.cancel`、转账、分账和理财写工具 不是独立 HTTP 写路由。Agent 工具提案只创建服务端确认挑战；确认路由复核 actor、资源所有权、工具/参数摘要、策略、资源版本、有效期和幂等键后，才通过 Application 用例变更状态。API Router、Agent Provider 和前端不得直接操作 ORM 表或 Session 事务。
 

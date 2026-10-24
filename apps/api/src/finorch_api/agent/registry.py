@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from finorch_api.agent.birthday_tools import birthday_tool_specs
 from finorch_api.agent.card_control_tools import card_control_tool_specs
 from finorch_api.agent.cashflow_tools import cashflow_tool_specs
 from finorch_api.agent.context import ToolCallContext
@@ -607,5 +608,6 @@ def build_tool_registry() -> ToolRegistry:
             *investment_tool_specs(),
             *cashflow_tool_specs(),
             *card_control_tool_specs(),
+            *birthday_tool_specs(),
         )
     )

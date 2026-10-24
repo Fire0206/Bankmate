@@ -23,7 +23,7 @@
 
 ## 当前实体与后续规划
 
-Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定现有确认、actor 与参数/策略摘要。只保存带盐验证码摘要、尝试次数、有效期和生命周期状态；不保存明文 OTP。最终业务执行必须在同一 SQLite 写事务中重新判断风险并消费验证；尚未完成执行入口接入前，不视为已启用强验证。
+Phase 3 已接入的本地模拟强验证：`strong_verifications` 通过唯一 `confirmation_id` 绑定确认、actor 与参数/策略摘要。只保存带盐验证码摘要、尝试次数、有效期和生命周期状态；不保存明文 OTP。适用的高风险写操作在同一 SQLite 写事务中复核风险、消费验证并执行。该机制仅用于本地演示，不是生产认证。
 
 首批已实现实体及字段以 ORM 模型和 Alembic 迁移为准：
 
@@ -31,6 +31,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 - `accounts`：所属 DemoUser、标签、币种、`opening_balance_minor` 和由服务端事务维护的 `balance_minor` 投影；金额变化与对应交易记录在同一事务提交。
 - `cards`：所属 Account、展示标签、假卡号后四位、`active`/`frozen`/`lost`/`replaced` 状态、乐观并发 `version`。`lost` 不能通过解冻恢复；经确认及本地模拟验证码可补发新合成卡，旧卡标记为 `replaced` 并通过 `replaced_by_card_id` 关联新卡。
 - `card_applications`：当前模拟用户对已有账户提交的借记卡申请；`pending_confirmation` 仅为未提交提案，用户确认后变为 `submitted`；本地模拟审核给出 `approved`/`rejected`，批准时创建新合成卡并记录 `issued_card_id`。不得将其解释为真实银行信用审核或授信。
+- `birthday_plans`：当前 actor 的生日日期、提前两天的到期提醒日期、所属合成账户、整数预算和固定商品参考总价。确认后从 `pending_confirmation` 变为 `scheduled`，但这仅是预算意向；`funds_held=false`、`order_placed=false`，不扣款也不锁定余额。到期时再次核对资金、卡片限制和交付方式，实际购买仍须新的用户授权及服务端确认；当前没有自动订单调度。
 - `cards` 的模拟消费控制（Implemented）：单笔、同一 UTC+8 业务日累计上限和线上支付开关；限额仅约束明确选择该卡的固定目录模拟消费，不等于信用额度，也不直接限制独立的账户转账。服务端在确认事务中复核限制与余额，同事务写账户扣款、`transactions` 流水、卡版本和审计；不连接真实支付网络。
 - `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
@@ -39,7 +40,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 - `investment_products`、`investment_holdings`、`investment_orders`：确定性模拟产品和价格、风险等级、用户持仓及申购/赎回订单；不代表真实理财产品或收益。
 - `risk_assessments`：用户主动提交的四项模拟风险问卷答案、问卷版本、确定性得分和风险等级；按时间追加保存，`demo_users.risk_level` 是最新测评等级的受控投影。提交由服务端按答案评分并写审计，Agent 只能读取问卷，不能代填或直接提高等级。重复 Seed 不覆盖已有用户等级；显式 Reset 清除测评并恢复合成初始值。
 - `subscriptions` 的 `reminder_days_before`（0–30，默认 3）和 `last_reminded_charge_at` 记录应用内续费提醒设置与已生成提醒的扣款周期；仅有效订阅可生成提醒，同一周期不会重复生成。提醒审计以 `subscription.renewal_reminder_created` 追加记录，不代表真实商户扣款或外部通知送达。
-- `confirmation_challenges`：一次性绑定 actor、单一目标资源（银行卡、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
+- `confirmation_challenges`：一次性绑定 actor、单一目标资源（含银行卡、借记卡申请、生日计划、订阅、转账、AA 分账或理财订单）、tool/version、目标状态、参数摘要、对应资源版本、策略版本、幂等键、有效期和消费状态的服务端挑战；数据库约束保证只关联一种资源。
 - `transactions`：模拟账单明细也记录内部资金操作；`entry_kind` 用于区分 `bill`、`transfer` 和 `investment`，账单统计只汇总 `bill`。可选 `card_id` 将来源卡与交易关联，以支持可解释的重复扣费证据。
 - `audit_events`：通用 actor、event type、resource、request/task/tool execution ID、outcome、可选前后状态摘要和 UTC 时间；兼容既有卡片状态语义。正常业务路径只追加，不覆盖或删除历史。不得在审计事件中存密钥、原始敏感数据或完整 Prompt。
 
@@ -59,6 +60,7 @@ Phase 3 开发中：`strong_verifications` 通过唯一 `confirmation_id` 绑定
 | `investment_products`                | 1 对多 `investment_holdings` / `investment_orders` | 已实现确定性模拟价格、风险等级和参考收益                                  |
 | `investment_holdings`                | 多对 1 `accounts` 和 `investment_products`         | 已实现模拟持仓及余额变化                                                  |
 | `investment_orders`                  | 多对 1 actor/account/product，可选关联 holding     | 已实现确认后的模拟申购/赎回订单                                           |
+| `birthday_plans`                     | 多对 1 actor/account；确认挑战可引用               | 已实现预算意向和到期提醒；不锁资金、不自动下单                            |
 | `agent_tasks`                        | 1 对多 `task_steps`                                | 已实现；受限保存用户请求和 Workflow 当前状态                              |
 | `human_handoffs`                     | 1 对 1 `agent_tasks`；归属 Demo actor              | 已实现本地模拟人工处理工单与状态；不代表金融授权                          |
 | `task_steps`                         | 多对 1 `agent_tasks`；1 对多 `tool_executions`     | 已实现；有序规划、输入、取消和工具步骤及安全错误摘要                      |

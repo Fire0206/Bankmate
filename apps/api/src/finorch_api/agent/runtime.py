@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from finorch_api.agent.intent import (
+    birthday_plan_intent,
     is_planning_only_request,
     is_split_creation_request,
     parse_split_intent,
@@ -217,6 +218,11 @@ class AgentRuntime:
                     "card.catalog for prices and card.purchase for the explicitly named item, "
                     "quantity and card suffix. Do not use investment.buy for gifts. Card purchases "
                     "need server confirmation and must not be described as completed beforehand. "
+                    "For a birthday gift budget, ask for the exact birthday date, budget and "
+                    "account when missing. Use birthday.plan only to schedule a budget intention "
+                    "and a reminder two days beforehand; it does not hold funds, place an order "
+                    "or authorize future automatic payment. At the due date, read birthday.list "
+                    "and require fresh user authorization and confirmation for each purchase. "
                     "Money amounts sent to transfer tools use integer fen; convert each yuan by "
                     "multiplying by 100 (999999 yuan is 99999900 fen). For transfer.create use "
                     "exactly one of recipient_name or recipient_phone plus amount_minor; include "
@@ -679,6 +685,45 @@ class FakeProvider(LLMProvider):
                 )
             return ModelTurn("已读取账单和订阅信息，请检查任务步骤。", status="completed")
 
+        if "生日计划" in request and any(
+            word in request for word in ("查询", "查看", "到期", "提醒")
+        ):
+            if "birthday.list" in succeeded:
+                return ModelTurn(
+                    "已读取生日预算与到期提醒；资金未冻结，订单未下单。",
+                    status="completed",
+                )
+            return call("birthday.list", {})
+        if "生日" in full_request and any(
+            word in full_request for word in ("鲜花", "蛋糕", "预算", "预留", "预约")
+        ):
+            if is_planning_only_request(full_request):
+                return call("card.catalog", {})
+            if "birthday.plan" in succeeded:
+                return ModelTurn(
+                    "生日预算意向与到期提醒已保存；资金未冻结，商品尚未购买。",
+                    status="completed",
+                )
+            intent = birthday_plan_intent(full_request)
+            if intent is None:
+                return ModelTurn(
+                    "请明确是否要同时安排模拟鲜花和蛋糕的生日预算。",
+                    status="awaiting_input",
+                )
+            if intent.birthday_on is None:
+                return ModelTurn("请告诉我具体生日日期（年、月、日）。", status="awaiting_input")
+            if intent.budget_minor is None:
+                return ModelTurn("请告诉我计划预留多少预算。", status="awaiting_input")
+            if intent.account_label is None:
+                return ModelTurn("请说明从日常账户还是储蓄账户安排预算。", status="awaiting_input")
+            return call(
+                "birthday.plan",
+                {
+                    "birthday_on": intent.birthday_on.isoformat(),
+                    "budget_minor": intent.budget_minor,
+                    "account_label": intent.account_label,
+                },
+            )
         payday_intent = "资金调度" in full_request or (
             any(phrase in full_request for phrase in ("发薪日", "工资", "薪资", "收入到账"))
             and any(phrase in full_request for phrase in ("规划", "安排", "调度", "资金"))

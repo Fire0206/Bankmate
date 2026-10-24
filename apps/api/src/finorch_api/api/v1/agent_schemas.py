@@ -45,7 +45,13 @@ class ConfirmationResponse(BaseModel):
 
     id: UUID
     resource_type: Literal[
-        "card", "card_application", "subscription", "transfer", "split", "investment_order"
+        "card",
+        "card_application",
+        "birthday_plan",
+        "subscription",
+        "transfer",
+        "split",
+        "investment_order",
     ]
     resource_id: UUID
     resource_label: str

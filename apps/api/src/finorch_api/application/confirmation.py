@@ -34,12 +34,14 @@ def create_confirmation_challenge(
     resource_fields: dict[str, object] = {
         "card_id": None,
         "card_application_id": None,
+        "birthday_plan_id": None,
         "subscription_id": None,
         "transfer_id": None,
         "split_bill_id": None,
         "investment_order_id": None,
         "card_version": None,
         "card_application_version": None,
+        "birthday_plan_version": None,
         "subscription_version": None,
         "transfer_version": None,
         "split_bill_version": None,
@@ -48,6 +50,7 @@ def create_confirmation_challenge(
     resource_columns = {
         "card": ("card_id", "card_version"),
         "card_application": ("card_application_id", "card_application_version"),
+        "birthday_plan": ("birthday_plan_id", "birthday_plan_version"),
         "subscription": ("subscription_id", "subscription_version"),
         "transfer": ("transfer_id", "transfer_version"),
         "split": ("split_bill_id", "split_bill_version"),

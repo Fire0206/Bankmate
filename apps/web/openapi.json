@@ -832,6 +832,97 @@
         }
       }
     },
+    "/api/v1/birthday-plans": {
+      "get": {
+        "tags": [
+          "birthday-plans"
+        ],
+        "summary": "List owned synthetic birthday plans",
+        "operationId": "read_birthday_plans_api_v1_birthday_plans_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BirthdayPlansResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Permission denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Request conflicts with current state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Demo identity is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/subscriptions": {
       "get": {
         "tags": [
@@ -4914,6 +5005,145 @@
         ],
         "title": "BillTrendResponse"
       },
+      "BirthdayPlanResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "account_label": {
+            "type": "string",
+            "title": "Account Label"
+          },
+          "birthday_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Birthday On"
+          },
+          "purchase_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Purchase On"
+          },
+          "budget_minor": {
+            "type": "integer",
+            "title": "Budget Minor"
+          },
+          "catalog_total_minor": {
+            "type": "integer",
+            "title": "Catalog Total Minor"
+          },
+          "currency": {
+            "type": "string",
+            "const": "CNY",
+            "title": "Currency"
+          },
+          "status": {
+            "type": "string",
+            "const": "scheduled",
+            "title": "Status"
+          },
+          "due_for_reconfirmation": {
+            "type": "boolean",
+            "title": "Due For Reconfirmation"
+          },
+          "funds_held": {
+            "type": "boolean",
+            "const": false,
+            "title": "Funds Held"
+          },
+          "order_placed": {
+            "type": "boolean",
+            "const": false,
+            "title": "Order Placed"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BirthdayProductResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_action": {
+            "type": "string",
+            "title": "Next Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "account_label",
+          "birthday_on",
+          "purchase_on",
+          "budget_minor",
+          "catalog_total_minor",
+          "currency",
+          "status",
+          "due_for_reconfirmation",
+          "funds_held",
+          "order_placed",
+          "items",
+          "next_action"
+        ],
+        "title": "BirthdayPlanResponse"
+      },
+      "BirthdayPlansResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BirthdayPlanResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "BirthdayPlansResponse"
+      },
+      "BirthdayProductResponse": {
+        "properties": {
+          "product_code": {
+            "type": "string",
+            "enum": [
+              "flowers",
+              "cake"
+            ],
+            "title": "Product Code"
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name"
+          },
+          "unit_price_minor": {
+            "type": "integer",
+            "title": "Unit Price Minor"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_code",
+          "product_name",
+          "unit_price_minor",
+          "quantity"
+        ],
+        "title": "BirthdayProductResponse"
+      },
       "CardApplicationResponse": {
         "properties": {
           "id": {
@@ -5157,6 +5387,7 @@
             "enum": [
               "card",
               "card_application",
+              "birthday_plan",
               "subscription",
               "transfer",
               "split",

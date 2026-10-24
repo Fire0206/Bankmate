@@ -48,6 +48,12 @@ from finorch_api.application.agent_workflow import (
     unknown_requested_transfer_payee_message,
     unsuitable_requested_investment_message,
 )
+from finorch_api.application.birthday_plans import (
+    POLICY_VERSION as BIRTHDAY_POLICY_VERSION,
+)
+from finorch_api.application.birthday_plans import (
+    confirm_birthday_plan,
+)
 from finorch_api.application.card_applications import (
     POLICY_VERSION as CARD_APPLICATION_POLICY_VERSION,
 )
@@ -88,6 +94,7 @@ from finorch_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
+    BirthdayPlan,
     CardApplication,
     ConfirmationChallenge,
     InvestmentOrder,
@@ -786,6 +793,8 @@ def _dispatch_tool(
                 target = f"{label}理财产品"
             elif resource_type == "card_application":
                 target = f"{label}模拟借记卡申请"
+            elif resource_type == "birthday_plan":
+                target = "生日预算和到期提醒"
             else:
                 target = label
             return ToolDispatchResult(
@@ -915,6 +924,40 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                 card_version=challenge.card_version,
                 details=card_details,
             )
+        elif challenge.birthday_plan_id is not None:
+            plan = session.scalar(
+                select(BirthdayPlan).where(
+                    BirthdayPlan.id == challenge.birthday_plan_id,
+                    BirthdayPlan.actor_id == actor_id,
+                )
+            )
+            if plan is not None:
+                account = session.get(Account, plan.account_id)
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="birthday_plan",
+                    resource_id=plan.id,
+                    resource_label="生日预算与到期提醒",
+                    resource_version=challenge.birthday_plan_version or plan.version,
+                    current_status=plan.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
+                    details={
+                        "account_label": account.label if account else "模拟账户",
+                        "birthday_on": plan.birthday_on.isoformat(),
+                        "purchase_on": plan.purchase_on.isoformat(),
+                        "budget_minor": plan.budget_minor,
+                        "catalog_total_minor": plan.catalog_total_minor,
+                        "currency": "CNY",
+                        "funds_held": False,
+                        "order_placed": False,
+                    },
+                )
         elif challenge.card_application_id is not None:
             application = session.scalar(
                 select(CardApplication).where(
@@ -2246,6 +2289,90 @@ def confirm_task_operation(
                 session.flush()
                 return _task_view(session, actor_id=actor_id, task_id=task.id)
             task.error_code = None
+
+            if challenge.birthday_plan_id is not None:
+                plan = session.scalar(
+                    select(BirthdayPlan).where(
+                        BirthdayPlan.id == challenge.birthday_plan_id,
+                        BirthdayPlan.actor_id == actor_id,
+                    )
+                )
+                if plan is None:
+                    raise AgentTaskNotFoundError
+                normalized = {
+                    "tool_name": challenge.tool_name,
+                    "tool_version": challenge.tool_version,
+                    "plan_id": str(plan.id),
+                    "account_id": str(plan.account_id),
+                    "birthday_on": plan.birthday_on.isoformat(),
+                    "purchase_on": plan.purchase_on.isoformat(),
+                    "budget_minor": plan.budget_minor,
+                    "catalog_total_minor": plan.catalog_total_minor,
+                    "target_status": "scheduled",
+                }
+                if (
+                    plan.version != challenge.birthday_plan_version
+                    or plan.status != "pending_confirmation"
+                    or challenge.target_status != "scheduled"
+                    or challenge.tool_name != "birthday.plan"
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != BIRTHDAY_POLICY_VERSION
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="birthday_plan_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                try:
+                    with session.begin_nested():
+                        result = confirm_birthday_plan(
+                            session,
+                            actor_id=actor_id,
+                            plan_id=plan.id,
+                            request_id=request_id,
+                            task_id=task.id,
+                            tool_execution_id=execution.id,
+                        )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                _transition(task, "running")
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                message = "生日预算意向与到期提醒已保存；资金未冻结，鲜花和蛋糕尚未购买。"
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="birthday_plan",
+                    resource_id=plan.id,
+                    result_data=result,
+                    result_summary=message,
+                    user_message=message,
+                    before_state={"status": "pending_confirmation"},
+                    after_state={"status": "scheduled", "funds_held": False, "order_placed": False},
+                )
 
             if challenge.card_application_id is not None:
                 application = session.scalar(

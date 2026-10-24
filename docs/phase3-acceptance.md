@@ -28,7 +28,7 @@
 | 可配置续费提醒 | F    | F    | F   | P    | F    | P        | F    | F    | M        | 应用内按扣款周期去重；Agent 可只读查询，设置通过前端/API，未接自动调度或模型写工具 |
 | 可疑扣款处置   | F    | F    | F   | F    | P    | F        | F    | F    | M        | agent_workflow.py；逐步确认                                                        |
 | 发薪日调度     | F    | F    | F   | F    | P    | F        | F    | F    | M        | cashflow.py；需累计金额策略                                                        |
-| 生日预算/预订  | M    | M    | M   | M    | M    | M        | M    | M    | M        | 预留、预约、扣款须分别建模                                                         |
+| 生日预算/预订  | P    | P    | P   | P    | P    | P        | P    | P    | M        | 已实现预算意向、提前两天提醒、确认与归属；不锁资金、不自动下单，到期购买仍需完成   |
 
 主要代码前缀为 `apps/api/src/finorch_api/`；API 位于 `api/v1/`，工具位于 `agent/`，集成测试位于 `apps/api/tests/`。前端通用确认和结果分别位于 `apps/web/src/components/ConfirmationCard.tsx`、`TaskResult.tsx`。
 

@@ -73,6 +73,8 @@ function actionName(confirmation: Confirmation): string {
               : "解冻银行卡";
   if (confirmation.resource_type === "card_application")
     return "提交模拟借记卡申请";
+  if (confirmation.resource_type === "birthday_plan")
+    return "保存生日预算与到期提醒";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"
@@ -129,6 +131,7 @@ export function ConfirmationCard({
   const resourceLabels: Record<Confirmation["resource_type"], string> = {
     card: "银行卡",
     card_application: "银行卡申请",
+    birthday_plan: "生日计划",
     subscription: "自动扣费",
     transfer: "转账",
     split: "AA 分账",
@@ -145,6 +148,8 @@ export function ConfirmationCard({
             : "只影响这张模拟银行卡。",
     card_application:
       "确认后仅提交模拟申请，等待本地模拟审核；不会立即发卡或产生真实授信。",
+    birthday_plan:
+      "仅保存预算意向和到期提醒，不冻结资金，也不会自动购买。到期后需要重新核对并确认每笔模拟消费。",
     subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
     transfer: "这笔转账只在模拟账本中记账。",
     split: "仅更新这笔模拟 AA 分账的状态。",
@@ -192,6 +197,14 @@ export function ConfirmationCard({
           ? "储蓄账户"
           : account,
     ]);
+  } else if (confirmation.resource_type === "birthday_plan") {
+    detailsRows.push(
+      ["生日日期", text(details, "birthday_on")],
+      ["提醒日期", text(details, "purchase_on")],
+      ["计划预算", amount(details, "budget_minor")],
+      ["鲜花和蛋糕参考总价", amount(details, "catalog_total_minor")],
+      ["账户", text(details, "account_label")],
+    );
   } else if (confirmation.resource_type === "transfer") {
     detailsRows.push(
       ["收款人", text(details, "payee_name")],

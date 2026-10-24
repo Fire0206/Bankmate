@@ -46,10 +46,11 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
         "investment_holdings",
         "investment_orders",
         "risk_assessments",
+        "birthday_plans",
     } <= table_names
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0014_card_controls"
+        assert revision == "0015_birthday_plans"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
@@ -106,6 +107,31 @@ def test_card_control_migration_preserves_existing_card_and_defaults(tmp_path: P
             assert row == ("Prior Card", "9876", 50_000, 100_000, 1)
             assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        engine.dispose()
+
+
+def test_birthday_migration_preserves_existing_synthetic_accounts(tmp_path: Path) -> None:
+    path = tmp_path / "migration-birthday-plans.sqlite3"
+    url = URL.create("sqlite", database=str(path)).render_as_string(hide_password=False)
+    config = Config(str(REPOSITORY_ROOT / "apps" / "api" / "alembic.ini"))
+    config.attributes["database_url"] = url
+    engine = build_engine(url)
+    try:
+        command.upgrade(config, "0014_card_controls")
+        factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+        with factory.begin() as session:
+            seed_demo_data(session)
+        with engine.connect() as connection:
+            before = connection.scalar(text("SELECT COUNT(*) FROM accounts"))
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            assert connection.scalar(text("SELECT COUNT(*) FROM accounts")) == before
+            assert connection.scalar(text("SELECT COUNT(*) FROM birthday_plans")) == 0
+            assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
+                "0015_birthday_plans"
+            )
+            assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     finally:
         engine.dispose()
 
@@ -247,7 +273,7 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0014_card_controls"
+                "0015_birthday_plans"
             )
     finally:
         engine.dispose()

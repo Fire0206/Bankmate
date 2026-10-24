@@ -36,15 +36,18 @@
 
 **CardResponse**（`items[]` 与单卡响应相同）：
 
-| 字段                       | 含义 / 类型         | 可空 / 枚举            |
-| -------------------------- | ------------------- | ---------------------- |
-| `id`, `account_id`         | 卡片、所属账户 UUID | 否                     |
-| `label`                    | 卡片名称            | 否                     |
-| `card_suffix`              | 卡号尾四位字符串    | 否                     |
-| `status`                   | 卡状态              | 否；`active`、`frozen` |
-| `version`                  | 服务端资源版本      | 否；正整数             |
-| `created_at`, `updated_at` | 创建、更新时间      | 否；UTC date-time      |
-| `next_cursor`              | 列表下一页游标      | 是                     |
+| 字段                                      | 含义 / 类型                                   | 可空 / 枚举                                |
+| ----------------------------------------- | --------------------------------------------- | ------------------------------------------ |
+| `id`, `account_id`                        | 卡片、所属账户 UUID                           | 否                                         |
+| `label`                                   | 卡片名称                                      | 否                                         |
+| `card_suffix`                             | 卡号尾四位字符串                              | 否                                         |
+| `status`                                  | 卡状态                                        | 否；`active`、`frozen`、`lost`、`replaced` |
+| `version`                                 | 服务端资源版本                                | 否；正整数                                 |
+| `single_limit_minor`, `daily_limit_minor` | 模拟商品消费的单笔和 UTC+8 业务日限额，单位分 | 否；整数                                   |
+| `online_enabled`                          | 模拟线上消费开关                              | 否；布尔值                                 |
+| `replaced_by_card_id`                     | 旧卡被补发替代时的新卡 UUID                   | 是                                         |
+| `created_at`, `updated_at`                | 创建、更新时间                                | 否；UTC date-time                          |
+| `next_cursor`                             | 列表下一页游标                                | 是                                         |
 
 **BillTransactionResponse**：
 
@@ -61,6 +64,12 @@
 `BillSummaryResponse` 还含 `month`、`currency`、`income_minor`、`expense_minor`、`net_minor`、`selected_category`、`selected_category_expense_minor`、`categories[]`、`trends[]`、`anomalies[]`。类别项为 `{category, amount_minor, transaction_count}`；趋势项为 `{month, income_minor, expense_minor}`。无类别筛选时 `selected_category` 和 `selected_category_expense_minor` 为空。筛选结果、汇总、类别统计和趋势均由服务端从 `entry_kind="bill"` 的模拟流水计算。
 
 当前异常规则是可解释的演示提示：非住房单笔支出达到 ¥1,000，以及同一账户、商户、金额、币种在同一 UTC 日期出现多笔扣款。它不是风控评分或欺诈检测。演示种子中 2026-10 有工资、餐饮、交通、住房、大额数码消费，以及腾讯视频相同金额的重复扣费样例；全部为合成流水。
+
+### 生日预算与到期提醒（部分实现）
+
+`GET /api/v1/birthday-plans` 返回 `{items: BirthdayPlanResponse[]}`，仅列出当前 Demo actor 已确认的计划。每项包含 `id`、`account_id`、`account_label`、`birthday_on`（无时区日历日期）、`purchase_on`（提前两天）、`budget_minor`、`catalog_total_minor`、`currency="CNY"`、`status="scheduled"`、`due_for_reconfirmation`、`funds_held=false`、`order_placed=false`、`items[]`（固定鲜花和蛋糕的代码、名称、单价、数量）和 `next_action`。读接口按当前模拟日期计算到期提示；刷新后可重新读取。
+
+助手中的 `birthday.plan` 只生成服务端确认提案。确认卡须显示账户、日期、预算和参考总价；确认后保存预算意向，不锁资金、不扣款、不生成订单。`birthday.list` 可用自然语言查询。到期时只能提示用户重新确认购买，不能展示“已购买”或自动调用 `card.purchase`；后续模拟购买还需卡片、余额、限额与交付方式核对。建议前端用简洁时间线呈现“预算已保存 → 到期待再次确认 → 实际购买尚未执行”，不要把计划等同于真实预订。
 
 ### 订阅与代扣
 
@@ -165,7 +174,7 @@
 
 这里列的是当前实现的主要字段，不建立第二套前端 DTO。详细 Schema 仍以生成的 OpenAPI 为准。`ToolExecution` 没有单独查询 API；前端通过 Task Step 的 `result_summary` / `result_data` 展示。未注册工具、输入参数错误或执行失败时，步骤包含错误码和服务端失败结果；不得把失败的模型文本当成成功结果。
 
-**ConfirmationResponse** 的稳定公共字段为 `id`（challenge UUID）、`resource_type` (`card`/`subscription`/`transfer`/`split`/`investment_order`)、`resource_id`、`resource_label`、`resource_version`、`current_status`、`target_status`、`parameters_hash`、`idempotency_key`、`expires_at`、`policy_version`、`tool_name`、`tool_version`。卡片可能另含 `card_id`、`card_suffix`、`card_label`、`card_version`；订阅可能另含 `subscription_id`、`merchant`、`subscription_version`；其他操作通过 `resource_id` 和可空 `details` 承载特定信息。`details` 目前对转账含金额/币种/类型/计划时间/来源账户/收款人，对分账含金额/币种/参与人，对理财含买入或赎回、金额/币种/份额/风险/账户。前端应根据 `resource_type` 分支，不假设每种资源字段都存在。
+**ConfirmationResponse** 的稳定公共字段为 `id`（challenge UUID）、`resource_type` (`card`/`card_application`/`birthday_plan`/`subscription`/`transfer`/`split`/`investment_order`)、`resource_id`、`resource_label`、`resource_version`、`current_status`、`target_status`、`parameters_hash`、`idempotency_key`、`expires_at`、`policy_version`、`tool_name`、`tool_version`。卡片可能另含 `card_id`、`card_suffix`、`card_label`、`card_version`；订阅可能另含 `subscription_id`、`merchant`、`subscription_version`；其他操作通过 `resource_id` 和可空 `details` 承载特定信息。`details` 对生日计划含账户、生日、提醒日期、预算和参考总价，且 `funds_held=false`、`order_placed=false`；对转账含金额/币种/类型/计划时间/来源账户/收款人，对分账含金额/币种/参与人，对理财含买入或赎回、金额/币种/份额/风险/账户。前端应根据 `resource_type` 分支，不假设每种资源字段都存在。
 
 Audit Event 字段：`id`、`event_type`、`resource_type`、`resource_id`、可空 `tool_execution_id`、`outcome`、可空 `before_state` / `after_state`、`occurred_at`。`AgentAuditResponse` 为 `{task_id,events[]}`。这是任务范围摘要，不是全部账户历史审计查询 API。
 
