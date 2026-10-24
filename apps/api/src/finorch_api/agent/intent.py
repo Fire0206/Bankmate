@@ -117,12 +117,15 @@ _PLAN_ONLY_PHRASES = (
     "只给建议",
     "先只规划",
 )
+_PLAN_ONLY_RE = re.compile(r"(?:只|仅)(?:做|进行)[^。；;！？!?\n]{0,20}(?:测算|规划|方案|计算)")
 
 
 def is_planning_only_request(request_text: str) -> bool:
     """Identify explicit requests for a plan or calculation without execution."""
     normalized = request_text.casefold()
-    return any(phrase in normalized for phrase in _PLAN_ONLY_PHRASES)
+    return any(phrase in normalized for phrase in _PLAN_ONLY_PHRASES) or bool(
+        _PLAN_ONLY_RE.search(normalized)
+    )
 
 
 def _has_query_cue(text: str) -> bool:

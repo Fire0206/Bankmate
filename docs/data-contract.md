@@ -33,7 +33,7 @@ Phase 3 已接入的本地模拟强验证：`strong_verifications` 通过唯一 
 - `card_applications`：当前模拟用户对已有账户提交的借记卡申请；`pending_confirmation` 仅为未提交提案，用户确认后变为 `submitted`；本地模拟审核给出 `approved`/`rejected`，批准时创建新合成卡并记录 `issued_card_id`。不得将其解释为真实银行信用审核或授信。
 - `birthday_plans`：当前 actor 的生日日期、提前两天的到期提醒日期、所属合成账户、整数预算和固定商品参考总价。确认后从 `pending_confirmation` 变为 `scheduled`，但这仅是预算意向；`funds_held=false`、`order_placed=false`，不扣款也不锁定余额。到期时再次核对资金、卡片限制和交付方式，实际购买仍须新的用户授权及服务端确认；当前没有自动订单调度。
 - `cards` 的模拟消费控制（Implemented）：单笔、同一 UTC+8 业务日累计上限和线上支付开关；限额仅约束明确选择该卡的固定目录模拟消费，不等于信用额度，也不直接限制独立的账户转账。服务端在确认事务中复核限制与余额，同事务写账户扣款、`transactions` 流水、卡版本和审计；不连接真实支付网络。
-- `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求和 Workflow 状态。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。
+- `agent_tasks`：actor、conversation、幂等作用域、Provider 模式、受限长度的用户请求、Workflow 状态和可空 `workflow_plan`。新建的发薪日转账/申购及可疑扣款处置任务会持久化服务端生成的依赖图；其他任务和迁移前的历史任务为 `null`。仅用于合成 Demo；不保存凭据或完整拼装后的系统 Prompt。0016 迁移不改写历史任务。
 - `task_steps`：任务内按 sequence 排列的规划、工具和用户输入/取消步骤，带状态与安全摘要。
 - `tool_executions`：注册工具名/版本、幂等键摘要、输入摘要、实际执行状态和受 Schema 限制的结果。
 - `payees`、`transfers`、`split_bills`、`split_participants`：仅合成收款人、模拟转账及 AA 分账；`payees.phone_number` 可空且每 actor 唯一，仅精确匹配当前用户的模拟收款人，对外只返回掩码；`transfers.remark` 可空，作为不可信用户数据存储并参与确认参数摘要。转账/收款执行由 Application 用例在事务内更新余额与关联流水。

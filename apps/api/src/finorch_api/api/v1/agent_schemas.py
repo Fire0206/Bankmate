@@ -40,6 +40,36 @@ class AgentTaskStepResponse(BaseModel):
     result_data: dict[str, Any] | None
 
 
+class WorkflowNodeResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str
+    node_type: Literal["tool"]
+    tool_name: str
+    depends_on: list[str]
+    requires_confirmation: bool
+    failure_policy: Literal["stop_dependents_continue_independent"]
+    status: Literal[
+        "pending",
+        "running",
+        "awaiting_confirmation",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "blocked",
+    ]
+    result_summary: str | None
+    error_code: str | None
+
+
+class WorkflowPlanResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: int
+    workflow_id: str
+    nodes: list[WorkflowNodeResponse]
+
+
 class ConfirmationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +131,7 @@ class AgentTaskResponse(BaseModel):
     updated_at: datetime
     steps: list[AgentTaskStepResponse]
     confirmation: ConfirmationResponse | None
+    workflow_plan: WorkflowPlanResponse | None
 
 
 class AgentAuditEventResponse(BaseModel):

@@ -86,6 +86,10 @@ from finorch_api.application.subscriptions import (
 )
 from finorch_api.application.transactions import write_transaction
 from finorch_api.application.transfers import confirm_split, confirm_transfer
+from finorch_api.application.workflow_graph import (
+    build_workflow_plan,
+    unsatisfied_dependencies,
+)
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition
 from finorch_api.domain.subscriptions import (
     InvalidSubscriptionTransition,
@@ -186,6 +190,26 @@ class ConfirmationView:
 
 
 @dataclass(frozen=True)
+class WorkflowNodeView:
+    node_id: str
+    node_type: str
+    tool_name: str
+    depends_on: tuple[str, ...]
+    requires_confirmation: bool
+    failure_policy: str
+    status: str
+    result_summary: str | None
+    error_code: str | None
+
+
+@dataclass(frozen=True)
+class WorkflowPlanView:
+    version: int
+    workflow_id: str
+    nodes: tuple[WorkflowNodeView, ...]
+
+
+@dataclass(frozen=True)
 class AgentTaskView:
     id: UUID
     conversation_id: UUID
@@ -199,6 +223,7 @@ class AgentTaskView:
     updated_at: datetime
     steps: tuple[TaskStepView, ...]
     confirmation: ConfirmationView | None
+    workflow_plan: WorkflowPlanView | None
 
 
 @dataclass(frozen=True)
@@ -676,6 +701,29 @@ def _dispatch_tool(
                 ),
             )
 
+        succeeded_tools = set(
+            session.scalars(
+                select(ToolExecution.tool_name).where(
+                    ToolExecution.task_id == task.id,
+                    ToolExecution.status == "succeeded",
+                )
+            )
+        )
+        missing_dependencies = unsatisfied_dependencies(
+            task.workflow_plan, tool_name=spec.name, succeeded_tools=succeeded_tools
+        )
+        if missing_dependencies:
+            return _record_workflow_block(
+                session,
+                task=task,
+                step=step,
+                execution=execution,
+                actor_id=actor_id,
+                request_id=request_id,
+                code="workflow_step_not_ready",
+                message="请先完成工作流前置步骤：" + "、".join(missing_dependencies) + "。",
+            )
+
         if spec.permission_level != "read_only" and parsed is not None:
             block = _workflow_write_block_reason(
                 session, task=task, tool_name=spec.name, parsed=parsed
@@ -853,12 +901,15 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
             select(TaskStep).where(TaskStep.task_id == task_id).order_by(TaskStep.sequence)
         )
     )
-    executions = {
-        execution.step_id: execution
-        for execution in session.scalars(
-            select(ToolExecution).where(ToolExecution.task_id == task_id)
+    task_executions = list(
+        session.scalars(
+            select(ToolExecution)
+            .join(TaskStep, ToolExecution.step_id == TaskStep.id)
+            .where(ToolExecution.task_id == task_id)
+            .order_by(TaskStep.sequence, ToolExecution.id)
         )
-    }
+    )
+    executions = {execution.step_id: execution for execution in task_executions}
     step_views = tuple(
         TaskStepView(
             id=step.id,
@@ -1122,6 +1173,87 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
             confirmation_method=decision.confirmation_method,
             risk_rules=decision.rules,
         )
+    workflow_plan = None
+    if isinstance(task.workflow_plan, dict):
+        raw_nodes = task.workflow_plan.get("nodes")
+        if isinstance(raw_nodes, list):
+            node_specs = [item for item in raw_nodes if isinstance(item, dict)]
+            node_statuses: dict[str, str] = {}
+            node_views: list[WorkflowNodeView] = []
+            for node in node_specs:
+                node_id = node.get("node_id")
+                tool_name = node.get("tool_name")
+                if not isinstance(node_id, str) or not isinstance(tool_name, str):
+                    continue
+                matching = [
+                    execution for execution in task_executions if execution.tool_name == tool_name
+                ]
+                successful = next(
+                    (
+                        execution
+                        for execution in reversed(matching)
+                        if execution.status == "succeeded"
+                    ),
+                    None,
+                )
+                latest = matching[-1] if matching else None
+                if successful is not None:
+                    status = "succeeded"
+                    summary = successful.result_summary
+                    error_code = None
+                elif latest is not None:
+                    status = (
+                        latest.status
+                        if latest.status
+                        in {
+                            "running",
+                            "awaiting_confirmation",
+                            "failed",
+                            "cancelled",
+                        }
+                        else "pending"
+                    )
+                    summary = latest.result_summary
+                    error_code = latest.error_code
+                elif task.status == "cancelled":
+                    status = "cancelled"
+                    summary = None
+                    error_code = None
+                else:
+                    dependencies = node.get("depends_on", [])
+                    failed_dependency = any(
+                        node_statuses.get(dependency) in {"failed", "cancelled"}
+                        for dependency in dependencies
+                        if isinstance(dependency, str)
+                    )
+                    status = "blocked" if failed_dependency else "pending"
+                    summary = None
+                    error_code = None
+                node_statuses[node_id] = status
+                node_views.append(
+                    WorkflowNodeView(
+                        node_id=node_id,
+                        node_type=str(node.get("node_type", "tool")),
+                        tool_name=tool_name,
+                        depends_on=tuple(
+                            dependency
+                            for dependency in node.get("depends_on", [])
+                            if isinstance(dependency, str)
+                        ),
+                        requires_confirmation=bool(node.get("requires_confirmation", False)),
+                        failure_policy=str(
+                            node.get("failure_policy", "stop_dependents_continue_independent")
+                        ),
+                        status=status,
+                        result_summary=summary,
+                        error_code=error_code,
+                    )
+                )
+            workflow_plan = WorkflowPlanView(
+                version=int(task.workflow_plan.get("version", 1)),
+                workflow_id=str(task.workflow_plan.get("workflow_id", "workflow")),
+                nodes=tuple(node_views),
+            )
     return AgentTaskView(
         id=task.id,
         conversation_id=task.conversation_id,
@@ -1135,6 +1267,7 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
         updated_at=_utc(task.updated_at),
         steps=step_views,
         confirmation=confirmation,
+        workflow_plan=workflow_plan,
     )
 
 
@@ -1168,6 +1301,7 @@ def _record_initial_task(
             provider_mode=provider_mode,
             status="pending",
             message="正在理解你的请求。",
+            workflow_plan=build_workflow_plan(request_text, build_tool_registry()),
         )
         session.add(task)
         session.flush()
@@ -1985,6 +2119,7 @@ def submit_task_input(
         before = task.status
         _transition(task, "planning")
         task.request_text = request_text
+        task.workflow_plan = build_workflow_plan(request_text, build_tool_registry())
         task.error_code = None
         task.message = "正在根据补充信息更新任务。"
         sequence = _next_sequence(session, task.id)
