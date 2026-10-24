@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -622,6 +623,38 @@ class AuditEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class BirthdayPlan(Base):
+    """A confirmed budget intention and due reminder, never a funds hold or order."""
+
+    __tablename__ = "birthday_plans"
+    __table_args__ = (
+        CheckConstraint("budget_minor > 0", name="birthday_budget_positive"),
+        CheckConstraint("catalog_total_minor > 0", name="birthday_catalog_total_positive"),
+        CheckConstraint(
+            "status in ('pending_confirmation', 'scheduled', 'cancelled')",
+            name="birthday_status_allowed",
+        ),
+        Index("ix_birthday_plans_actor_due", "actor_id", "purchase_on"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("demo_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    birthday_on: Mapped[date] = mapped_column(Date, nullable=False)
+    purchase_on: Mapped[date] = mapped_column(Date, nullable=False)
+    budget_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    catalog_total_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    __mapper_args__ = {"version_id_col": version}
+
+
 class AgentTask(Base):
     __tablename__ = "agent_tasks"
     __table_args__ = (
@@ -811,7 +844,8 @@ class ConfirmationChallenge(Base):
             "case when transfer_id is not null then 1 else 0 end + "
             "case when split_bill_id is not null then 1 else 0 end + "
             "case when investment_order_id is not null then 1 else 0 end + "
-            "case when card_application_id is not null then 1 else 0 end) = 1",
+            "case when card_application_id is not null then 1 else 0 end + "
+            "case when birthday_plan_id is not null then 1 else 0 end) = 1",
             name="challenge_single_resource",
         ),
         CheckConstraint(
@@ -853,6 +887,9 @@ class ConfirmationChallenge(Base):
     card_application_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("card_applications.id"), nullable=True
     )
+    birthday_plan_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("birthday_plans.id"), nullable=True
+    )
     subscription_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
@@ -885,6 +922,7 @@ class ConfirmationChallenge(Base):
     parameters_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     card_application_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    birthday_plan_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subscription_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     transfer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_bill_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

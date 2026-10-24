@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 
@@ -12,6 +13,51 @@ class SplitIntent:
     title: str | None
     amount_minor: int | None
     participant_names: tuple[str, ...] | None
+
+
+@dataclass(frozen=True)
+class BirthdayPlanIntent:
+    birthday_on: date | None
+    budget_minor: int | None
+    account_label: str | None
+
+
+def birthday_plan_intent(request_text: str) -> BirthdayPlanIntent | None:
+    """Extract only user-supplied birthday planning fields for tool grounding."""
+    if not all(item in request_text for item in ("生日", "鲜花", "蛋糕")):
+        return None
+    if not any(item in request_text for item in ("预留", "留出", "预算", "安排", "预约")):
+        return None
+    date_match = re.search(
+        r"(?<!\d)(20\d{2})(?:-|年)(\d{1,2})(?:-|月)(\d{1,2})日?(?!\d)",
+        request_text,
+    )
+    birthday_on = None
+    if date_match is not None:
+        try:
+            birthday_on = date(*map(int, date_match.groups()))
+        except ValueError:
+            pass
+    budget_match = re.search(
+        r"(?:预留|留出|预算|安排)\s*(\d{1,6}(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
+        request_text,
+    )
+    budget_minor = None
+    if budget_match is not None:
+        try:
+            budget_minor = int(Decimal(budget_match.group(1)) * 100)
+        except InvalidOperation:
+            pass
+    everyday = any(item in request_text for item in ("日常账户", "Everyday account"))
+    savings = any(item in request_text for item in ("储蓄账户", "Savings account"))
+    account_label = (
+        "Everyday account"
+        if everyday and not savings
+        else "Savings account"
+        if savings and not everyday
+        else None
+    )
+    return BirthdayPlanIntent(birthday_on, budget_minor, account_label)
 
 
 _SPLIT_MARKER = re.compile(r"(?:aa\s*)?分账", re.IGNORECASE)

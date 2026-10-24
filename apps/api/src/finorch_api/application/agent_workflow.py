@@ -200,6 +200,15 @@ def missing_requested_write_tools(
     if not advisory_question and "取消" in request and "定时转账" in request:
         if "transfer.cancel_scheduled" not in succeeded:
             required.append("transfer.cancel_scheduled")
+    if (
+        not advisory_question
+        and "生日" in request
+        and any(word in request for word in ("预留", "留出", "安排", "预约"))
+        and re.search(r"(?<!\d)20\d{2}(?:-|年)\d{1,2}(?:-|月)\d{1,2}日?(?!\d)", request)
+        and has_amount
+        and "birthday.plan" not in succeeded
+    ):
+        required.append("birthday.plan")
     if not advisory_question:
         card_tool = _requested_card_tool(request)
         if card_tool and card_tool not in succeeded:

@@ -12,6 +12,7 @@ from starlette.responses import Response
 
 from finorch_api.api.v1.agent import router as agent_router
 from finorch_api.api.v1.bills import router as bills_router
+from finorch_api.api.v1.birthday_plans import router as birthday_plans_router
 from finorch_api.api.v1.cards import router as cards_router
 from finorch_api.api.v1.demo_session import router as demo_session_router
 from finorch_api.api.v1.financial_insights import router as financial_insights_router
@@ -47,6 +48,7 @@ app = FastAPI(
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(cards_router, prefix="/api/v1")
 app.include_router(bills_router, prefix="/api/v1")
+app.include_router(birthday_plans_router, prefix="/api/v1")
 app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(transfers_router, prefix="/api/v1")
 app.include_router(investments_router, prefix="/api/v1")

@@ -34,6 +34,8 @@
 | `card.catalog`         | 空输入 / 固定合成商品与价格            | `read_only` / `low` / `never`            | 只列出模拟鲜花和蛋糕，不接真实商户                                               |
 | `card.controls`        | 卡尾号与一项设置 / 确认提案            | `reversible_write` / `medium` / `always` | 更改单笔、单日限额或线上开关；重大额度上调需本地模拟 OTP                         |
 | `card.purchase`        | 卡尾号、商品、数量、渠道 / 确认提案    | `high_risk_write` / `medium` / `always`  | 服务端定价并在确认后复核限制、扣减模拟余额、写交易和审计；无真实支付             |
+| `birthday.list`        | 空输入 / 已确认的生日预算与到期状态    | `read_only` / `low` / `never`            | 返回当前 actor 的预算意向；到期只提示重新确认，未产生订单或扣款                  |
+| `birthday.plan`        | 生日日期、整数预算、账户 / 确认提案    | `reversible_write` / `medium` / `always` | 服务端核对日期、余额、固定商品参考价；确认后保存意向和提醒，不锁资金、不自动购买 |
 | `bill.monthly_summary` | 月份/可选类别 / 收支、类别、趋势、提示 | `read_only` / `low` / `never`            | 从当前 actor 的真实合成交易记录计算，不由模型计算金额                            |
 | `bill.transactions`    | 月份/类别/商户 / 合成流水              | `read_only` / `low` / `never`            | 返回匹配流水和总数；服务端限制最多 100 条                                        |
 | `bill.anomalies`       | 月份 / 规则匹配流水                    | `read_only` / `low` / `never`            | 标记非住房大额支出及同账户/商户/金额/币种/UTC 日重复收费；仅为提示，不是欺诈检测 |

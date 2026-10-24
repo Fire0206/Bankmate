@@ -188,3 +188,9 @@ uv run --project apps/api python apps/api/scripts/card_application_operator.py <
 ```
 
 也可将 `approve` 换成 `reject`。脚本仅允许 development/test 环境、当前模拟用户的申请，批准时创建新的合成借记卡并追加审计。它不代表真实审核、发卡或授信。
+
+## 生日预算与到期提醒（部分实现）
+
+在助手中说明完整生日日期、预算和所属合成账户，例如“我爱人生日是 2026-11-20，从日常账户预留 1000 元，生日前两天安排鲜花和蛋糕”。缺少日期或账户时 Fake Provider 会追问；兼容模型也必须遵守服务端参数与账户校验。确认卡会显示生日、提醒日期、预算和固定商品参考价。只有用户确认后，计划才进入 `scheduled` 并可通过 `GET /api/v1/birthday-plans` 或 `birthday.list` 读取。
+
+这项计划是**预算意向与到期提醒**：`funds_held=false`、`order_placed=false`，既不扣款也不保证将来有足够余额。到期后前端显示重新确认提示，用户须重新核对余额、卡片限额和领取方式，再经 `card.purchase` 的独立确认购买固定目录商品。当前没有后台自动下单、配送或商户接口，不得把计划状态展示为订单成功。

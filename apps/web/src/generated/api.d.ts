@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/birthday-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List owned synthetic birthday plans */
+        get: operations["read_birthday_plans_api_v1_birthday_plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/subscriptions": {
         parameters: {
             query?: never;
@@ -913,6 +930,80 @@ export interface components {
             /** Expense Minor */
             expense_minor: number;
         };
+        /** BirthdayPlanResponse */
+        BirthdayPlanResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Label */
+            account_label: string;
+            /**
+             * Birthday On
+             * Format: date
+             */
+            birthday_on: string;
+            /**
+             * Purchase On
+             * Format: date
+             */
+            purchase_on: string;
+            /** Budget Minor */
+            budget_minor: number;
+            /** Catalog Total Minor */
+            catalog_total_minor: number;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "CNY";
+            /**
+             * Status
+             * @constant
+             */
+            status: "scheduled";
+            /** Due For Reconfirmation */
+            due_for_reconfirmation: boolean;
+            /**
+             * Funds Held
+             * @constant
+             */
+            funds_held: false;
+            /**
+             * Order Placed
+             * @constant
+             */
+            order_placed: false;
+            /** Items */
+            items: components["schemas"]["BirthdayProductResponse"][];
+            /** Next Action */
+            next_action: string;
+        };
+        /** BirthdayPlansResponse */
+        BirthdayPlansResponse: {
+            /** Items */
+            items: components["schemas"]["BirthdayPlanResponse"][];
+        };
+        /** BirthdayProductResponse */
+        BirthdayProductResponse: {
+            /**
+             * Product Code
+             * @enum {string}
+             */
+            product_code: "flowers" | "cake";
+            /** Product Name */
+            product_name: string;
+            /** Unit Price Minor */
+            unit_price_minor: number;
+            /** Quantity */
+            quantity: number;
+        };
         /** CardApplicationResponse */
         CardApplicationResponse: {
             /**
@@ -1014,7 +1105,7 @@ export interface components {
              * Resource Type
              * @enum {string}
              */
-            resource_type: "card" | "card_application" | "subscription" | "transfer" | "split" | "investment_order";
+            resource_type: "card" | "card_application" | "birthday_plan" | "subscription" | "transfer" | "split" | "investment_order";
             /**
              * Resource Id
              * Format: uuid
@@ -2214,6 +2305,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnnualBillResponse"];
+                };
+            };
+            /** @description Authentication required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Permission denied. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Resource not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request conflicts with current state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Request validation failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Demo identity is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    read_birthday_plans_api_v1_birthday_plans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BirthdayPlansResponse"];
                 };
             };
             /** @description Authentication required. */

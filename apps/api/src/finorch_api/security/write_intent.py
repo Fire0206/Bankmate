@@ -3,6 +3,7 @@
 import re
 
 from finorch_api.agent.intent import (
+    birthday_plan_intent,
     has_explicit_investment_write_intent,
     has_explicit_transfer_write_intent,
     is_planning_only_request,
@@ -60,6 +61,12 @@ def user_authorized_write(request_text: str, tool_name: str) -> bool:
         return is_split_creation_request(request)
     if tool_name == "transfer.split_collect":
         return "收取" in request and ("aa" in request or "分账" in request)
+    if tool_name == "birthday.plan":
+        intent = birthday_plan_intent(request)
+        return intent is not None and all(
+            value is not None
+            for value in (intent.birthday_on, intent.budget_minor, intent.account_label)
+        )
     if tool_name == "investment.buy":
         return has_explicit_investment_write_intent(request) and "赎回" not in request
     if tool_name == "investment.redeem":
