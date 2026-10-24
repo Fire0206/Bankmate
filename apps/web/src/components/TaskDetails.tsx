@@ -165,6 +165,33 @@ function stepSummary(step: Task["steps"][number]): string {
   return summaries[key] ?? step.summary;
 }
 
+function workflowNodeLabel(nodeId: string): string {
+  const labels: Record<string, string> = {
+    charge_evidence: "核对扣款证据",
+    subscription_evidence: "读取自动扣费",
+    freeze_related_card: "冻结相关银行卡",
+    pause_related_subscription: "暂停相关自动续费",
+    cashflow_plan: "计算资金安排",
+    suitable_products: "核对适配产品",
+    confirmed_transfer: "确认并完成转账",
+    confirmed_investment: "确认并完成申购",
+  };
+  return labels[nodeId] ?? nodeId;
+}
+
+function workflowStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    pending: "等待处理",
+    running: "正在处理",
+    awaiting_confirmation: "等待确认",
+    succeeded: "已完成",
+    failed: "失败",
+    cancelled: "已取消",
+    blocked: "等待前置步骤",
+  };
+  return labels[status] ?? status;
+}
+
 function eventSummary(event: AuditEvent): string {
   const before = plainStatus(event.before_state?.status);
   const after = plainStatus(event.after_state?.status);
@@ -376,6 +403,41 @@ export function TaskDetails({
             {handoffError ? <p role="alert">{handoffError}</p> : null}
             <small>此入口仅创建本地模拟工单，不会代替金融操作确认。</small>
           </div>
+
+          {task.workflow_plan ? (
+            <>
+              <h3 className="details-subheading">任务依赖</h3>
+              <ol className="step-list">
+                {task.workflow_plan.nodes.map((node) => (
+                  <li className="step-row" key={node.node_id}>
+                    <span
+                      aria-hidden="true"
+                      className={
+                        "step-marker step-marker-" +
+                        node.status.replaceAll("_", "-")
+                      }
+                    />
+                    <span className="step-copy">
+                      <strong>{workflowNodeLabel(node.node_id)}</strong>
+                      {node.depends_on.length ? (
+                        <span>
+                          需先完成：
+                          {node.depends_on.map(workflowNodeLabel).join("、")}
+                        </span>
+                      ) : null}
+                      {node.result_summary ? (
+                        <span>{node.result_summary}</span>
+                      ) : null}
+                      {node.error_code ? <code>{node.error_code}</code> : null}
+                    </span>
+                    <span className="step-state">
+                      {workflowStatusLabel(node.status)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : null}
 
           <h3 className="details-subheading">处理步骤</h3>
           {task.steps.length === 0 ? (

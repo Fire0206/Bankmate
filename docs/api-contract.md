@@ -109,7 +109,7 @@ Demo Session 与 Agent Task 端点：
 | `GET /api/v1/demo/session`                                                                       | 返回服务端选择的本地合成用户、环境、数据集版本和 Provider 模式                                                                                    |
 | `GET /api/v1/birthday-plans`                                                                     | 返回当前 Demo actor 已确认的生日预算意向与到期提醒；不代表资金冻结或自动下单。                                                                    |
 | `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                                            |
-| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤和待确认详情                                                                                                 |
+| `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤、可选依赖计划和待确认详情                                                                                   |
 | `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                                                         |
 | `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                                             |
 | `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                                                          |
@@ -123,7 +123,7 @@ Demo Session 与 Agent Task 端点：
 
 `card.replace` 和 `card.apply` 同样走受控 Agent 确认。`GET /api/v1/cards/applications` 只返回当前 actor 已提交的模拟借记卡申请及本地审核状态；未确认提案不作为正式申请展示。审核脚本不通过 HTTP 或 Agent 暴露。
 
-任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`subscription_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
+任务响应状态为 `pending`、`planning`、`awaiting_input`、`awaiting_confirmation`、`running`、`completed`、`failed`、`cancelled`；实际任务、步骤和工具结果来自数据库。可选 `workflow_plan` 包含 `version`、`workflow_id` 和节点数组；节点字段为 `node_id`、`node_type`、`tool_name`、`depends_on`、`requires_confirmation`、`failure_policy`、`status`、`result_summary`、`error_code`。只对受支持的发薪日资金调度和可疑扣款复合任务生成计划，普通任务和迁移前任务为 `null`。依赖未满足的写工具调用会服务端拒绝并记录 `workflow_step_not_ready`。错误码还包括 `confirmation_not_pending`、`confirmation_invalidated`、`confirmation_expired`、`card_version_conflict`、`subscription_version_conflict`、`task_state_conflict`、`provider_not_configured`、`unknown_tool` 和 `tool_input_invalid`。具体 DTO 以 FastAPI 生成的 OpenAPI 和自动生成的 TypeScript 类型为准。
 
 任务读取发现已过期的 pending confirmation 时，由服务端将挑战、ToolExecution、TaskStep 和 Task 状态在同一事务中结算为过期/失败并追加审计；业务状态保持不变。这个惰性过期处理保证刷新恢复显示服务端实际状态，不依赖前端时钟。
 

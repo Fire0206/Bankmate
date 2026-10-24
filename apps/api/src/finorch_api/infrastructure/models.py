@@ -684,6 +684,7 @@ class AgentTask(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     message: Mapped[str] = mapped_column(String(1200), nullable=False, default="")
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workflow_plan: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

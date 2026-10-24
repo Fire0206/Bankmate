@@ -4573,6 +4573,16 @@
                 "type": "null"
               }
             ]
+          },
+          "workflow_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowPlanResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -4589,7 +4599,8 @@
           "created_at",
           "updated_at",
           "steps",
-          "confirmation"
+          "confirmation",
+          "workflow_plan"
         ],
         "title": "AgentTaskResponse"
       },
@@ -7070,6 +7081,115 @@
           "version"
         ],
         "title": "TransferResponse"
+      },
+      "WorkflowNodeResponse": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "title": "Node Id"
+          },
+          "node_type": {
+            "type": "string",
+            "const": "tool",
+            "title": "Node Type"
+          },
+          "tool_name": {
+            "type": "string",
+            "title": "Tool Name"
+          },
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Depends On"
+          },
+          "requires_confirmation": {
+            "type": "boolean",
+            "title": "Requires Confirmation"
+          },
+          "failure_policy": {
+            "type": "string",
+            "const": "stop_dependents_continue_independent",
+            "title": "Failure Policy"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "awaiting_confirmation",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "blocked"
+            ],
+            "title": "Status"
+          },
+          "result_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Summary"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "node_id",
+          "node_type",
+          "tool_name",
+          "depends_on",
+          "requires_confirmation",
+          "failure_policy",
+          "status",
+          "result_summary",
+          "error_code"
+        ],
+        "title": "WorkflowNodeResponse"
+      },
+      "WorkflowPlanResponse": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "workflow_id": {
+            "type": "string",
+            "title": "Workflow Id"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowNodeResponse"
+            },
+            "type": "array",
+            "title": "Nodes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "workflow_id",
+          "nodes"
+        ],
+        "title": "WorkflowPlanResponse"
       }
     }
   }

@@ -150,6 +150,9 @@
 | `created_at`, `updated_at` | 创建、更新时间                             | 否；UTC date-time                                                                                                   |
 | `steps`                    | 有序 `AgentTaskStepResponse[]`             | 否；可能为空                                                                                                        |
 | `confirmation`             | 当前待确认项                               | 是；已过期/已消费后为 `null`                                                                                        |
+| `workflow_plan`            | 可选的服务端依赖 DAG                       | 是；仅发薪日调度及可疑扣款复合任务生成，普通/历史任务可能为 `null`                                                  |
+
+`workflow_plan.nodes[]` 提供节点 `node_id` / `node_type` / `tool_name`、前置 `depends_on[]`、`requires_confirmation`、`failure_policy`、服务端派生 `status`、`result_summary` 和 `error_code`。依赖和顺序只能以此字段及 TaskStep 为准；前端不自行推进节点或把待处理标成成功。适合在折叠的任务详情里显示为轻量进度图/依赖列表；业务结果仍以 `steps[].result_data`、确认 Challenge 和业务 GET 为准。
 
 步骤字段为 `id`、`sequence`、`step_type`、`status`、`summary`、可空 `tool_name`、`error_code`、`result_summary`、`result_data`。当前 `step_type` 实际包括 `planner`、`tool`、`user_input`、`cancellation`；工具步骤状态包括 `pending`、`running`、`awaiting_confirmation`、`succeeded`、`failed`、`cancelled`。Planner/user-input 记录通常没有 `result_data`。只有 `tool_name` 对应的 Tool Step 才有工具结果；其中的结构按工具而异。
 

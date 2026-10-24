@@ -789,6 +789,7 @@ export interface components {
             /** Steps */
             steps: components["schemas"]["AgentTaskStepResponse"][];
             confirmation: components["schemas"]["ConfirmationResponse"] | null;
+            workflow_plan: components["schemas"]["WorkflowPlanResponse"] | null;
         };
         /** AgentTaskStepResponse */
         AgentTaskStepResponse: {
@@ -1764,6 +1765,45 @@ export interface components {
             executed_at: string | null;
             /** Version */
             version: number;
+        };
+        /** WorkflowNodeResponse */
+        WorkflowNodeResponse: {
+            /** Node Id */
+            node_id: string;
+            /**
+             * Node Type
+             * @constant
+             */
+            node_type: "tool";
+            /** Tool Name */
+            tool_name: string;
+            /** Depends On */
+            depends_on: string[];
+            /** Requires Confirmation */
+            requires_confirmation: boolean;
+            /**
+             * Failure Policy
+             * @constant
+             */
+            failure_policy: "stop_dependents_continue_independent";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "awaiting_confirmation" | "succeeded" | "failed" | "cancelled" | "blocked";
+            /** Result Summary */
+            result_summary: string | null;
+            /** Error Code */
+            error_code: string | null;
+        };
+        /** WorkflowPlanResponse */
+        WorkflowPlanResponse: {
+            /** Version */
+            version: number;
+            /** Workflow Id */
+            workflow_id: string;
+            /** Nodes */
+            nodes: components["schemas"]["WorkflowNodeResponse"][];
         };
     };
     responses: never;

@@ -48,9 +48,12 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
         "risk_assessments",
         "birthday_plans",
     } <= table_names
+    assert "workflow_plan" in {
+        column["name"] for column in inspect(database.engine).get_columns("agent_tasks")
+    }
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0015_birthday_plans"
+        assert revision == "0016_workflow_plans"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
@@ -61,6 +64,45 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     assert {"reminder_days_before", "last_reminded_charge_at"} <= {
         column["name"] for column in inspect(database.engine).get_columns("subscriptions")
     }
+
+
+def test_workflow_plan_migration_preserves_existing_task(tmp_path: Path) -> None:
+    path = tmp_path / "migration-workflow-plan.sqlite3"
+    url = URL.create("sqlite", database=str(path)).render_as_string(hide_password=False)
+    config = Config(str(REPOSITORY_ROOT / "apps" / "api" / "alembic.ini"))
+    config.attributes["database_url"] = url
+    engine = build_engine(url)
+    try:
+        command.upgrade(config, "0015_birthday_plans")
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO demo_users (id, display_name, dataset_version, created_at) "
+                    "VALUES ('00000000000040008000000000000002', 'Workflow Demo', 'old', "
+                    "'2026-10-01')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO agent_tasks (id, actor_id, conversation_id, idempotency_key, "
+                    "request_hash, request_text, provider_mode, status, message, version, "
+                    "created_at, updated_at) VALUES "
+                    "('50000000000040008000000000000002', "
+                    "'00000000000040008000000000000002', "
+                    "'60000000000040008000000000000002', 'old-task', 'hash', '查看余额', "
+                    "'fake', 'completed', 'done', 1, '2026-10-01', '2026-10-01')"
+                )
+            )
+        command.upgrade(config, "head")
+        with engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT request_text, workflow_plan FROM agent_tasks WHERE id = :task_id"),
+                {"task_id": "50000000000040008000000000000002"},
+            ).one()
+            assert row.request_text == "查看余额"
+            assert row.workflow_plan is None
+    finally:
+        engine.dispose()
 
 
 def test_card_control_migration_preserves_existing_card_and_defaults(tmp_path: Path) -> None:
@@ -129,7 +171,7 @@ def test_birthday_migration_preserves_existing_synthetic_accounts(tmp_path: Path
             assert connection.scalar(text("SELECT COUNT(*) FROM accounts")) == before
             assert connection.scalar(text("SELECT COUNT(*) FROM birthday_plans")) == 0
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0015_birthday_plans"
+                "0016_workflow_plans"
             )
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     finally:
@@ -273,7 +315,7 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0015_birthday_plans"
+                "0016_workflow_plans"
             )
     finally:
         engine.dispose()

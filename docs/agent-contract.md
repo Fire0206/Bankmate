@@ -50,6 +50,8 @@
 
 跨场景 Workflow 由受控工具序列组合，不新建业务旁路：可疑扣款主线先读 `bill.anomalies` 和 `subscription.list`，只在重复扣费规则命中且能关联来源卡与活动订阅时提出冻结/暂停操作；发薪日主线读取账户、账单并调用 `finance.payday_plan`，之后才可提出转账与理财操作。发薪日联动缺少转账额或预留额时保持 `awaiting_input`，后续输入会附加到原任务目标。每个写操作各自暂停等待服务端确认；确认后续跑原 Task。Application 在完成态校验明确请求的写操作是否存在成功 ToolExecution；若仍缺少明确操作，最多触发两轮有界重规划，之后模型仍不能只读数据后把未完成写目标标为成功。部分成功保留已提交的账本与审计记录，失败后可由用户重新输入继续；取消只阻止未执行步骤，不回滚已成功步骤。
 
+这两条复合主线在创建任务时，还会生成并存储版本化 `workflow_plan`：每个节点包括 `node_id`、`node_type=tool`、`tool_name`、`depends_on`、是否需要确认、失败策略和由 ToolExecution 派生的状态/结果。计划图在落库前检查节点唯一性、依赖完整性和无环；执行器在工具调用入口再次检查前置节点是否有成功的服务端执行记录，未满足时以 `workflow_step_not_ready` 阻断。发薪日顺序为资金计划与适当性查询 → 转账确认/执行 → 申购确认/执行；可疑扣款的卡片冻结依赖账单证据，订阅暂停依赖账单与订阅查询。独立证据读取及冻结/暂停分支可分别完成；一个写分支失败不会抹掉另一个已完成分支。补充输入后按更新目标重建计划，但已有成功副作用仍由任务执行记录去重保护。其余普通单场景任务继续沿用有界的动态工具流程，不会虚构依赖图。
+
 订阅变更确认与卡片共用 Agent Task 确认 API、幂等机制和通用审计；challenge 绑定 `resource_type/resource_id`、资源版本、工具/参数/策略、actor、幂等键及有效期。订阅状态转换由后端领域规则限制为 `active→paused`、`paused→active`、`active|paused→cancelled`，已取消订阅不可恢复。
 
 实际 Pydantic Schema 和版本定义在 `apps/api/src/finorch_api/agent/tools.py`、`application/agent.py`；新增工具必须有明确 handler、权限/风险/确认元数据、测试和审计，不允许模型自行注册工具。

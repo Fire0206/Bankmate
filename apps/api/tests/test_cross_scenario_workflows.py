@@ -301,6 +301,11 @@ def test_suspicious_charge_workflow_pauses_at_two_confirmations_and_resumes(
         "subscription.list",
         "card.freeze",
     ]
+    workflow_nodes = {node["node_id"]: node for node in task["workflow_plan"]["nodes"]}
+    assert workflow_nodes["charge_evidence"]["status"] == "succeeded"
+    assert workflow_nodes["subscription_evidence"]["status"] == "succeeded"
+    assert workflow_nodes["freeze_related_card"]["status"] == "awaiting_confirmation"
+    assert workflow_nodes["pause_related_subscription"]["status"] == "pending"
     assert any(
         "重复扣费提示" in item["anomaly_reason"] for item in result(task, "bill.anomalies")["items"]
     )
@@ -312,6 +317,9 @@ def test_suspicious_charge_workflow_pauses_at_two_confirmations_and_resumes(
     task = first.json()
     assert task["status"] == "awaiting_confirmation"
     assert tool_names(task)[-1] == "subscription.pause"
+    workflow_nodes = {node["node_id"]: node for node in task["workflow_plan"]["nodes"]}
+    assert workflow_nodes["freeze_related_card"]["status"] == "succeeded"
+    assert workflow_nodes["pause_related_subscription"]["status"] == "awaiting_confirmation"
     assert task["confirmation"]["resource_type"] == "subscription"
     assert task["confirmation"]["resource_label"] == "腾讯视频会员"
     with database.session_factory() as session:
@@ -326,6 +334,7 @@ def test_suspicious_charge_workflow_pauses_at_two_confirmations_and_resumes(
     assert second.status_code == 200, second.text
     task = second.json()
     assert task["status"] == "completed"
+    assert all(node["status"] == "succeeded" for node in task["workflow_plan"]["nodes"])
     assert {"card.freeze", "subscription.pause"} <= set(tool_names(task))
     with database.session_factory() as session:
         subscription = session.scalar(
@@ -368,6 +377,11 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
         "cross-payday-schedule",
     )
     assert task["status"] == "awaiting_confirmation", task
+    workflow_nodes = {node["node_id"]: node for node in task["workflow_plan"]["nodes"]}
+    assert workflow_nodes["cashflow_plan"]["status"] == "succeeded"
+    assert workflow_nodes["suitable_products"]["status"] == "succeeded"
+    assert workflow_nodes["confirmed_transfer"]["status"] == "awaiting_confirmation"
+    assert workflow_nodes["confirmed_investment"]["status"] == "pending"
     assert tool_names(task) == [
         "transfer.accounts",
         "bill.monthly_summary",
@@ -386,6 +400,9 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
     assert first.status_code == 200, first.text
     task = first.json()
     assert task["status"] == "awaiting_confirmation"
+    workflow_nodes = {node["node_id"]: node for node in task["workflow_plan"]["nodes"]}
+    assert workflow_nodes["confirmed_transfer"]["status"] == "succeeded"
+    assert workflow_nodes["confirmed_investment"]["status"] == "awaiting_confirmation"
     assert "investment.products" in tool_names(task)
     assert task["confirmation"]["resource_type"] == "investment_order"
     assert task["confirmation"]["details"]["amount_minor"] == plan["investment_budget_minor"]
@@ -395,6 +412,7 @@ def test_payday_workflow_uses_server_plan_and_two_confirmed_writes(workflow_cont
     assert second.status_code == 200, second.text
     task = second.json()
     assert task["status"] == "completed"
+    assert all(node["status"] == "succeeded" for node in task["workflow_plan"]["nodes"])
     names = tool_names(task)
     assert names.index("transfer.create") < names.index("investment.buy")
     assert names[-2:] == ["transfer.accounts", "investment.portfolio"]
