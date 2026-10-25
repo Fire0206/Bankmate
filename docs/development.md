@@ -97,7 +97,7 @@ uv run --project apps/api python -m finorch_api
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
-Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。它会在调用方事务中清理当前所有合成业务及工作流记录（包括卡片申请、生日计划和人工接管），再重建种子数据；替换卡的自引用也会先解除。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
 
 新增功能的真实模型留出集使用被冻结的 `phase3-feature-holdout-v1`（10 个案例），与开发案例分开保存，并由 SHA-256 manifest 校验。它覆盖年度账单、续费提醒、多只读查询、办卡申请、挂失、补卡、风险问卷边界、适当性查询和卡片限额强验证。留出评测会在每个案例前重置数据库，并只允许在 `FINORCH_ENVIRONMENT=test`、显式 `FINORCH_EVAL_RESET_SYNTHETIC=1` 且临时 `finorch-test*.sqlite3` 数据库中运行；测试 OTP 仅由评测脚本服务端签发，不打印到报告。请按上面的双终端方法启动 API，在评测终端设置：
 
@@ -108,6 +108,12 @@ uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
 完整运行将依次执行 10 个案例；`FINORCH_EVAL_CASES` 可用于本地定向调试，但定向子集不能替代完整留出验收。评测前不得查看或针对留出提示词调优；如需修改案例或评分规则，应创建新版本和新的冻结摘要。没有本地安全配置的 API Key 时，不运行真实评测，也不以 Fake Provider 结果替代。
+
+### Phase 3 新增能力 DeepSeek 留出验证（2026-10-25）
+
+使用 `deepseek-flash` 对冻结的 `phase3-feature-holdout-v1` 完成 10/10 个真实模型案例，严格工具序列通过 **4/10**，参数/状态检查为 **80%**，预期完成或澄清状态为 **89%**。结果是小样本观测，不代表一般请求的成功率。完整运行产生 19 次 Provider 请求，按本地用量估算约 **¥0.2794**；另一次在发现 Reset 外键缺陷时中断，合计 29 次请求、估算约 **¥0.4323**。这是代码估算值，不是 DeepSeek 账单金额。
+
+银行卡限额修改的 OTP 与审计检查通过；未确认的限额变更保持未执行。办卡申请和适当性查询取得了正确业务结果，但分别多调用了账户查询、风险画像读取，因此被严格的完整序列评分判为失败。续费提醒有两例误用了订阅列表；挂失请求只查询卡片、未变更状态；补卡请求停在补充信息状态。该数据集没有专门的 `risk_rejected` 案例，因此风险拦截准确率未测量。脱敏结果见[Phase 3 留出报告](../apps/api/evaluation-reports/phase3-feature-holdout-2026-10-25.json)；报告不含原始提示词、模型回复或密钥。
 
 ### Phase 2F 工作流收尾与演示验证（2026-10-20）
 
