@@ -2,7 +2,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
@@ -12,9 +12,12 @@ from finorch_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
+    BirthdayPlan,
     Card,
+    CardApplication,
     ConfirmationChallenge,
     DemoUser,
+    HumanHandoff,
     InvestmentHolding,
     InvestmentOrder,
     InvestmentProduct,
@@ -67,6 +70,7 @@ def reset_demo_data(session: Session) -> None:
     session.execute(delete(RiskAssessment))
     session.execute(delete(StrongVerification))
     session.execute(delete(ConfirmationChallenge))
+    session.execute(delete(HumanHandoff))
     session.execute(delete(ToolExecution))
     session.execute(delete(TaskStep))
     session.execute(delete(AgentTask))
@@ -79,6 +83,11 @@ def reset_demo_data(session: Session) -> None:
     session.execute(delete(Payee))
     session.execute(delete(Subscription))
     session.execute(delete(Transaction))
+    session.execute(delete(CardApplication))
+    session.execute(delete(BirthdayPlan))
+    # Replaced cards point to their replacement, so clear these self-references
+    # before deleting the card set while foreign key enforcement stays enabled.
+    session.execute(update(Card).values(replaced_by_card_id=None))
     session.execute(delete(Card))
     session.execute(delete(Account))
     session.execute(delete(DemoUser))

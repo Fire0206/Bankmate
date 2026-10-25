@@ -1,6 +1,7 @@
 import sqlite3
+from datetime import date
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from finorch_api.application.cards import (
@@ -12,7 +13,16 @@ from finorch_api.application.cards import (
 )
 from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition
-from finorch_api.infrastructure.models import AuditEvent, Card
+from finorch_api.infrastructure.models import (
+    Account,
+    AgentTask,
+    AuditEvent,
+    BirthdayPlan,
+    Card,
+    CardApplication,
+    DemoUser,
+    HumanHandoff,
+)
 from finorch_api.security.demo_identity import DEMO_USER_ONE_ID
 from sqlalchemy import event, func, select
 from sqlalchemy.exc import OperationalError
@@ -213,3 +223,71 @@ def test_seed_reset_restores_demo_baseline_and_is_path_guarded(seeded_database) 
         assert card.status is CardStatus.ACTIVE
         assert card.version == 1
         assert session.scalar(select(func.count()).select_from(AuditEvent)) == 0
+
+
+def test_seed_reset_clears_card_and_workflow_records_before_parent_rows(seeded_database) -> None:
+    from finorch_api.reset import reset_demo_data
+
+    with seeded_database.session_factory.begin() as session:
+        account = session.scalar(select(Account).where(Account.demo_user_id == DEMO_USER_ONE_ID))
+        original_card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+        actor = session.get(DemoUser, DEMO_USER_ONE_ID)
+        assert account is not None and original_card is not None and actor is not None
+
+        replacement = Card(
+            account_id=account.id,
+            label="Synthetic replacement",
+            card_suffix="9998",
+            status=CardStatus.ACTIVE,
+        )
+        task = AgentTask(
+            actor_id=actor.id,
+            conversation_id=uuid4(),
+            idempotency_key="reset-handoff-task",
+            request_hash="a" * 64,
+            request_text="Review synthetic card request",
+            provider_mode="fake",
+            status="failed",
+            message="Synthetic test task",
+        )
+        session.add_all([replacement, task])
+        session.flush()
+        original_card.status = CardStatus.REPLACED
+        original_card.replaced_by_card_id = replacement.id
+        session.add_all(
+            [
+                CardApplication(
+                    actor_id=actor.id,
+                    account_id=account.id,
+                    label="Synthetic replacement",
+                    status="submitted",
+                    issued_card_id=replacement.id,
+                ),
+                BirthdayPlan(
+                    actor_id=actor.id,
+                    account_id=account.id,
+                    birthday_on=date(2000, 1, 1),
+                    purchase_on=date(2026, 11, 1),
+                    budget_minor=10_000,
+                    catalog_total_minor=8_000,
+                    status="scheduled",
+                ),
+                HumanHandoff(
+                    actor_id=actor.id,
+                    task_id=task.id,
+                    status="pending",
+                    reason="provider_failure",
+                ),
+            ]
+        )
+
+    with seeded_database.session_factory.begin() as session:
+        reset_demo_data(session)
+
+    with seeded_database.session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(CardApplication)) == 0
+        assert session.scalar(select(func.count()).select_from(BirthdayPlan)) == 0
+        assert session.scalar(select(func.count()).select_from(HumanHandoff)) == 0
+        assert session.scalar(select(func.count()).select_from(DemoUser)) == 2
+    with seeded_database.engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
