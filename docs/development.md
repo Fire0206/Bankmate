@@ -97,7 +97,7 @@ uv run --project apps/api python -m finorch_api
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
-Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。它会在调用方事务中清理当前所有合成业务、资金预留、生日订单及工作流记录，再重建种子数据；替换卡的自引用也会先解除。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。它会在调用方事务中清理当前所有合成业务、卡片申请、生日计划、生日订单、资金预留、人工接管及工作流记录，再重建种子数据。为遵守外键约束，生日订单会先于其付款交易删除，替换卡的自引用也会先解除。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
 
 新增功能的真实模型留出集使用被冻结的 `phase3-feature-holdout-v1`（10 个案例），与开发案例分开保存，并由 SHA-256 manifest 校验。它覆盖年度账单、续费提醒、多只读查询、办卡申请、挂失、补卡、风险问卷边界、适当性查询和卡片限额强验证。留出评测会在每个案例前重置数据库，并只允许在 `FINORCH_ENVIRONMENT=test`、显式 `FINORCH_EVAL_RESET_SYNTHETIC=1` 且临时 `finorch-test*.sqlite3` 数据库中运行；测试 OTP 仅由评测脚本服务端签发，不打印到报告。请按上面的双终端方法启动 API，在评测终端设置：
 
