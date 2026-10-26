@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { apiClient } from "../api/client";
+import { customerText } from "../userFacing";
 import type {
   RiskAssessmentRequest,
   RiskAssessmentResponse,
@@ -107,9 +108,9 @@ export function RiskAssessmentForm() {
   if (!questionnaire) return <p role="alert">{error}</p>;
 
   return (
-    <section aria-label="模拟风险测评" className="risk-assessment">
+    <section aria-label="风险测评" className="risk-assessment">
       <h4>风险承受能力测评</h4>
-      <p>{questionnaire.notice}</p>
+      <p>{customerText(questionnaire.notice)}</p>
       {latest ? (
         <p className="risk-assessment-current">
           当前测评：{latest.risk_label}（R{latest.risk_level}）·{" "}
@@ -143,7 +144,7 @@ export function RiskAssessmentForm() {
         </fieldset>
       ))}
       <p className="risk-assessment-notice">
-        测评会更新当前模拟风险等级；尚未确认的申购仍会由服务端重新核对适当性。
+        测评会更新当前账户的风险等级；待确认的申购仍由服务端重新核对适当性。
       </p>
       {error ? <p role="alert">{error}</p> : null}
       <div className="risk-assessment-actions">

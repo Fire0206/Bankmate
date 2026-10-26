@@ -20,23 +20,23 @@ export type PageMeta = {
 export const pages: PageMeta[] = [
   {
     key: "overview",
-    label: "财务总览",
+    label: "账户总览",
     shortLabel: "总览",
     description: "账户、现金流和待处理事项",
     icon: "overview",
   },
   {
     key: "assistant",
-    label: "智能助手",
+    label: "助手",
     shortLabel: "助手",
-    description: "用自然语言完成银行任务",
+    description: "查询和办理常用业务",
     icon: "assistant",
   },
   {
     key: "bills",
-    label: "账单分析",
+    label: "账单",
     shortLabel: "账单",
-    description: "消费分类、趋势和异常证据",
+    description: "收支统计、交易记录和消费提醒",
     icon: "bill",
   },
   {
@@ -48,23 +48,23 @@ export const pages: PageMeta[] = [
   },
   {
     key: "transfers",
-    label: "转账与分账",
+    label: "转账",
     shortLabel: "转账",
     description: "余额、收款人和资金记录",
     icon: "transfer",
   },
   {
     key: "subscriptions",
-    label: "订阅代扣",
+    label: "自动扣费",
     shortLabel: "扣费",
     description: "周期扣费与续费管理",
     icon: "subscriptions",
   },
   {
     key: "investments",
-    label: "模拟理财",
+    label: "理财",
     shortLabel: "理财",
-    description: "产品、风险与模拟持仓",
+    description: "产品、风险测评和持仓",
     icon: "wealth",
   },
 ];

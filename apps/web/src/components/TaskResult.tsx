@@ -5,6 +5,7 @@ import { apiClient } from "../api/client";
 import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
 import { RiskAssessmentForm } from "./RiskAssessmentForm";
+import { customerText } from "../userFacing";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type JsonObject = Record<string, unknown>;
@@ -18,7 +19,7 @@ function objectArray(value: unknown): JsonObject[] {
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === "string" ? value : "";
+  return typeof value === "string" ? customerText(value) : "";
 }
 
 function numberValue(value: unknown): number | null {
@@ -138,7 +139,7 @@ function BillSummary({ data }: { data: JsonObject }) {
       ) : null}
       {anomalies.length ? (
         <p className="task-result-notice">
-          有 {anomalies.length} 笔交易符合演示提示规则；这不是欺诈结论。
+          有 {anomalies.length} 笔交易符合消费提醒规则，请核对是否为本人消费。
         </p>
       ) : null}
     </section>
@@ -195,7 +196,7 @@ function AnnualBill({ data }: { data: JsonObject }) {
       ) : null}
       {anomalies.length ? (
         <p className="task-result-notice">
-          {anomalies.length} 笔交易符合演示提示规则；这不是欺诈结论。
+          {anomalies.length} 笔交易符合消费提醒规则，请核对是否为本人消费。
         </p>
       ) : null}
     </section>
@@ -659,9 +660,9 @@ function SplitResult({ data }: { data: JsonObject }) {
 function InvestmentProducts({ data }: { data: JsonObject }) {
   const items = objectArray(data.items);
   return (
-    <section aria-label="模拟理财产品" className="task-result">
+    <section aria-label="理财产品" className="task-result">
       <div className="task-result-heading">
-        <strong>模拟理财产品</strong>
+        <strong>理财产品</strong>
         <span>
           {stringValue(data.risk_label) ||
             `风险等级 R${String(data.risk_level ?? "—")}`}
@@ -680,13 +681,13 @@ function InvestmentProducts({ data }: { data: JsonObject }) {
                   {stringValue(item.category)} · 风险 R
                   {String(item.risk_level ?? "—")} ·{" "}
                   {numberValue(item.annual_yield_bps) === null
-                    ? "收益模拟"
+                    ? "浮动估值"
                     : `年化参考 ${(numberValue(item.annual_yield_bps)! / 100).toFixed(2)}%`}
                 </small>
                 <small>
                   {item.suitable === true
-                    ? "符合当前模拟风险等级"
-                    : "超出当前模拟风险等级"}
+                    ? "符合当前风险等级"
+                    : "超出当前风险等级"}
                 </small>
               </div>
               <strong>起购 {formatAmount(item.minimum_amount_minor)}</strong>
@@ -694,10 +695,10 @@ function InvestmentProducts({ data }: { data: JsonObject }) {
           ))}
         </div>
       ) : (
-        <p className="task-result-empty">没有符合筛选条件的模拟产品。</p>
+        <p className="task-result-empty">没有找到符合筛选条件的产品。</p>
       )}
       <p className="task-result-notice">
-        产品与收益均为模拟信息，不构成投资建议。
+        产品与收益为虚拟信息，不构成投资建议。
       </p>
     </section>
   );
@@ -706,9 +707,9 @@ function InvestmentProducts({ data }: { data: JsonObject }) {
 function Portfolio({ data }: { data: JsonObject }) {
   const holdings = objectArray(data.holdings);
   return (
-    <section aria-label="模拟理财持仓" className="task-result">
+    <section aria-label="理财持仓" className="task-result">
       <div className="task-result-heading">
-        <strong>模拟资产</strong>
+        <strong>资产</strong>
         <span>
           风险等级{" "}
           {stringValue(data.risk_label) || `R${String(data.risk_level ?? "—")}`}
@@ -738,7 +739,7 @@ function Portfolio({ data }: { data: JsonObject }) {
           ))}
         </div>
       ) : (
-        <p className="task-result-empty">暂无模拟持仓。</p>
+        <p className="task-result-empty">暂无持仓。</p>
       )}
     </section>
   );
@@ -796,7 +797,7 @@ function InvestmentResult({ data }: { data: JsonObject }) {
       <strong>
         {stringValue(order.product_name)}已{action}
       </strong>
-      <span>{formatAmount(order.amount_minor)} · 模拟订单已更新</span>
+      <span>{formatAmount(order.amount_minor)} · 订单状态已更新</span>
     </section>
   );
 }
@@ -834,7 +835,7 @@ function PaydayPlan({ data }: { data: JsonObject }) {
         </div>
       </div>
       <p className="task-result-notice">
-        这是基于模拟数据计算的安排，资金操作仍需逐项确认。
+        资金安排根据账户数据计算，涉及变更的操作仍需逐项确认。
       </p>
     </section>
   );
@@ -895,8 +896,7 @@ function BirthdayPlans({ data }: { data: JsonObject }) {
               ) : null}
               {isObject(item.order) && item.order.status === "paid" ? (
                 <small>
-                  {formatAmount(item.order.total_amount_minor)} ·
-                  流水已记入模拟账户
+                  {formatAmount(item.order.total_amount_minor)} · 已记入账户流水
                 </small>
               ) : null}
             </div>
@@ -975,7 +975,7 @@ type Step = Task["steps"][number];
 const resultTitles: Record<string, string> = {
   "card.list": "银行卡",
   "card.get": "银行卡状态",
-  "card.applications": "模拟银行卡申请",
+  "card.applications": "银行卡申请",
   "bill.monthly_summary": "月度账单",
   "bill.annual_report": "年度账单",
   "bill.transactions": "交易明细",
@@ -1001,22 +1001,22 @@ const writeTitles: Record<string, string> = {
   "card.freeze": "银行卡已冻结",
   "card.unfreeze": "银行卡已解冻",
   "card.report_lost": "银行卡已挂失",
-  "card.replace": "模拟补卡已创建",
-  "card.apply": "模拟借记卡申请已提交",
+  "card.replace": "补卡申请已记录",
+  "card.apply": "借记卡申请已记录",
   "card.controls": "银行卡消费设置已更新",
-  "card.purchase": "模拟商品购买已完成",
+  "card.purchase": "商品已记入账户",
   "subscription.pause": "自动续费已暂停",
   "subscription.resume": "自动续费已恢复",
   "subscription.cancel": "自动续费已取消",
-  "transfer.create": "模拟转账已完成",
+  "transfer.create": "转账已记账",
   "transfer.schedule": "定时转账已创建",
   "transfer.cancel_scheduled": "定时转账已取消",
   "transfer.split_create": "AA 分账已创建",
-  "transfer.split_collect": "模拟收款已完成",
-  "investment.buy": "模拟申购已完成",
-  "investment.redeem": "模拟赎回已完成",
+  "transfer.split_collect": "AA 收款已记账",
+  "investment.buy": "申购已记账",
+  "investment.redeem": "赎回已记账",
   "birthday.plan": "生日预算已预留",
-  "birthday.order": "生日礼品模拟订单已完成",
+  "birthday.order": "生日礼品订单已记账",
   "birthday.budget_update": "生日预算已更新",
   "birthday.cancel": "生日计划已取消",
 };
@@ -1073,14 +1073,14 @@ function conciseValue(step: Step): string[] {
             const status =
               {
                 pending_confirmation: "待确认",
-                submitted: "待模拟审核",
-                approved: "模拟审核通过",
-                rejected: "模拟审核未通过",
+                submitted: "待处理",
+                approved: "已通过",
+                rejected: "未通过",
                 cancelled: "已取消",
               }[stringValue(item.status)] ?? "状态待更新";
             return `${stringValue(item.label)} · ${status}${item.issued_card_suffix ? ` · 新卡尾号 ${stringValue(item.issued_card_suffix)}` : ""}`;
           })
-        : ["暂无模拟银行卡申请"];
+        : ["暂无银行卡申请"];
     case "bill.monthly_summary": {
       const categories = objectArray(data.categories);
       return [
@@ -1164,7 +1164,7 @@ function conciseValue(step: Step): string[] {
               (item) =>
                 `${stringValue(item.name)} · 风险 R${String(item.risk_level ?? "—")}`,
             )
-        : ["没有找到符合当前模拟风险等级的产品。"];
+        : ["没有找到符合当前风险等级的产品。"];
     }
     case "investment.profile":
       return [
@@ -1235,7 +1235,7 @@ function writeSummary(step: Step): { title: string; detail: string } {
       const application = isObject(data.application) ? data.application : data;
       return {
         title: writeTitles[toolName],
-        detail: `${stringValue(application.label)} · 等待本地模拟审核，尚未发卡`,
+        detail: `${stringValue(application.label)} · 等待处理，尚未发卡`,
       };
     }
     const card = isObject(data.card) ? data.card : data;
@@ -1374,7 +1374,7 @@ export function TaskResult({
                 {step.tool_name?.startsWith("investment.products") ||
                 step.tool_name?.startsWith("investment.compare") ? (
                   <p className="task-result-notice">
-                    产品与收益为模拟信息，不构成投资建议。
+                    产品与收益为虚拟信息，不构成投资建议。
                   </p>
                 ) : null}
               </article>

@@ -11,6 +11,7 @@ import { AppIcon } from "../components/AppIcon";
 import { PageHeader } from "../components/PageHeader";
 import { RiskAssessmentForm } from "../components/RiskAssessmentForm";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
+import { customerText } from "../userFacing";
 
 type InvestmentData = {
   profile: RiskProfileResponse;
@@ -69,17 +70,17 @@ export function InvestmentsPage({
       <PageHeader
         actionLabel="分析理财配置"
         busy={busy}
-        description="所有产品、收益和持仓均为模拟数据；申购与赎回必须经过适当性和服务端确认。"
-        eyebrow="Wealth simulation"
+        description="查看产品与持仓；申购、赎回需通过风险适配并由本人确认。"
+        eyebrow="理财"
         onAction={() =>
-          onPrompt("分析我的模拟理财持仓，并给出符合我风险等级的配置建议")
+          onPrompt("分析我的理财持仓，并给出符合我风险等级的配置建议")
         }
-        title="模拟理财"
+        title="理财"
       />
 
       <div className="portfolio-hero">
         <div>
-          <p className="eyebrow">Total assets</p>
+          <p className="eyebrow">总资产</p>
           <h2>
             {loading ? (
               <SkeletonLine width="180px" />
@@ -150,8 +151,8 @@ export function InvestmentsPage({
       <section className="data-panel">
         <header>
           <div>
-            <p className="eyebrow">Products</p>
-            <h2>适合的模拟产品</h2>
+            <p className="eyebrow">产品</p>
+            <h2>适合的产品</h2>
           </div>
           <span>{data?.products.items.length ?? 0} 个</span>
         </header>
@@ -174,8 +175,8 @@ export function InvestmentsPage({
                   <span>R{product.risk_level}</span>
                   <small>{product.category}</small>
                 </header>
-                <h3>{product.name}</h3>
-                <p>{product.description}</p>
+                <h3>{customerText(product.name)}</h3>
+                <p>{customerText(product.description)}</p>
                 <div>
                   <span>
                     参考年化
@@ -191,15 +192,13 @@ export function InvestmentsPage({
                   </span>
                 </div>
                 <p className="product-fit">
-                  {product.suitable
-                    ? "符合当前模拟风险等级"
-                    : "超出当前模拟风险等级"}
+                  {product.suitable ? "符合当前风险等级" : "超出当前风险等级"}
                 </p>
                 <button
                   disabled={busy || !product.suitable}
                   onClick={() =>
                     onPrompt(
-                      `了解并申购${product.name}，金额为起购金额${money(product.minimum_amount_minor, product.currency)}`,
+                      `了解并申购${customerText(product.name)}，金额为起购金额${money(product.minimum_amount_minor, product.currency)}`,
                     )
                   }
                   type="button"
@@ -216,7 +215,7 @@ export function InvestmentsPage({
         <section className="data-panel">
           <header>
             <div>
-              <p className="eyebrow">Holdings</p>
+              <p className="eyebrow">持仓</p>
               <h2>当前持仓</h2>
             </div>
           </header>
@@ -230,7 +229,7 @@ export function InvestmentsPage({
                     <AppIcon name="wealth" size={17} />
                   </span>
                   <span className="data-row-main">
-                    <strong>{holding.product_name}</strong>
+                    <strong>{customerText(holding.product_name)}</strong>
                     <small>
                       {(holding.units_micros / 1_000_000).toLocaleString(
                         "zh-CN",
@@ -249,14 +248,14 @@ export function InvestmentsPage({
               ))}
             </div>
           ) : (
-            <p className="page-empty">暂无模拟持仓。</p>
+            <p className="page-empty">暂无持仓。</p>
           )}
         </section>
 
         <section className="data-panel">
           <header>
             <div>
-              <p className="eyebrow">Orders</p>
+              <p className="eyebrow">交易记录</p>
               <h2>理财记录</h2>
             </div>
           </header>
@@ -270,9 +269,9 @@ export function InvestmentsPage({
                     <AppIcon name="history" size={17} />
                   </span>
                   <span className="data-row-main">
-                    <strong>{order.product_name}</strong>
+                    <strong>{customerText(order.product_name)}</strong>
                     <small>
-                      {order.order_type === "buy" ? "模拟申购" : "模拟赎回"}
+                      {order.order_type === "buy" ? "申购" : "赎回"}
                     </small>
                   </span>
                   <strong>{money(order.amount_minor, order.currency)}</strong>
@@ -287,7 +286,7 @@ export function InvestmentsPage({
 
       <div className="page-alert">
         <AppIcon name="info" size={17} />
-        产品收益为模拟参考，不构成投资建议。风险等级和最终执行结果均由服务端复核。
+        产品、净值和收益为虚拟信息，不构成投资建议。风险等级和执行结果由服务端复核。
       </div>
 
       <RiskAssessmentForm />

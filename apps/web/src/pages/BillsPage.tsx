@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { apiClient } from "../api/client";
+import { brand } from "../brand";
 import type {
   BillSummaryResponse,
   TransactionPageResponse,
@@ -11,6 +12,7 @@ import { CashflowChart } from "../components/CashflowChart";
 import { PageHeader } from "../components/PageHeader";
 import { SideDrawer } from "../components/SideDrawer";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
+import { customerText, transactionDescription } from "../userFacing";
 
 type Transaction = TransactionPageResponse["items"][number];
 type Filters = {
@@ -90,7 +92,7 @@ function FilterModal({
       >
         <header className="filter-dialog-header">
           <div>
-            <p className="eyebrow">Insights filter</p>
+            <p className="eyebrow">筛选条件</p>
             <h2>筛选账单</h2>
           </div>
           <button
@@ -228,14 +230,20 @@ function TransactionDrawer({
           </div>
           <div>
             <dt>交易说明</dt>
-            <dd>{transaction.description}</dd>
+            <dd>
+              {transactionDescription(
+                transaction.description,
+                transaction.category,
+                transaction.direction,
+              )}
+            </dd>
           </div>
           <div>
             <dt>来源卡片</dt>
             <dd>
               {transaction.source_card_suffix
                 ? `尾号 ${transaction.source_card_suffix}`
-                : "模拟账户交易"}
+                : "账户交易"}
             </dd>
           </div>
           <div>
@@ -251,8 +259,8 @@ function TransactionDrawer({
               <AppIcon name="info" size={16} />
               为什么出现提示
             </span>
-            <p>{transaction.anomaly_reason}</p>
-            <small>这是确定性规则提示，不是欺诈结论。</small>
+            <p>{customerText(transaction.anomaly_reason)}</p>
+            <small>账单规则提醒，仅供核对，不代表欺诈结论。</small>
           </div>
         ) : null}
         <div className="drawer-actions">
@@ -268,7 +276,7 @@ function TransactionDrawer({
             }}
             type="button"
           >
-            交给 FinOrch 处理
+            询问 {brand.name}
           </button>
           <button
             className="button button-secondary"
@@ -350,7 +358,7 @@ export function BillsPage({
         actionLabel="询问账单"
         busy={busy}
         description="理解钱花在哪里、为什么出现异常，以及现金流是否健康。"
-        eyebrow="Spending intelligence"
+        eyebrow="账单"
         onAction={() => onPrompt("分析我本月的账单和异常消费")}
         title="账单分析"
       />
@@ -393,10 +401,10 @@ export function BillsPage({
         <section className="bills-main-card">
           <header>
             <div>
-              <p className="eyebrow">Cash flow</p>
+              <p className="eyebrow">收支</p>
               <h2>收支趋势</h2>
             </div>
-            <span>{loading ? "读取中" : "真实合成数据"}</span>
+            <span>{loading ? "读取中" : "基于账户流水"}</span>
           </header>
           <div className="bills-kpis">
             <div>
@@ -450,7 +458,7 @@ export function BillsPage({
         <section className="category-card">
           <header>
             <div>
-              <p className="eyebrow">Categories</p>
+              <p className="eyebrow">消费类别</p>
               <h2>消费类别</h2>
             </div>
             <span>{categoryOptions.length} 类</span>
@@ -497,7 +505,7 @@ export function BillsPage({
       <section className="transactions-card">
         <header>
           <div>
-            <p className="eyebrow">Transactions</p>
+            <p className="eyebrow">交易明细</p>
             <h2>交易明细</h2>
           </div>
           <span>{transactions?.total ?? 0} 笔</span>

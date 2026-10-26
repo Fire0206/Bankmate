@@ -9,6 +9,7 @@ import type {
 } from "../api/client";
 import { AppIcon } from "../components/AppIcon";
 import { PageHeader } from "../components/PageHeader";
+import { customerText } from "../userFacing";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
 
 function money(value: number, currency = "CNY"): string {
@@ -86,14 +87,14 @@ export function TransfersPage({
         actionLabel="发起转账"
         busy={busy}
         description="查看余额与收款人，所有资金变化在明确确认后由服务端执行。"
-        eyebrow="Move money"
-        onAction={() => onPrompt("我要发起一笔模拟转账，请先询问收款人和金额")}
+        eyebrow="账户资金"
+        onAction={() => onPrompt("我要发起一笔转账，请先询问收款人和金额")}
         title="转账与分账"
       />
 
       <div className="transfer-hero">
         <div>
-          <p className="eyebrow">Available balance</p>
+          <p className="eyebrow">账户余额</p>
           <h2>
             {loading ? (
               <SkeletonLine width="180px" />
@@ -105,16 +106,14 @@ export function TransfersPage({
             {loading ? (
               <SkeletonLine width="72px" />
             ) : (
-              `${data?.accounts.items.length ?? 0} 个模拟账户`
+              `${data?.accounts.items.length ?? 0} 个账户`
             )}
           </span>
         </div>
         <div className="transfer-hero-actions">
           <button
             disabled={busy}
-            onClick={() =>
-              onPrompt("我要发起一笔模拟转账，请先询问收款人和金额")
-            }
+            onClick={() => onPrompt("我要发起一笔转账，请先询问收款人和金额")}
             type="button"
           >
             <AppIcon name="transfer" size={18} />
@@ -150,7 +149,7 @@ export function TransfersPage({
         <section className="data-panel">
           <header>
             <div>
-              <p className="eyebrow">Accounts</p>
+              <p className="eyebrow">账户</p>
               <h2>账户余额</h2>
             </div>
           </header>
@@ -164,8 +163,8 @@ export function TransfersPage({
                     <AppIcon name="overview" size={17} />
                   </span>
                   <span className="data-row-main">
-                    <strong>{account.label}</strong>
-                    <small>模拟账户</small>
+                    <strong>{customerText(account.label)}</strong>
+                    <small>个人账户</small>
                   </span>
                   <strong>
                     {money(account.balance_minor, account.currency)}
@@ -179,7 +178,7 @@ export function TransfersPage({
         <section className="data-panel">
           <header>
             <div>
-              <p className="eyebrow">Recent payees</p>
+              <p className="eyebrow">收款人</p>
               <h2>最近收款人</h2>
             </div>
             <span>{data?.payees.items.length ?? 0} 人</span>
@@ -193,16 +192,14 @@ export function TransfersPage({
                   disabled={busy}
                   key={payee.id}
                   onClick={() =>
-                    onPrompt(
-                      `给${payee.display_name}发起一笔模拟转账，请询问金额`,
-                    )
+                    onPrompt(`给${payee.display_name}发起一笔转账，请询问金额`)
                   }
                   type="button"
                 >
                   <span>{payee.display_name.slice(0, 1)}</span>
                   <strong>{payee.display_name}</strong>
                   <small>
-                    {payee.destination_account_label}
+                    {customerText(payee.destination_account_label)}
                     {payee.phone_masked ? ` · ${payee.phone_masked}` : ""}
                   </small>
                 </button>
@@ -215,7 +212,7 @@ export function TransfersPage({
       <section className="data-panel">
         <header>
           <div>
-            <p className="eyebrow">Transfer history</p>
+            <p className="eyebrow">转账记录</p>
             <h2>转账记录</h2>
           </div>
           <span>{data?.transfers.items.length ?? 0} 笔</span>
@@ -232,7 +229,7 @@ export function TransfersPage({
                 <span className="data-row-main">
                   <strong>{transfer.payee_name}</strong>
                   <small>
-                    {transfer.source_account_label} ·{" "}
+                    {customerText(transfer.source_account_label)} ·{" "}
                     {dateLabel(transfer.scheduled_at ?? transfer.executed_at)}
                     {transfer.remark ? ` · 备注：${transfer.remark}` : ""}
                   </small>
@@ -260,7 +257,7 @@ export function TransfersPage({
       <section className="data-panel">
         <header>
           <div>
-            <p className="eyebrow">Split bills</p>
+            <p className="eyebrow">AA 分账</p>
             <h2>AA 分账</h2>
           </div>
           <span>{data?.splits.items.length ?? 0} 笔</span>

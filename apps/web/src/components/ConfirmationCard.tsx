@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { components } from "../generated/api";
 import { AppIcon } from "./AppIcon";
 import { cardLabel } from "./cardFormat";
+import { customerName, customerText } from "../userFacing";
 
 type Confirmation = components["schemas"]["ConfirmationResponse"];
 type Details = NonNullable<Confirmation["details"]>;
@@ -13,15 +14,11 @@ function value(details: Details | null | undefined, key: string): unknown {
 
 function text(details: Details | null | undefined, key: string): string | null {
   const item = value(details, key);
-  return typeof item === "string" && item ? item : null;
+  return typeof item === "string" && item ? customerText(item) : null;
 }
 
 function personName(value: string): string {
-  const labels: Record<string, string> = {
-    "Demo User One": "本人",
-    "Demo User Two": "模拟用户二",
-  };
-  return labels[value] ?? value;
+  return value === "Demo User One" ? "本人" : customerName(value);
 }
 
 function amount(
@@ -42,9 +39,9 @@ function statusName(status: string): string {
     lost: "已挂失",
     replaced: "已补卡停用",
     pending_confirmation: "待提交",
-    submitted: "待模拟审核",
-    approved: "模拟审核通过",
-    rejected: "模拟审核未通过",
+    submitted: "待处理",
+    approved: "已通过",
+    rejected: "未通过",
     paused: "已暂停",
     cancelled: "已取消",
     awaiting_confirmation: "待确认",
@@ -65,16 +62,15 @@ function actionName(confirmation: Confirmation): string {
     return confirmation.tool_name === "card.controls"
       ? "调整银行卡消费设置"
       : confirmation.tool_name === "card.purchase"
-        ? "购买模拟商品"
+        ? "购买商品"
         : confirmation.target_status === "frozen"
           ? "冻结银行卡"
           : confirmation.target_status === "lost"
             ? "挂失银行卡"
             : confirmation.target_status === "replaced"
-              ? "模拟补卡"
+              ? "申请补卡"
               : "解冻银行卡";
-  if (confirmation.resource_type === "card_application")
-    return "提交模拟借记卡申请";
+  if (confirmation.resource_type === "card_application") return "申请借记卡";
   if (confirmation.resource_type === "birthday_plan")
     return confirmation.target_status === "updated"
       ? "调整生日预算"
@@ -82,7 +78,7 @@ function actionName(confirmation: Confirmation): string {
         ? "取消生日计划"
         : "预留生日预算并预约商品";
   if (confirmation.resource_type === "birthday_order")
-    return "确认生日礼品模拟订单";
+    return "确认生日礼品订单";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"
@@ -99,7 +95,7 @@ function actionName(confirmation: Confirmation): string {
   }
   if (confirmation.resource_type === "split")
     return confirmation.target_status === "settled"
-      ? "模拟收取分账"
+      ? "确认收款"
       : "创建 AA 分账";
   return text(details, "order_type") === "redeem" ? "赎回理财" : "申购理财";
 }
@@ -149,26 +145,25 @@ export function ConfirmationCard({
   const impactLabels: Record<Confirmation["resource_type"], string> = {
     card:
       confirmation.tool_name === "card.purchase"
-        ? "确认后将从这张卡绑定的模拟账户扣款，并生成模拟交易记录。"
+        ? "确认后将从关联账户扣款，并在本账本记录交易；不会向支付网络发起请求。"
         : confirmation.tool_name === "card.controls"
-          ? "确认后会改变这张卡的模拟消费限制。"
+          ? "确认后会更新这张卡的消费限额和线上支付设置。"
           : confirmation.target_status === "replaced"
-            ? "旧卡将永久停用，并创建一张新的模拟银行卡。新卡尾号由服务端生成。"
-            : "只影响这张模拟银行卡。",
+            ? "旧卡将停用，并创建一张新卡。新卡尾号由系统生成。"
+            : "只影响这张银行卡。",
     card_application:
-      "确认后仅提交模拟申请，等待本地模拟审核；不会立即发卡或产生真实授信。",
+      "申请只会记入当前账户并等待系统处理，不会提交至银行，也不会产生授信。",
     birthday_plan:
       confirmation.target_status === "cancelled"
         ? "确认后取消未支付订单，并释放剩余预留资金。"
         : confirmation.target_status === "updated"
           ? "确认后按新预算调整预留金额；账户总余额不变。"
           : "确认后将这笔预算标记为预留资金，不会从账户扣款；到期商品仍需再次确认。",
-    birthday_order:
-      "确认后从模拟账户扣款并生成流水。该订单只在本地模拟账本中生效，不会联系商户或支付网络。",
-    subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
-    transfer: "这笔转账只在模拟账本中记账。",
-    split: "仅更新这笔模拟 AA 分账的状态。",
-    investment_order: "仅更新模拟资金和持仓，不代表真实收益。",
+    birthday_order: "确认后从当前账户记账并生成流水；不会联系商户或支付网络。",
+    subscription: "只更新这项自动扣费的续费状态，不会向商户发送请求。",
+    transfer: "这笔转账只记入当前账户账本。",
+    split: "只更新这笔 AA 分账的收付款状态。",
+    investment_order: "只更新当前账户的余额和持仓；收益不代表真实回报。",
   };
   const detailsRows: Array<[string, string | null]> = [];
 
@@ -199,7 +194,7 @@ export function ConfirmationCard({
       ["金额", amount(details, "amount_minor")],
       [
         "消费方式",
-        text(details, "channel") === "online" ? "模拟线上消费" : "模拟线下消费",
+        text(details, "channel") === "online" ? "线上消费" : "线下消费",
       ],
     );
   } else if (confirmation.resource_type === "card_application") {
@@ -266,7 +261,7 @@ export function ConfirmationCard({
         "执行时间",
         text(details, "scheduled_at")
           ? expiryLabel(text(details, "scheduled_at")!)
-          : "确认后模拟执行",
+          : "确认后记账",
       ],
     );
   } else if (confirmation.resource_type === "split") {
@@ -405,10 +400,12 @@ export function ConfirmationCard({
 
       {needsVerification ? (
         <div className="confirmation-verification">
-          <label htmlFor="demo-verification-code">模拟二次验证</label>
-          <p>此操作风险较高。请从独立的本地演示验证通道获取六位验证码。</p>
+          <label htmlFor="security-verification-code">安全验证码</label>
+          <p>
+            此操作需要额外验证。当前验证码由本地验证服务提供，不是银行短信验证码。
+          </p>
           <input
-            id="demo-verification-code"
+            id="security-verification-code"
             autoComplete="one-time-code"
             inputMode="numeric"
             maxLength={6}

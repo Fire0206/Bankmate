@@ -151,3 +151,9 @@ Phase 1E 历史基线与 Phase 2E 最新 DeepSeek 可靠性评测见[开发指�
 - [人工智能赛道报名工作台](https://apply.g-ican.com/)
 
 赛事要求及未确认事项按官方公开内容记录在[赛事核对文档](docs/competition-requirements.md)，并以文档内最近一次核对日期和官方通知为准。
+
+## 比赛材料
+
+- [作品简介](docs/submission/作品简介.md)
+- [技术文档与安全自评](docs/submission/技术文档与安全自评.md)
+- [答辩材料](docs/submission/答辩材料.md)

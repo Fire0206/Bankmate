@@ -10,7 +10,6 @@ import type {
 import { AppIcon } from "./components/AppIcon";
 import { CardList } from "./components/CardList";
 import { ConfirmationModal } from "./components/ConfirmationModal";
-import { DemoGate } from "./components/DemoGate";
 import { FocusedOverview } from "./components/FocusedOverview";
 import { Navigation } from "./components/Navigation";
 import { SideDrawer } from "./components/SideDrawer";
@@ -24,6 +23,8 @@ import { CardsPage } from "./pages/CardsPage";
 import { InvestmentsPage } from "./pages/InvestmentsPage";
 import { SubscriptionsPage } from "./pages/SubscriptionsPage";
 import { TransfersPage } from "./pages/TransfersPage";
+import { brand } from "./brand";
+import { customerName } from "./userFacing";
 
 type Message = {
   id: string;
@@ -71,19 +72,10 @@ type PendingWrite =
     };
 
 const pendingWriteStorageKey = "finorch.demo.pending-write";
-const demoEntryStorageKey = "finorch.demo.entered.v1";
 
 type ViewTransitionDocument = Document & {
   startViewTransition?: (update: () => void) => unknown;
 };
-
-function readDemoEntry(): boolean {
-  try {
-    return sessionStorage.getItem(demoEntryStorageKey) === "1";
-  } catch {
-    return false;
-  }
-}
 
 function withViewTransition(update: () => void) {
   const transitionDocument = document as ViewTransitionDocument;
@@ -160,14 +152,14 @@ const apiErrorCopy: Record<string, string> = {
   not_found: "没有找到这项任务，或你无权查看它。",
   task_state_conflict: "任务状态已变化，请查看最新处理进度。",
   tool_input_invalid: "银行卡信息无法识别，请重新描述。",
-  strong_verification_required: "请先完成模拟二次验证。",
+  strong_verification_required: "请先完成账户安全验证。",
   verification_incorrect: "验证码不正确，请核对后重试。",
   verification_expired: "验证码已过期，请取消并重新发起操作。",
   verification_invalidated: "风险或操作内容已变化，请取消并重新发起。",
   verification_locked: "验证码尝试次数已用尽，请取消并重新发起。",
   verification_unavailable: "这次验证已失效，请刷新任务状态。",
   safety_hold_active:
-    "模拟安全限制暂时阻止写操作。查询仍可使用，请稍后重新发起。",
+    "出于安全考虑，暂时无法执行这项操作。查询仍可使用，请稍后重试。",
 };
 
 function toUiError(error: unknown): UiError {
@@ -211,20 +203,8 @@ function conversationKey(): string {
 }
 
 function userName(session: DemoSessionResponse | null): string {
-  if (!session) return "演示用户";
-  return session.display_name === "Demo User One"
-    ? "演示用户"
-    : session.display_name;
-}
-
-function modeLabel(mode: DemoSessionResponse["agent_provider"]): string {
-  return mode === "fake" ? "演示模式" : "兼容模型模式";
-}
-
-function environmentLabel(
-  environment: DemoSessionResponse["environment"],
-): string {
-  return environment === "development" ? "本地开发" : "测试环境";
+  if (!session) return "正在读取";
+  return customerName(session.display_name);
 }
 
 function initialContextOpen(): boolean {
@@ -331,59 +311,13 @@ function ErrorBanner({
   );
 }
 
-function EnvironmentDetails({
-  mode,
-  session,
-  apiVersion,
-}: {
-  mode: DemoSessionResponse["agent_provider"];
-  session: DemoSessionResponse | null;
-  apiVersion: string | null;
-}) {
-  return (
-    <details className="environment-details">
-      <summary>
-        <span className={"mode-dot mode-dot-" + mode} />
-        {modeLabel(mode)}
-        <AppIcon name="chevron-down" size={15} />
-      </summary>
-      <div className="environment-popover">
-        <h2>环境详情</h2>
-        <p>
-          {mode === "fake"
-            ? "当前使用确定性模拟规则，不调用外部模型。"
-            : "当前选择兼容模型模式，请求由服务端转发。若服务端未配置模型，任务会明确失败；页面不会读取或显示密钥。"}
-        </p>
-        <dl>
-          <div>
-            <dt>数据环境</dt>
-            <dd>
-              {session ? environmentLabel(session.environment) : "正在读取"}
-            </dd>
-          </div>
-          <div>
-            <dt>数据版本</dt>
-            <dd>{session?.dataset_version ?? "—"}</dd>
-          </div>
-          <div>
-            <dt>服务版本</dt>
-            <dd>{apiVersion ?? "—"}</dd>
-          </div>
-        </dl>
-        <p className="environment-note">
-          银行卡、账单和订阅均为模拟数据，不连接真实银行或支付服务。
-        </p>
-      </div>
-    </details>
-  );
-}
-
 function StatusIndicator({ status }: { status: ApiState }) {
   const copy = {
-    checking: "连接中",
-    connected: "服务已连接",
-    unavailable: "服务不可用",
+    checking: "正在连接",
+    connected: "",
+    unavailable: "暂时无法连接",
   }[status];
+  if (status === "connected") return null;
   return (
     <span
       aria-label={copy}
@@ -394,6 +328,30 @@ function StatusIndicator({ status }: { status: ApiState }) {
       <span aria-hidden="true" className="connection-dot" />
       {copy}
     </span>
+  );
+}
+
+function AccountDetails({
+  mode,
+}: {
+  mode: DemoSessionResponse["agent_provider"];
+}) {
+  return (
+    <details className="environment-details">
+      <summary>账户说明</summary>
+      <div className="environment-popover">
+        <h2>账户与服务</h2>
+        <p>
+          账户、交易和产品信息为虚拟数据。操作只更新 BankMate
+          账户记录，不连接银行、支付网络或商户。
+        </p>
+        <p className="environment-note">
+          {mode === "fake"
+            ? "请求在本地处理，不会发送到外部模型。"
+            : "请求由已配置的服务处理。请勿输入真实账户信息、密码或验证码。"}
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -415,7 +373,6 @@ function promptSuggestions(cards: CardListResponse["items"]): string[] {
 export default function App() {
   const [conversationId] = useState(conversationKey);
   const [apiState, setApiState] = useState<ApiState>("checking");
-  const [apiVersion, setApiVersion] = useState<string | null>(null);
   const [session, setSession] = useState<DemoSessionResponse | null>(null);
   const [cards, setCards] = useState<CardListResponse["items"]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -438,7 +395,6 @@ export default function App() {
   );
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [enteredDemo, setEnteredDemo] = useState(readDemoEntry);
   const [activePage, setActivePage] = useState<PageKey>(pageFromHash);
   const [contextOpen, setContextOpen] = useState(initialContextOpen);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -542,12 +498,10 @@ export default function App() {
       .then((health) => {
         if (!current) return;
         setApiState(health.status === "ok" ? "connected" : "unavailable");
-        setApiVersion(health.version);
       })
       .catch((error: unknown) => {
         if (!current) return;
         setApiState("unavailable");
-        setApiVersion(null);
         setRequestError(toUiError(error));
       });
 
@@ -710,7 +664,6 @@ export default function App() {
         apiClient.readCards(),
       ]);
       setApiState(health.status === "ok" ? "connected" : "unavailable");
-      setApiVersion(health.version);
       setSession(demo);
       setCards(cardPage.items);
     } catch (error) {
@@ -948,63 +901,23 @@ export default function App() {
     });
   }
 
-  function askFinOrch(prompt: string) {
+  function askAssistant(prompt: string) {
     navigate("assistant");
     void sendMessage(prompt);
   }
 
-  function enterDemo() {
-    withViewTransition(() => {
-      try {
-        sessionStorage.setItem(demoEntryStorageKey, "1");
-      } catch {
-        // Entry state is a presentation aid, not an authorization source.
-      }
-      setEnteredDemo(true);
-      setActivePage("overview");
-      window.history.replaceState(null, "", "#/overview");
-    });
-  }
-
-  function exitDemo() {
-    withViewTransition(() => {
-      try {
-        sessionStorage.removeItem(demoEntryStorageKey);
-      } catch {
-        // Ignore storage restrictions; the current session can still exit.
-      }
-      setEnteredDemo(false);
-    });
-  }
-
-  const mode = activeTask?.provider_mode ?? session?.agent_provider ?? "fake";
   const overviewRefreshKey = activeTask
     ? `${activeTask.id}:${activeTask.version}`
     : (session?.dataset_version ?? "initial");
-  const demoDisplayName =
-    !session || session.display_name === "Demo User One"
-      ? "林知远"
-      : userName(session);
-
-  if (!enteredDemo) {
-    return (
-      <DemoGate
-        apiState={apiState}
-        onEnter={enterDemo}
-        onRetry={() => void retryConnection()}
-        session={session}
-      />
-    );
-  }
+  const displayName = customerName(session?.display_name);
 
   return (
     <div className="app-shell">
       <Navigation
         activePage={activePage}
-        displayName={demoDisplayName}
+        displayName={displayName}
         mobileOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
-        onExit={exitDemo}
         onNavigate={navigate}
       />
 
@@ -1023,7 +936,7 @@ export default function App() {
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
               <div className="topbar-path">
-                <span>FinOrch</span>
+                <span>{brand.name}</span>
                 <i aria-hidden="true">/</i>
                 <strong>{pageMeta(activePage).label}</strong>
               </div>
@@ -1038,23 +951,21 @@ export default function App() {
                 type="button"
               >
                 <span aria-hidden="true">+</span>
-                新任务
+                新对话
               </button>
-              <EnvironmentDetails
-                apiVersion={apiVersion}
-                mode={mode}
-                session={session}
+              <AccountDetails
+                mode={
+                  activeTask?.provider_mode ?? session?.agent_provider ?? "fake"
+                }
               />
               <StatusIndicator status={apiState} />
-              <button
-                aria-label="退出演示账户"
+              <span
+                aria-label={`当前账户：${displayName}`}
                 className="account-avatar"
-                onClick={exitDemo}
-                title="退出演示"
-                type="button"
+                title={displayName}
               >
-                LZ
-              </button>
+                {displayName.slice(0, 2)}
+              </span>
             </div>
           </div>
         </header>
@@ -1066,9 +977,8 @@ export default function App() {
               audit={audit}
               busy={busy}
               cards={cards}
-              onPrompt={askFinOrch}
+              onPrompt={askAssistant}
               refreshKey={overviewRefreshKey}
-              session={session}
             />
           ) : null}
 
@@ -1113,13 +1023,9 @@ export default function App() {
             <>
               <div className="workspace-stage-heading">
                 <div>
-                  <p className="eyebrow">Agent workspace</p>
-                  <h2>把目标交给 FinOrch，先理解，再执行</h2>
+                  <h2>助手</h2>
                 </div>
-                <span>
-                  <AppIcon name="info" size={15} />
-                  所有变更以服务端结果为准
-                </span>
+                <span>资金操作需本人确认</span>
               </div>
 
               <div className="workbench-grid">
@@ -1144,17 +1050,17 @@ export default function App() {
                     {messages.length === 0 ? (
                       <div className="welcome-state">
                         <span aria-hidden="true" className="welcome-mark">
-                          F
+                          {brand.mark}
                         </span>
                         <h3>你好，{userName(session)}</h3>
                         <p>
                           {loading
-                            ? "正在读取演示账户…"
-                            : "可以查询模拟账户和账单，也可以在确认后发起转账、管理订阅或操作模拟理财。"}
+                            ? "正在读取账户…"
+                            : "查看账单、管理银行卡与订阅，或安排转账和理财。资金操作会先展示详情，请你确认后再继续。"}
                         </p>
                         {!loading ? (
                           <div className="suggestion-group">
-                            <span className="suggestion-label">你可以试试</span>
+                            <span className="suggestion-label">常用操作</span>
                             <div className="suggestions">
                               {promptSuggestions(cards).map((prompt) => (
                                 <button
@@ -1184,7 +1090,7 @@ export default function App() {
                             <div className="message-author">
                               {message.role === "user"
                                 ? userName(session)
-                                : "FinOrch"}
+                                : brand.name}
                             </div>
                             <div
                               className={
@@ -1286,7 +1192,7 @@ export default function App() {
                     </div>
                     <div className="composer-foot">
                       <span>Enter 发送，Shift + Enter 换行</span>
-                      <span>仅处理模拟数据</span>
+                      <span>资金操作需确认</span>
                     </div>
                   </form>
                 </section>
@@ -1301,8 +1207,8 @@ export default function App() {
                       <AppIcon name="overview" size={19} />
                     </span>
                     <span className="context-summary-copy">
-                      <strong>执行上下文</strong>
-                      <small>账户、卡片与处理进度</small>
+                      <strong>账户与任务</strong>
+                      <small>银行卡和办理进度</small>
                     </span>
                     <AppIcon
                       className="context-chevron"
@@ -1353,7 +1259,7 @@ export default function App() {
           ) : null}
 
           {activePage === "bills" ? (
-            <BillsPage busy={busy} onPrompt={askFinOrch} />
+            <BillsPage busy={busy} onPrompt={askAssistant} />
           ) : null}
           {activePage === "cards" ? (
             <CardsPage
@@ -1361,29 +1267,29 @@ export default function App() {
               cards={cards}
               loading={loading}
               onManage={(card) =>
-                askFinOrch(
+                askAssistant(
                   card.status === "active"
                     ? `冻结尾号 ${card.card_suffix} 的银行卡`
                     : `解冻尾号 ${card.card_suffix} 的银行卡`,
                 )
               }
-              onPrompt={askFinOrch}
+              onPrompt={askAssistant}
               onRefresh={() => void refreshCards()}
               refreshing={refreshing}
             />
           ) : null}
           {activePage === "transfers" ? (
-            <TransfersPage busy={busy} onPrompt={askFinOrch} />
+            <TransfersPage busy={busy} onPrompt={askAssistant} />
           ) : null}
           {activePage === "subscriptions" ? (
             <SubscriptionsPage
               busy={busy || Boolean(pendingWrite)}
-              onPrompt={askFinOrch}
+              onPrompt={askAssistant}
               refreshKey={overviewRefreshKey}
             />
           ) : null}
           {activePage === "investments" ? (
-            <InvestmentsPage busy={busy} onPrompt={askFinOrch} />
+            <InvestmentsPage busy={busy} onPrompt={askAssistant} />
           ) : null}
         </main>
       </div>
