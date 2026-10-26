@@ -1516,67 +1516,9 @@ select:focus-visible {
   border-radius: 1px;
 }
 
-.button-primary,
-.demo-enter-button {
+.button-primary {
   border-color: var(--ink);
   background: var(--ink);
-}
-
-.demo-gate {
-  background: var(--canvas);
-}
-
-.demo-gate-story {
-  background: var(--nav);
-}
-
-.demo-gate-story::after {
-  display: none;
-}
-
-.demo-gate-story h1 {
-  max-width: 700px;
-  font-family: var(--font-serif);
-  font-size: clamp(42px, 4.5vw, 64px);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-}
-
-.demo-gate-kicker,
-.demo-gate-lede,
-.demo-gate-footnote {
-  font-family: var(--font-sans);
-}
-
-.demo-brand-mark,
-.demo-access-icon {
-  border-radius: 50%;
-  background: var(--gold-soft);
-  color: var(--ink);
-}
-
-.demo-access {
-  background: var(--canvas);
-}
-
-.demo-access-orbit {
-  border-color: rgb(32 32 32 / 7%);
-}
-
-.demo-access-card {
-  border-color: var(--line);
-  border-radius: 2px;
-  background: var(--surface);
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.demo-avatar {
-  background: var(--gold-soft);
-}
-
-.demo-service-state {
-  border-radius: 1px;
 }
 
 .toast {
