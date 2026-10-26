@@ -674,6 +674,8 @@ export interface components {
             currency: string;
             /** Balance Minor */
             balance_minor: number;
+            /** Available Balance Minor */
+            available_balance_minor: number;
         };
         /** AgentAuditEventResponse */
         AgentAuditEventResponse: {
@@ -931,6 +933,38 @@ export interface components {
             /** Expense Minor */
             expense_minor: number;
         };
+        /** BirthdayOrderResponse */
+        BirthdayOrderResponse: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Merchant */
+            merchant: string;
+            /** Items */
+            items: components["schemas"]["BirthdayProductResponse"][];
+            /** Total Amount Minor */
+            total_amount_minor: number;
+            /**
+             * Currency
+             * @constant
+             */
+            currency: "CNY";
+            /** Pickup Location */
+            pickup_location: string;
+            /**
+             * Scheduled For
+             * Format: date
+             */
+            scheduled_for: string;
+            /** Status */
+            status: string;
+            /** Transaction Id */
+            transaction_id: string | null;
+            /** Paid At */
+            paid_at: string | null;
+        };
         /** BirthdayPlanResponse */
         BirthdayPlanResponse: {
             /**
@@ -945,6 +979,8 @@ export interface components {
             account_id: string;
             /** Account Label */
             account_label: string;
+            /** Card Suffix */
+            card_suffix: string | null;
             /**
              * Birthday On
              * Format: date
@@ -966,23 +1002,24 @@ export interface components {
             currency: "CNY";
             /**
              * Status
-             * @constant
+             * @enum {string}
              */
-            status: "scheduled";
+            status: "pending_confirmation" | "scheduled" | "cancelled" | "completed";
+            /** Due For Confirmation */
+            due_for_confirmation: boolean;
             /** Due For Reconfirmation */
             due_for_reconfirmation: boolean;
-            /**
-             * Funds Held
-             * @constant
-             */
-            funds_held: false;
-            /**
-             * Order Placed
-             * @constant
-             */
-            order_placed: false;
+            /** Funds Held */
+            funds_held: boolean;
+            /** Held Minor */
+            held_minor: number;
+            /** Order Status */
+            order_status: string | null;
+            /** Order Placed */
+            order_placed: boolean;
             /** Items */
             items: components["schemas"]["BirthdayProductResponse"][];
+            order: components["schemas"]["BirthdayOrderResponse"] | null;
             /** Next Action */
             next_action: string;
         };
@@ -1106,7 +1143,7 @@ export interface components {
              * Resource Type
              * @enum {string}
              */
-            resource_type: "card" | "card_application" | "birthday_plan" | "subscription" | "transfer" | "split" | "investment_order";
+            resource_type: "card" | "card_application" | "birthday_plan" | "birthday_order" | "subscription" | "transfer" | "split" | "investment_order";
             /**
              * Resource Id
              * Format: uuid
@@ -1438,6 +1475,8 @@ export interface components {
             month: string;
             /** Account Balance Minor */
             account_balance_minor: number;
+            /** Available Balance Minor */
+            available_balance_minor: number;
             /** Monthly Income Minor */
             monthly_income_minor: number;
             /** Monthly Expense Minor */

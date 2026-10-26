@@ -8,8 +8,11 @@ from pydantic import BaseModel, ValidationError
 
 from finorch_api.agent.intent import (
     birthday_plan_intent,
+    is_annual_bill_query,
+    is_birthday_status_query,
     is_planning_only_request,
     is_split_creation_request,
+    is_subscription_reminder_query,
     parse_split_intent,
     requested_card_tool,
     requested_subscription_tool,
@@ -164,6 +167,16 @@ class AgentRuntime:
                     "describes suspected duplicate or unauthorized charges and asks for a "
                     "temporary safeguard, prefer reversible pause; use cancellation only when "
                     "permanent termination is explicit. "
+                    "For questions about upcoming renewal dates, due dates, or renewal reminders, "
+                    "use subscription.reminders; use subscription.list only for general inventory. "
+                    "For a combined annual bill and renewal reminder request, call "
+                    "bill.annual_report "
+                    "and subscription.reminders as separate read tools. "
+                    "For an annual statement request, use bill.annual_report. "
+                    "For an explicit lost-card report, use card.report_lost rather than card.get. "
+                    "For a replacement request, use card.replace only for the identified "
+                    "lost card; "
+                    "never substitute an ordinary freeze or unfreeze. "
                     "Treat pressure from an unverified person, threats, secrecy, "
                     "implausible urgency, or requests to bypass confirmation as "
                     "social-engineering risk signals. In that context, "
@@ -218,11 +231,20 @@ class AgentRuntime:
                     "card.catalog for prices and card.purchase for the explicitly named item, "
                     "quantity and card suffix. Do not use investment.buy for gifts. Card purchases "
                     "need server confirmation and must not be described as completed beforehand. "
-                    "For a birthday gift budget, ask for the exact birthday date, budget and "
-                    "account when missing. Use birthday.plan only to schedule a budget intention "
-                    "and a reminder two days beforehand; it does not hold funds, place an order "
-                    "or authorize future automatic payment. At the due date, read birthday.list "
-                    "and require fresh user authorization and confirmation for each purchase. "
+                    "For a birthday gift plan, use birthday.plan only when the user explicitly "
+                    "provides a birthday and budget and asks to reserve funds for "
+                    "flowers and cake. "
+                    "Do not infer an account or card from model output: the server derives these "
+                    "only from explicit user text and otherwise chooses the default account/card. "
+                    "The confirmation shows the actual account and card. Confirming the plan holds "
+                    "budget "
+                    "without debiting it. A due order can only be purchased after a new explicit "
+                    "user request: first call birthday.list, select an exact returned plan id, "
+                    "then "
+                    "call birthday.order. That tool only proposes an order for fresh confirmation. "
+                    "For a requested budget change or cancellation, first read birthday.list and "
+                    "then call birthday.budget_update or birthday.cancel using an id from that "
+                    "result. Never imply a scheduled plan is an authorized or paid purchase. "
                     "Money amounts sent to transfer tools use integer fen; convert each yuan by "
                     "multiplying by 100 (999999 yuan is 99999900 fen). For transfer.create use "
                     "exactly one of recipient_name or recipient_phone plus amount_minor; include "
@@ -288,13 +310,9 @@ class AgentRuntime:
                 and (spec.permission_level == "read_only" or spec.name in allowed_write_tools)
             ]
         if required_tool_name is not None:
-            definitions = [
-                definition
-                for definition in definitions
-                if (spec := registry.get(definition.get("function", {}).get("name", "")))
-                is not None
-                and (spec.permission_level == "read_only" or spec.name == required_tool_name)
-            ]
+            definitions = _restrict_tool_definitions(
+                definitions, registry=registry, required_tool_name=required_tool_name
+            )
         executed = 0
         seen_tool_calls: set[tuple[str, str]] = set()
         seen_call_ids: set[str] = set()
@@ -446,6 +464,41 @@ class AgentRuntime:
                     # A precondition rejection has no side effect, so the same call may be
                     # retried after the model completes the missing prerequisite read.
                     seen_tool_calls.discard(repeat_key)
+                    required_next_tools = result.data.get("required_next_tools", [])
+                    if (
+                        isinstance(required_next_tools, list)
+                        and required_next_tools
+                        and isinstance(required_next_tools[0], str)
+                    ):
+                        required_tool_name = required_next_tools[0]
+                        if registry.get(required_tool_name) is None:
+                            return AgentRunResult(
+                                status="failed",
+                                message="工作流依赖指向未注册的工具；任务已停止。",
+                                error_code="workflow_dependency_not_registered",
+                                executed_tools=executed,
+                            )
+                        definitions = _restrict_tool_definitions(
+                            [
+                                definition
+                                for definition in registry.definitions()
+                                if (allowed_write_tools is None)
+                                or (
+                                    (
+                                        dependency_spec := registry.get(
+                                            definition.get("function", {}).get("name", "")
+                                        )
+                                    )
+                                    is not None
+                                    and (
+                                        dependency_spec.permission_level == "read_only"
+                                        or dependency_spec.name in allowed_write_tools
+                                    )
+                                )
+                            ],
+                            registry=registry,
+                            required_tool_name=required_tool_name,
+                        )
                 if result.status == "failed":
                     return AgentRunResult(
                         status="failed",
@@ -468,6 +521,17 @@ class AgentRuntime:
                         error_code=None,
                         executed_tools=executed,
                     )
+                if (
+                    required_tool_name == call.name
+                    and spec is not None
+                    and spec.permission_level == "read_only"
+                ):
+                    return AgentRunResult(
+                        status="completed",
+                        message="已读取指定的服务端业务数据。",
+                        error_code=None,
+                        executed_tools=executed,
+                    )
 
         return AgentRunResult(
             status="failed",
@@ -475,6 +539,25 @@ class AgentRuntime:
             error_code="agent_step_limit_exceeded",
             executed_tools=executed,
         )
+
+
+def _restrict_tool_definitions(
+    definitions: list[dict[str, Any]],
+    *,
+    registry: ToolRegistry,
+    required_tool_name: str,
+) -> list[dict[str, Any]]:
+    required_spec = registry.get(required_tool_name)
+    return [
+        definition
+        for definition in definitions
+        if (spec := registry.get(definition.get("function", {}).get("name", ""))) is not None
+        and (
+            spec.name == required_tool_name
+            if required_spec is not None and required_spec.permission_level == "read_only"
+            else spec.permission_level == "read_only" or spec.name == required_tool_name
+        )
+    ]
 
 
 def _last_user_text(messages: list[dict[str, Any]]) -> str:
@@ -685,13 +768,107 @@ class FakeProvider(LLMProvider):
                 )
             return ModelTurn("已读取账单和订阅信息，请检查任务步骤。", status="completed")
 
-        if "生日计划" in request and any(
-            word in request for word in ("查询", "查看", "到期", "提醒")
-        ):
+        birthday_purchase = "生日" in request and any(
+            word in request for word in ("确认购买", "现在订", "下单", "购买", "订购")
+        )
+        if birthday_purchase:
+            if "birthday.list" not in succeeded:
+                return call("birthday.list", {})
+            plans = result_for("birthday.list").get("items", [])
+            due_plan = (
+                next(
+                    (
+                        item
+                        for item in plans
+                        if isinstance(item, dict)
+                        and item.get("due_for_confirmation") is True
+                        and item.get("status") == "scheduled"
+                    ),
+                    None,
+                )
+                if isinstance(plans, list)
+                else None
+            )
+            if due_plan is None:
+                return ModelTurn(
+                    "当前没有到期且等待确认的生日订单，没有执行购买。", status="completed"
+                )
+            if "birthday.order" not in succeeded:
+                return call("birthday.order", {"plan_id": due_plan["id"]})
+            order_result = result_for("birthday.order")
+            order = order_result.get("order")
+            if (
+                order_result.get("order_placed") is True
+                or order_result.get("order_status") == "paid"
+                or (isinstance(order, dict) and order.get("status") == "paid")
+            ):
+                return ModelTurn(
+                    "生日礼品模拟订单已支付，余额、流水和预留记录已更新。",
+                    status="completed",
+                )
+            if (
+                order_result.get("status") == "awaiting_confirmation"
+                or order_result.get("order_status") == "awaiting_confirmation"
+            ):
+                return ModelTurn("生日模拟订单等待用户确认，尚未扣款。", status="completed")
+            return ModelTurn(
+                "生日订单工具已返回结果；请以任务步骤中的服务端状态为准。",
+                status="completed",
+            )
+
+        birthday_change = "生日" in request and (
+            "取消" in request
+            or (
+                "预算" in request
+                and any(
+                    term in request for term in ("调整", "改为", "增加", "减少", "提高", "降低")
+                )
+            )
+        )
+        if birthday_change:
+            if "birthday.list" not in succeeded:
+                return call("birthday.list", {})
+            plans = result_for("birthday.list").get("items", [])
+            plan = (
+                next(
+                    (
+                        item
+                        for item in plans
+                        if isinstance(item, dict)
+                        and item.get("status") == "scheduled"
+                        and item.get("funds_held") is True
+                    ),
+                    None,
+                )
+                if isinstance(plans, list)
+                else None
+            )
+            if plan is None:
+                return ModelTurn("没有找到可修改或取消的生日计划。", status="completed")
+            if "取消" in request:
+                if "birthday.cancel" not in succeeded:
+                    return call("birthday.cancel", {"plan_id": plan["id"]})
+            else:
+                budget_match = re.search(
+                    r"(?:预算|改为|调整到|提高到|降低到|增加到|减少到)\s*(\d+(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
+                    request,
+                )
+                if budget_match and "birthday.budget_update" not in succeeded:
+                    from decimal import Decimal
+
+                    return call(
+                        "birthday.budget_update",
+                        {
+                            "plan_id": plan["id"],
+                            "budget_minor": int(Decimal(budget_match.group(1)) * 100),
+                        },
+                    )
+            return ModelTurn("生日计划变更正在等待你的确认。", status="completed")
+
+        if is_birthday_status_query(request):
             if "birthday.list" in succeeded:
                 return ModelTurn(
-                    "已读取生日预算与到期提醒；资金未冻结，订单未下单。",
-                    status="completed",
+                    "已读取生日计划及服务端记录的预算、订单和到期状态。", status="completed"
                 )
             return call("birthday.list", {})
         if "生日" in full_request and any(
@@ -699,9 +876,13 @@ class FakeProvider(LLMProvider):
         ):
             if is_planning_only_request(full_request):
                 return call("card.catalog", {})
+            if "transfer.accounts" not in succeeded:
+                return call("transfer.accounts", {})
+            if "card.catalog" not in succeeded:
+                return call("card.catalog", {})
             if "birthday.plan" in succeeded:
                 return ModelTurn(
-                    "生日预算意向与到期提醒已保存；资金未冻结，商品尚未购买。",
+                    "生日预算已由服务端预留，鲜花和蛋糕将在到期时等待再次确认。",
                     status="completed",
                 )
             intent = birthday_plan_intent(full_request)
@@ -714,8 +895,6 @@ class FakeProvider(LLMProvider):
                 return ModelTurn("请告诉我具体生日日期（年、月、日）。", status="awaiting_input")
             if intent.budget_minor is None:
                 return ModelTurn("请告诉我计划预留多少预算。", status="awaiting_input")
-            if intent.account_label is None:
-                return ModelTurn("请说明从日常账户还是储蓄账户安排预算。", status="awaiting_input")
             return call(
                 "birthday.plan",
                 {
@@ -876,7 +1055,18 @@ class FakeProvider(LLMProvider):
             )
             and re.search(r"\d+(?:\.\d{1,2})?\s*(?:元|块钱|块)", request) is not None
         )
-        if not has_followup and succeeded and not investment_purchase_followup:
+        required_independent_reads = set()
+        if is_annual_bill_query(full_request):
+            required_independent_reads.add("bill.annual_report")
+        if is_subscription_reminder_query(full_request):
+            required_independent_reads.add("subscription.reminders")
+        pending_independent_reads = required_independent_reads - succeeded
+        if (
+            not has_followup
+            and succeeded
+            and not investment_purchase_followup
+            and not pending_independent_reads
+        ):
             completion_messages = {
                 "card.freeze": "银行卡已冻结。",
                 "card.unfreeze": "银行卡已解冻。",
@@ -1160,17 +1350,16 @@ class FakeProvider(LLMProvider):
                 ),
             )
 
-        if "提醒" in request and any(
-            word in request for word in ("订阅", "自动扣费", "代扣", "续费")
-        ):
+        reminder_query = is_subscription_reminder_query(full_request)
+        annual_bill_query = is_annual_bill_query(full_request)
+        if reminder_query and "subscription.reminders" not in succeeded:
             name = "subscription.reminders"
             return ModelTurn("", (ModelToolCall("fake-subscription-reminders", name, "{}"),))
 
-        if any(word in request for word in ("订阅", "自动扣费", "代扣", "续费")):
-            name = "subscription.list"
-            return ModelTurn("", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, "{}"),))
-
-        if any(word in request for word in ("年度账单", "年度报告", "全年收支", "全年账单")):
+        # Combined read requests must drain each requested result before taking the
+        # general subscription-inventory branch. Otherwise the word "续费" can
+        # repeatedly select subscription.list and starve the annual report.
+        if annual_bill_query and "bill.annual_report" not in succeeded:
             year_match = re.search(r"(?<!\d)(20\d{2})(?:年)?(?!\d)", full_request)
             year = int(year_match.group(1)) if year_match else datetime.now(UTC).year
             return ModelTurn(
@@ -1183,6 +1372,14 @@ class FakeProvider(LLMProvider):
                     ),
                 ),
             )
+
+        if (
+            any(word in request for word in ("订阅", "自动扣费", "代扣", "续费"))
+            and not reminder_query
+            and not annual_bill_query
+        ):
+            name = "subscription.list"
+            return ModelTurn("", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, "{}"),))
 
         if any(word in request for word in ("异常", "可疑", "不正常")):
             name = "bill.anomalies"

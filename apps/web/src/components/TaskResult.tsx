@@ -841,7 +841,15 @@ function PaydayPlan({ data }: { data: JsonObject }) {
 }
 
 function BirthdayPlans({ data }: { data: JsonObject }) {
-  const items = objectArray(data.items);
+  const items = typeof data.id === "string" ? [data] : objectArray(data.items);
+  const stateName: Record<string, string> = {
+    scheduled: "已预约",
+    awaiting_confirmation: "等待购买确认",
+    paid: "已支付",
+    completed: "已完成",
+    cancelled: "已取消",
+    failed: "执行失败",
+  };
   return (
     <section aria-label="生日预算计划" className="task-result">
       <div className="task-result-heading">
@@ -856,15 +864,41 @@ function BirthdayPlans({ data }: { data: JsonObject }) {
               key={stringValue(item.id) || index}
             >
               <span>
-                生日 {stringValue(item.birthday_on)} · 提醒{" "}
-                {stringValue(item.purchase_on)}
+                生日 {dateLabel(item.birthday_on)} · 预订{" "}
+                {dateLabel(item.purchase_on)}
               </span>
               <strong>{formatAmount(item.budget_minor)}</strong>
               <small>
-                {item.due_for_reconfirmation === true
-                  ? "已到提醒日期，需要重新确认购买"
-                  : "预算意向已保存，资金未冻结、订单未下单"}
+                {stateName[stringValue(item.order_status)] ||
+                  stateName[stringValue(item.status)] ||
+                  "计划状态待更新"}
+                {item.funds_held === true
+                  ? ` · 已预留 ${formatAmount(item.held_minor)}`
+                  : " · 无资金预留"}
+                {item.card_suffix
+                  ? ` · 银行卡尾号 ${stringValue(item.card_suffix)}`
+                  : ""}
               </small>
+              {item.due_for_confirmation === true ? (
+                <small>商品已到预订日期；确认前不会扣款。</small>
+              ) : null}
+              {objectArray(item.items).length ? (
+                <small>
+                  商品：
+                  {objectArray(item.items)
+                    .map(
+                      (product) =>
+                        `${stringValue(product.product_name)} × ${String(product.quantity ?? 1)}`,
+                    )
+                    .join("、")}
+                </small>
+              ) : null}
+              {isObject(item.order) && item.order.status === "paid" ? (
+                <small>
+                  {formatAmount(item.order.total_amount_minor)} ·
+                  流水已记入模拟账户
+                </small>
+              ) : null}
             </div>
           ))}
         </div>
@@ -910,6 +944,10 @@ function resultForTool(toolName: string, data: JsonObject) {
     case "finance.payday_plan":
       return <PaydayPlan data={data} />;
     case "birthday.list":
+    case "birthday.plan":
+    case "birthday.order":
+    case "birthday.budget_update":
+    case "birthday.cancel":
       return <BirthdayPlans data={data} />;
     case "bill.monthly_summary":
       return <BillSummary data={data} />;
@@ -956,7 +994,7 @@ const resultTitles: Record<string, string> = {
   "investment.portfolio": "理财持仓",
   "investment.orders": "理财操作记录",
   "finance.payday_plan": "发薪日资金安排",
-  "birthday.list": "生日预算与提醒",
+  "birthday.list": "生日预算与预订",
 };
 
 const writeTitles: Record<string, string> = {
@@ -977,7 +1015,10 @@ const writeTitles: Record<string, string> = {
   "transfer.split_collect": "模拟收款已完成",
   "investment.buy": "模拟申购已完成",
   "investment.redeem": "模拟赎回已完成",
-  "birthday.plan": "生日预算与到期提醒已保存",
+  "birthday.plan": "生日预算已预留",
+  "birthday.order": "生日礼品模拟订单已完成",
+  "birthday.budget_update": "生日预算已更新",
+  "birthday.cancel": "生日计划已取消",
 };
 
 function isObjectResult(
@@ -1148,7 +1189,7 @@ function conciseValue(step: Step): string[] {
             .slice(0, 2)
             .map(
               (item) =>
-                `${stringValue(item.birthday_on)} 生日 · 计划预算 ${formatAmount(item.budget_minor)} · ${item.due_for_reconfirmation === true ? "需要重新确认购买" : "尚未扣款"}`,
+                `${stringValue(item.birthday_on)} 生日 · 预算 ${formatAmount(item.budget_minor)} · ${item.funds_held === true ? "资金已预留" : "无资金预留"} · ${statusLabel(item.order_status ?? item.status)}`,
             )
         : ["暂无生日预算计划。"];
     default:
@@ -1159,10 +1200,22 @@ function conciseValue(step: Step): string[] {
 function writeSummary(step: Step): { title: string; detail: string } {
   const toolName = step.tool_name ?? "";
   const data = isObjectResult(step) ? step.result_data : {};
-  if (toolName === "birthday.plan") {
+  if (toolName.startsWith("birthday.")) {
+    const order = isObject(data.order) ? data.order : {};
     return {
-      title: writeTitles[toolName],
-      detail: `${stringValue(data.birthday_on)} 生日 · 计划预算 ${formatAmount(data.budget_minor)} · 资金未冻结、订单未下单`,
+      title: writeTitles[toolName] ?? "生日计划已更新",
+      detail: [
+        `${stringValue(data.birthday_on)} 生日`,
+        `预算 ${formatAmount(data.budget_minor)}`,
+        data.funds_held === true
+          ? `预留 ${formatAmount(data.held_minor)}`
+          : "无预留资金",
+        order.status === "paid"
+          ? `订单 ${formatAmount(order.total_amount_minor)} 已支付`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
     };
   }
   if (toolName.startsWith("card.")) {

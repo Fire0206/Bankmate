@@ -78,6 +78,7 @@ class ConfirmationResponse(BaseModel):
         "card",
         "card_application",
         "birthday_plan",
+        "birthday_order",
         "subscription",
         "transfer",
         "split",

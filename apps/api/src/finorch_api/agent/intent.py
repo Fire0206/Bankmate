@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 
@@ -20,16 +20,46 @@ class BirthdayPlanIntent:
     birthday_on: date | None
     budget_minor: int | None
     account_label: str | None
+    card_suffix: str | None
+
+
+def is_birthday_status_query(request_text: str) -> bool:
+    """Return true for read-only questions about saved birthday plans or orders."""
+    request = request_text.casefold()
+    if "生日" not in request or not any(
+        phrase in request
+        for phrase in (
+            "查询",
+            "查看",
+            "状态",
+            "进度",
+            "已保存",
+            "有哪些",
+            "列表",
+            "到期",
+            "提醒",
+            "订单",
+        )
+    ):
+        return False
+    return not any(
+        phrase in request
+        for phrase in ("安排", "预留", "创建", "调整", "取消", "购买", "下单", "订购", "确认")
+    )
 
 
 def birthday_plan_intent(request_text: str) -> BirthdayPlanIntent | None:
     """Extract only user-supplied birthday planning fields for tool grounding."""
-    if not all(item in request_text for item in ("生日", "鲜花", "蛋糕")):
+    if not (
+        "生日" in request_text
+        and any(item in request_text for item in ("鲜花", "花束"))
+        and "蛋糕" in request_text
+    ):
         return None
     if not any(item in request_text for item in ("预留", "留出", "预算", "安排", "预约")):
         return None
     date_match = re.search(
-        r"(?<!\d)(20\d{2})(?:-|年)(\d{1,2})(?:-|月)(\d{1,2})日?(?!\d)",
+        r"(?<!\d)(20\d{2})(?:\s*-\s*|\s*年\s*)(\d{1,2})(?:\s*-\s*|\s*月\s*)(\d{1,2})\s*日?(?!\d)",
         request_text,
     )
     birthday_on = None
@@ -38,6 +68,16 @@ def birthday_plan_intent(request_text: str) -> BirthdayPlanIntent | None:
             birthday_on = date(*map(int, date_match.groups()))
         except ValueError:
             pass
+    else:
+        month_day = re.search(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日(?!\d)", request_text)
+        if month_day is not None:
+            try:
+                today = datetime.now(timezone(timedelta(hours=8))).date()
+                month, day = map(int, month_day.groups())
+                candidate = date(today.year, month, day)
+                birthday_on = candidate if candidate > today else date(today.year + 1, month, day)
+            except ValueError:
+                pass
     budget_match = re.search(
         r"(?:预留|留出|预算|安排)\s*(\d{1,6}(?:\.\d{1,2})?)\s*(?:元|块钱|块)",
         request_text,
@@ -55,9 +95,11 @@ def birthday_plan_intent(request_text: str) -> BirthdayPlanIntent | None:
         if everyday and not savings
         else "Savings account"
         if savings and not everyday
-        else None
+        else "Everyday account"
     )
-    return BirthdayPlanIntent(birthday_on, budget_minor, account_label)
+    suffix_match = re.search(r"(?:尾号|卡号)\s*(\d{4})", request_text)
+    card_suffix = suffix_match.group(1) if suffix_match else None
+    return BirthdayPlanIntent(birthday_on, budget_minor, account_label, card_suffix)
 
 
 _SPLIT_MARKER = re.compile(r"(?:aa\s*)?分账", re.IGNORECASE)
@@ -179,7 +221,8 @@ def requested_card_tool(request_text: str) -> str | None:
         return None
 
     if re.search(
-        r"(?:单笔|单日|每日|每天).{0,12}限额|限额.{0,12}(?:单笔|单日|每日|每天)", request
+        r"(?:单笔|单日|每日|每天).{0,12}(?:限额|上限)|(?:限额|上限).{0,12}(?:单笔|单日|每日|每天)",
+        request,
     ) and re.search(r"(?:改|调|设置|设为|提高|降低|调整)", request):
         return "card.controls"
     if re.search(
@@ -196,29 +239,43 @@ def requested_card_tool(request_text: str) -> str | None:
     ):
         return "card.purchase"
 
-    application_match = _active_action_match(
-        request,
-        re.compile(r"(?:申请|办)(?:一张|张|个)?(?:模拟)?(?:借记卡|银行卡|新卡)"),
-    )
-    if application_match is not None and not any(
-        word in request for word in ("挂失", "补卡", "补发")
-    ):
-        return "card.apply"
-
     replacement_match = _active_action_match(
         request,
-        re.compile(r"(?:补卡|补发(?:一张|新)?卡|重新发卡|申请新卡|换(?:一张|张)?新卡)"),
+        re.compile(
+            r"(?:补卡|补发(?:一张|新|一张新|一张新的|新的)?(?:借记卡|银行卡|新卡|卡)|"
+            r"补办(?:一张|新|一张新|一张新的|新的)?(?:借记卡|银行卡|新卡|卡)|"
+            r"重新发卡|申请新卡|换(?:一张|张)?新卡)"
+        ),
     )
     if replacement_match is not None:
         return "card.replace"
 
+    application_match = _active_action_match(
+        request,
+        re.compile(r"(?:申请|办)(?:一张|张|个)?(?:模拟)?(?:新的?\s*)?(?:借记卡|银行卡|新卡)"),
+    )
+    if application_match is not None and not any(
+        word in request for word in ("挂失", "补卡", "补发", "补办")
+    ):
+        return "card.apply"
+
     # Reporting a card lost is a separate irreversible simulated state. A
     # generic request to unfreeze must never be interpreted as lost-card recovery.
-    lost_match = _active_action_match(
-        request,
-        re.compile(
-            r"(?:挂失|报失)(?=[^，,。；;！？!?\n]{0,20}(?:银行卡|卡片|储蓄卡|借记卡|卡|尾号|\d{4}|这张|那张|它|$))"
+    lost_match = next(
+        (
+            match
+            for pattern in (
+                re.compile(
+                    r"(?:挂失|报失)(?=[^，,。；;！？!?\n]{0,20}(?:银行卡|卡片|储蓄卡|借记卡|卡|尾号|\d{4}|这张|那张|它|$))"
+                ),
+                re.compile(r"(?:帮我|请|麻烦|替我|为我|我要|需要).{0,12}(?:挂失|报失)"),
+                re.compile(
+                    r"(?:银行卡|卡片|储蓄卡|借记卡|尾号\s*\d{4}|这张卡|那张卡).{0,12}(?:挂失|报失)"
+                ),
+            )
+            if (match := _active_action_match(request, pattern)) is not None
         ),
+        None,
     )
     if lost_match is not None:
         return "card.report_lost"
@@ -304,9 +361,63 @@ def requested_subscription_tool(request_text: str) -> str | None:
     return None
 
 
+def is_subscription_reminder_query(request_text: str) -> bool:
+    """Distinguish reminder/date questions from a subscription inventory request."""
+    request = request_text.casefold()
+    has_subscription_scope = any(
+        phrase in request
+        for phrase in ("自动扣费", "自动续费", "订阅", "会员", "续费", "代扣", "扣费")
+    )
+    asks_about_timing = any(
+        phrase in request
+        for phrase in (
+            "提醒",
+            "到期",
+            "临近",
+            "即将",
+            "快要",
+            "下次扣",
+            "什么时候扣",
+            "什么时候续费",
+            "什么时候到期",
+            "何时扣",
+            "何时续费",
+            "何时到期",
+            "哪天扣",
+            "哪天续费",
+            "扣费时间",
+            "续费日期",
+            "续费时间",
+        )
+    )
+    return (
+        has_subscription_scope
+        and asks_about_timing
+        and requested_subscription_tool(request_text) is None
+    )
+
+
+def is_annual_bill_query(request_text: str) -> bool:
+    """Recognize annual statement phrasing across common year and period forms."""
+    request = request_text.casefold()
+    has_annual_period = (
+        any(
+            phrase in request
+            for phrase in ("年度", "全年", "去年", "前年", "上一年", "上一年度", "过去一年", "整年")
+        )
+        or re.search(r"(?<!\d)20\d{2}\s*年", request) is not None
+    )
+    has_financial_scope = any(
+        phrase in request for phrase in ("账单", "收支", "流水", "账目", "消费", "支出", "收入")
+    )
+    return has_annual_period and has_financial_scope
+
+
 def has_explicit_transfer_write_intent(request_text: str) -> bool:
     """Recognize transfer execution commands, not transfer history or status queries."""
     request = request_text.casefold()
+    if requested_card_tool(request_text) in {"card.controls", "card.purchase"}:
+        return False
     if is_planning_only_request(request):
         return False
     action = re.compile(

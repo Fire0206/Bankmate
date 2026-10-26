@@ -1420,6 +1420,45 @@
   font-size: 13px;
 }
 
+.showcase-verification {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  max-width: 360px;
+}
+
+.showcase-verification label {
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.showcase-verification input {
+  min-height: 40px;
+  border: 1px solid var(--sc-line);
+  border-radius: 5px;
+  background: #fff;
+  padding: 8px 10px;
+  color: var(--sc-ink);
+  font: inherit;
+  letter-spacing: 0.16em;
+}
+
+.showcase-verification input:focus-visible {
+  outline: 2px solid var(--sc-ink);
+  outline-offset: 2px;
+}
+
+.showcase-verification small {
+  color: var(--sc-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.showcase-verification code {
+  overflow-wrap: anywhere;
+  color: var(--sc-ink);
+}
+
 .showcase-button-row {
   display: flex;
   gap: 8px;

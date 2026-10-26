@@ -3,6 +3,7 @@ from finorch_api.agent.registry import build_tool_registry
 from finorch_api.application.workflow_graph import (
     WorkflowNode,
     build_workflow_plan,
+    next_ready_workflow_tool,
     unsatisfied_dependencies,
     validate_workflow_nodes,
 )
@@ -74,6 +75,35 @@ def test_planning_only_requests_do_not_create_execution_graph() -> None:
     assert (
         build_workflow_plan(
             "只做发薪日资金测算，给小林转200元，再申购成长指数1000元理财",
+            build_tool_registry(),
+        )
+        is None
+    )
+
+
+def test_birthday_workflow_exposes_only_the_next_dependency_ready_tool() -> None:
+    plan = build_workflow_plan("生日安排预算并预约商品", build_tool_registry())
+
+    assert plan is not None
+    assert next_ready_workflow_tool(plan, succeeded_tools=set()) == "transfer.accounts"
+    assert next_ready_workflow_tool(plan, succeeded_tools={"transfer.accounts"}) == "card.catalog"
+    assert (
+        next_ready_workflow_tool(plan, succeeded_tools={"transfer.accounts", "card.catalog"})
+        == "birthday.plan"
+    )
+    assert (
+        next_ready_workflow_tool(
+            plan,
+            succeeded_tools={"transfer.accounts", "card.catalog", "birthday.plan"},
+        )
+        is None
+    )
+
+
+def test_birthday_status_query_does_not_create_a_write_workflow() -> None:
+    assert (
+        build_workflow_plan(
+            "查看已保存的生日赠礼预算和订单状态。",
             build_tool_registry(),
         )
         is None

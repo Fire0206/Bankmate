@@ -51,6 +51,8 @@ function statusName(status: string): string {
     scheduled: "待执行",
     executed: "已执行",
     updated: "已更新",
+    paid: "已支付",
+    completed: "已完成",
     open: "待收款",
     settled: "已结清",
   };
@@ -74,7 +76,13 @@ function actionName(confirmation: Confirmation): string {
   if (confirmation.resource_type === "card_application")
     return "提交模拟借记卡申请";
   if (confirmation.resource_type === "birthday_plan")
-    return "保存生日预算与到期提醒";
+    return confirmation.target_status === "updated"
+      ? "调整生日预算"
+      : confirmation.target_status === "cancelled"
+        ? "取消生日计划"
+        : "预留生日预算并预约商品";
+  if (confirmation.resource_type === "birthday_order")
+    return "确认生日礼品模拟订单";
   if (confirmation.resource_type === "subscription") {
     return confirmation.target_status === "paused"
       ? "暂停自动续费"
@@ -132,6 +140,7 @@ export function ConfirmationCard({
     card: "银行卡",
     card_application: "银行卡申请",
     birthday_plan: "生日计划",
+    birthday_order: "生日礼品订单",
     subscription: "自动扣费",
     transfer: "转账",
     split: "AA 分账",
@@ -149,7 +158,13 @@ export function ConfirmationCard({
     card_application:
       "确认后仅提交模拟申请，等待本地模拟审核；不会立即发卡或产生真实授信。",
     birthday_plan:
-      "仅保存预算意向和到期提醒，不冻结资金，也不会自动购买。到期后需要重新核对并确认每笔模拟消费。",
+      confirmation.target_status === "cancelled"
+        ? "确认后取消未支付订单，并释放剩余预留资金。"
+        : confirmation.target_status === "updated"
+          ? "确认后按新预算调整预留金额；账户总余额不变。"
+          : "确认后将这笔预算标记为预留资金，不会从账户扣款；到期商品仍需再次确认。",
+    birthday_order:
+      "确认后从模拟账户扣款并生成流水。该订单只在本地模拟账本中生效，不会联系商户或支付网络。",
     subscription: "只改变这项模拟订阅的自动续费状态，不会向商户发起请求。",
     transfer: "这笔转账只在模拟账本中记账。",
     split: "仅更新这笔模拟 AA 分账的状态。",
@@ -200,10 +215,46 @@ export function ConfirmationCard({
   } else if (confirmation.resource_type === "birthday_plan") {
     detailsRows.push(
       ["生日日期", text(details, "birthday_on")],
-      ["提醒日期", text(details, "purchase_on")],
-      ["计划预算", amount(details, "budget_minor")],
-      ["鲜花和蛋糕参考总价", amount(details, "catalog_total_minor")],
+      ["预订日期", text(details, "purchase_on")],
+      [
+        confirmation.target_status === "updated" ? "当前预留" : "预算",
+        amount(
+          details,
+          confirmation.target_status === "scheduled"
+            ? "budget_minor"
+            : "current_budget_minor",
+        ),
+      ],
+      confirmation.target_status === "updated"
+        ? ["调整为", amount(details, "proposed_budget_minor")]
+        : confirmation.target_status === "scheduled"
+          ? ["确认后预留", amount(details, "budget_minor")]
+          : ["当前已预留", amount(details, "held_minor")],
+      ["商品参考总价", amount(details, "catalog_total_minor")],
       ["账户", text(details, "account_label")],
+      ["银行卡尾号", text(details, "card_suffix")],
+    );
+  } else if (confirmation.resource_type === "birthday_order") {
+    const rawItems = value(details, "items");
+    const items = Array.isArray(rawItems)
+      ? rawItems
+          .map((item) => {
+            if (typeof item !== "object" || item === null) return "";
+            const row = item as Record<string, unknown>;
+            return `${String(row.product_name ?? row.product_code ?? "商品")} × ${String(row.quantity ?? 1)}`;
+          })
+          .filter(Boolean)
+          .join("、")
+      : null;
+    detailsRows.push(
+      ["商品", items],
+      ["商户", text(details, "merchant")],
+      ["金额", amount(details, "amount_minor")],
+      ["预订日期", text(details, "scheduled_for")],
+      ["付款账户", text(details, "account_label")],
+      ["银行卡尾号", text(details, "card_suffix")],
+      ["预算预留", amount(details, "held_minor")],
+      ["领取方式", text(details, "pickup_location")],
     );
   } else if (confirmation.resource_type === "transfer") {
     detailsRows.push(

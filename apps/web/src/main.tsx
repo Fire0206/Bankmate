@@ -7,8 +7,9 @@ import "./figma-theme.css";
 import "./phase3-compat.css";
 
 const showcaseRoute = lazy(() => import("./showcase/Showcase"));
+const currentPath = window.location.pathname.replace(/\/+$/, "") || "/";
 const entry =
-  window.location.pathname === "/showcase" ? (
+  currentPath === "/showcase" ? (
     <Suspense fallback={<p role="status">正在读取场景工作台…</p>}>
       {React.createElement(showcaseRoute)}
     </Suspense>

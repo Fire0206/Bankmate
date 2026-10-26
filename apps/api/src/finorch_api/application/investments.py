@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.application.confirmation import create_confirmation_challenge, parameters_hash
 from finorch_api.application.errors import BankingRuleError
+from finorch_api.application.funds import available_balance_minor
 from finorch_api.domain.investments import product_is_suitable, units_for_amount, value_for_units
 from finorch_api.infrastructure.models import (
     Account,
@@ -188,8 +189,10 @@ def _propose_order(
             raise BankingRuleError("below_minimum", "申购金额低于产品起购金额。")
         if account.currency != product.currency:
             raise BankingRuleError("currency_mismatch", "账户与理财产品的币种不一致。")
-        if account.balance_minor < amount_minor:
-            raise BankingRuleError("insufficient_funds", "账户余额不足，未创建申购。")
+        if available_balance_minor(session, account=account) < amount_minor:
+            raise BankingRuleError(
+                "insufficient_funds", "扣除已预留资金后，可用余额不足，未创建申购。"
+            )
         units = units_for_amount(
             amount_minor=amount_minor, unit_price_minor=product.unit_price_minor
         )
@@ -387,8 +390,10 @@ def confirm_order(
             user_risk_level=user.risk_level, product_risk_level=product.risk_level
         ):
             raise BankingRuleError("risk_mismatch", "产品风险等级与当前用户风险等级不匹配。")
-        if account.balance_minor < order.amount_minor:
-            raise BankingRuleError("insufficient_funds", "账户余额不足，申购没有执行。")
+        if available_balance_minor(session, account=account) < order.amount_minor:
+            raise BankingRuleError(
+                "insufficient_funds", "扣除已预留资金后，可用余额不足，申购没有执行。"
+            )
         if not _account_delta(session, account_id=account.id, amount_minor=-order.amount_minor):
             raise BankingRuleError("insufficient_funds", "账户余额不足，申购没有执行。")
         holding = InvestmentHolding(

@@ -2,9 +2,9 @@
 
 ## 当前实现与计划边界
 
-已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面和独立 `/showcase` 六场景工作台、FastAPI 账户/银行卡/账单/订阅/转账/分账/理财/Agent Task API、发薪日只读计划预览和确定性财务提示、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、合成 seed/reset、持久化 Agent Workflow、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。模拟转账会更新账户余额与交易记录；理财操作会更新账户余额、持仓和订单记录。计划预览和财务提示接口为只读，不发起任何写操作。
+已实现：私有优先的 Monorepo、React/Vite/Tailwind Agent 工作界面和队友维护的独立 `/showcase` 六场景工作台、FastAPI 账户/银行卡/账单/订阅/转账/分账/理财/Agent Task API、发薪日只读计划预览和确定性财务提示、OpenAPI 导出和生成的 TypeScript 类型、SQLAlchemy/SQLite/Alembic、合成 seed/reset、持久化 Agent Workflow、受控 Tool Registry、Fake Provider、OpenAI-compatible Provider Adapter、服务端确认和通用追加式审计。模拟转账会更新账户余额与交易记录；理财操作会更新账户余额、持仓和订单记录；生日预算通过 `fund_reservations` 预留可用余额，生日订单到期后需用户再次确认才可模拟付款。计划预览和财务提示接口为只读，不发起任何写操作。
 
-当前 Agent 覆盖六类本地模拟场景。跨场景任务支持可疑扣款处置和发薪日资金调度；单个持久化 Task 可跨多个确认点续跑，并保留部分成功记录。恢复上下文要求指定下一工具时，OpenAI-compatible Provider 使用命名工具选择；运行时仍过滤可用写工具并验证工具名、参数、授权和确认。取消后尚未确认的操作失效；已执行成功的工具不会因恢复而重放。异常提示是确定性规则，不是欺诈检测；产品价格/收益均为模拟信息；Fake Provider 是确定性规则，不代表模型推理。真实模型评测结果以[开发指南](development.md)的本轮记录为准。
+当前 Agent 覆盖银行卡、账单、订阅、转账、理财和生日计划等本地模拟能力。持久化多步骤任务包括可疑扣款处置、发薪日资金调度，以及生日预算预留/到期订单；任务可跨多个确认点续跑，并保留部分成功记录。恢复上下文要求指定下一工具时，OpenAI-compatible Provider 使用命名工具选择；运行时仍过滤可用写工具并验证工具名、参数、授权和确认。取消后尚未确认的操作失效；已执行成功的工具不会因恢复而重放。异常提示是确定性规则，不是欺诈检测；产品价格/收益均为模拟信息；Fake Provider 是确定性规则，不代表模型推理。真实模型评测结果以[开发指南](development.md)的本轮记录为准。
 
 **Planned**：真实用户认证、外部银行/支付网络、SSE/WebSocket 事件推送和生产部署。Demo Identity 不具备生产级安全性。数据和调用边界见[数据契约](data-contract.md)及[Banking Core 接口说明](development/banking-core.md)。
 
@@ -41,6 +41,9 @@ Agent 计划经 API/Application 校验后才能进入受控工具。对资金、
 - `apps/web/src/showcase/`：独立的竞赛展示工作台，消费当前六场景 API，并通过 Agent Task API 发起有确认保护的业务任务；不直接操作数据库。
 - `apps/api/`：FastAPI 服务、配置、生成 OpenAPI 的脚本和后端测试。
 - `apps/api/alembic/`：唯一数据库迁移历史；业务表不得在应用启动时自动创建。
+
+生日计划和资金预留由业务 Application 在事务中维护；`finorch_api.birthday_scheduler` 仅扫描到期订单并设置待确认状态，不自动扣款。`subscription_scheduler` 只生成本地应用内提醒。队友维护的 `/showcase` 已通过本地合成数据验收生日预留、到期订单二次确认付款及刷新恢复；高风险确认 UI 提供 OTP 输入，但本轮没有在浏览器提交验证码。详细边界见[验收矩阵](BANKMATE_ACCEPTANCE_MATRIX.md)。
+
 - `apps/api/src/finorch_api/application/`：确定性用例、资金事务边界、服务端确认和持久化任务编排。
 - `apps/api/src/finorch_api/application/financial_insights.py`：基于真实合成流水的按需规则提示；`cashflow.py` 提供复用发薪日计划用例，展示端点只读。
 - `apps/api/src/finorch_api/agent/`：单 Agent Loop、Typed Tool Registry、共享自然语言意图规则、按业务分开的转账/理财/现金流适配器、由 `registry.py` 组装的银行卡/账单/订阅工具，以及 Fake 与 OpenAI-compatible Provider；Provider 不获得数据库写权限。

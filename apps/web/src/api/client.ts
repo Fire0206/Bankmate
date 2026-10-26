@@ -357,13 +357,15 @@ export const apiClient = {
   previewPaydayPlan: (body: PaydayPlanPreviewRequest) => {
     if (staticPreviewMode) {
       const account = demoAccounts.items[0];
-      const remaining = account.balance_minor - body.transfer_amount_minor;
+      const remaining =
+        account.available_balance_minor - body.transfer_amount_minor;
       const afterReserve = remaining - body.reserve_amount_minor;
       return preview<PaydayPlanPreviewResponse>({
         account_label: account.label,
         currency: account.currency,
         month: body.month ?? demoBills.month,
         account_balance_minor: account.balance_minor,
+        available_balance_minor: account.available_balance_minor,
         monthly_income_minor: demoBills.income_minor,
         monthly_expense_minor: demoBills.expense_minor,
         recipient_name: body.recipient_name,

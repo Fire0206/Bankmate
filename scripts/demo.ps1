@@ -26,6 +26,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "Synthetic demo reset failed with exit code $LASTEXITCODE." }
         }
         "api" {
+            $env:FINORCH_SUBSCRIPTION_REMINDER_SCHEDULER_ENABLED = "true"
             & uv run --project apps/api uvicorn --app-dir apps/api/src finorch_api.main:app --host 127.0.0.1 --port 8000
         }
         "web" {

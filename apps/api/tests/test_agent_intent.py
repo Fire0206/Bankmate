@@ -1,6 +1,9 @@
 import pytest
 from finorch_api.agent.intent import (
+    has_explicit_transfer_write_intent,
+    is_annual_bill_query,
     is_split_creation_request,
+    is_subscription_reminder_query,
     parse_split_intent,
     requested_card_tool,
     requested_subscription_tool,
@@ -71,6 +74,75 @@ def test_temporary_charge_pause_is_distinct_from_ambiguous_cancellation() -> Non
 def test_confirm_then_freeze_is_an_action_but_confirm_whether_frozen_is_a_query() -> None:
     assert requested_card_tool("核对依据，确认后冻结相关银行卡") == "card.freeze"
     assert requested_card_tool("确认这张银行卡是否已经冻结") is None
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "哪些自动续费快到期？提醒我下次扣款日期。",
+        "帮我看一下订阅的续费时间。",
+        "最近有没有即将扣费的会员？",
+    ],
+)
+def test_subscription_timing_questions_are_distinct_from_inventory(prompt: str) -> None:
+    assert is_subscription_reminder_query(prompt) is True
+
+
+def test_subscription_inventory_and_write_requests_are_not_reminder_queries() -> None:
+    assert is_subscription_reminder_query("我有哪些订阅？") is False
+    assert is_subscription_reminder_query("暂停腾讯视频自动续费") is False
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("我的银行卡丢了，请帮我挂失尾号1042。", "card.report_lost"),
+        ("麻烦把尾号1042的银行卡报失。", "card.report_lost"),
+        ("我需要补办一张新的银行卡。", "card.replace"),
+        ("请为尾号1042的挂失卡补发一张新卡。", "card.replace"),
+        ("如何挂失银行卡？", None),
+        ("查看银行卡的挂失状态。", None),
+    ],
+)
+def test_card_loss_and_replacement_intents_are_explicit_and_distinct(
+    prompt: str, expected: str | None
+) -> None:
+    assert requested_card_tool(prompt) == expected
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        ("在日常账户申请一张新的借记卡。", "card.apply"),
+        ("尾号1042的卡已确认遗失，请给它补办新卡。", "card.replace"),
+        ("把尾号1042这张卡的单笔支付上限改成4000元。", "card.controls"),
+        ("请关闭1042卡的网上支付功能。", "card.controls"),
+    ],
+)
+def test_card_application_replacement_and_control_phrases_are_distinct(
+    prompt: str, expected: str
+) -> None:
+    assert requested_card_tool(prompt) == expected
+
+
+def test_card_control_requests_are_not_misclassified_as_transfers() -> None:
+    assert has_explicit_transfer_write_intent("请关闭1042卡的网上支付功能。") is False
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "给我一份2025年度收支账单。",
+        "请总结2025年账目。",
+        "查看去年全年消费和收入。",
+    ],
+)
+def test_annual_bill_intent_accepts_year_and_summary_variants(prompt: str) -> None:
+    assert is_annual_bill_query(prompt) is True
+
+
+def test_annual_bill_intent_does_not_match_monthly_statement() -> None:
+    assert is_annual_bill_query("统计本月收支账单。") is False
 
 
 @pytest.mark.parametrize(

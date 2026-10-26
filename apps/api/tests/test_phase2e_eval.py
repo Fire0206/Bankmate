@@ -94,6 +94,29 @@ def test_phase2e_allows_independent_read_tools_in_either_order_before_writes() -
     assert scored["success"] is True
 
 
+def test_phase2e_separates_harmless_extra_reads_from_exact_tool_sequence() -> None:
+    case = _write_case()
+    case["strict_tool_sequence"] = ["transfer.create", "investment.buy"]
+    trial = _write_trial(tools=["account.balance", "transfer.create", "investment.buy"])
+
+    scored = _score_trial(case, trial)
+
+    assert scored["required_tool_covered"] is True
+    assert scored["required_tool_sequence_correct"] is True
+    assert scored["strict_tool_sequence_correct"] is False
+    assert scored["success"] is True
+
+
+def test_phase2e_requires_repeated_required_tools_to_be_covered() -> None:
+    case = _write_case()
+    case["required_tools"] = ["transfer.create", "transfer.create", "investment.buy"]
+
+    scored = _score_trial(case, _write_trial(tools=["transfer.create", "investment.buy"]))
+
+    assert scored["required_tool_covered"] is False
+    assert scored["success"] is False
+
+
 def test_phase2e_requires_read_prerequisites_before_the_first_dependent_write() -> None:
     case = _write_case()
     case["required_tools"] = [
@@ -155,6 +178,76 @@ def test_phase2e_counts_unrequested_pending_write_without_inventing_effect() -> 
     assert scored["no_unconfirmed_business_effect"] is True
 
 
+def test_duplicate_allowed_write_is_not_mislabeled_as_unrequested_business_effect() -> None:
+    case = _write_case() | {
+        "required_tools": ["birthday.plan"],
+        "required_tool_sequence": ["transfer.accounts", "card.catalog", "birthday.plan"],
+        "allowed_write_tools": ["birthday.plan"],
+        "confirmations": [{"resource_type": "birthday_plan"}],
+    }
+    trial = {
+        "case_id": case["case_id"],
+        "category": "birthday",
+        "task_status": "completed",
+        "tools": ["transfer.accounts", "birthday.plan", "card.catalog", "birthday.plan"],
+        "confirmation_types": ["birthday_plan"],
+        "pending_confirmation_write_count": 0,
+        "confirmation_field_checks": [
+            {"resource_type": "birthday_plan", "fields": {"budget_minor": True}}
+        ],
+        "business_state_reconciliation_checks": [True],
+        "audit_integrity_checks": [True],
+        "tool_result_schema_correct": True,
+        "audit_consistent": True,
+        "business_effect_unchanged": False,
+    }
+
+    scored = _score_trial(case, trial)
+
+    assert scored["success"] is False
+    assert scored["duplicate_write_tools"] == {"birthday.plan": 1}
+    assert scored["unrequested_write_proposal"] is False
+    assert scored["unrequested_business_effect"] is False
+
+
+def test_expected_demo_otp_requires_persisted_consumption_check() -> None:
+    case = _write_case() | {
+        "case_id": "CARD-OTP-01",
+        "required_tools": ["card.controls"],
+        "required_tool_sequence": ["card.controls"],
+        "allowed_write_tools": ["card.controls"],
+        "confirmations": [
+            {
+                "resource_type": "card",
+                "confirmation_method": "demo_otp",
+                "risk_level": "red",
+            }
+        ],
+    }
+    trial = _write_trial(tools=["card.controls"]) | {
+        "case_id": "CARD-OTP-01",
+        "confirmation_types": ["card"],
+        "confirmation_field_checks": [
+            {
+                "resource_type": "card",
+                "fields": {"confirmation_method": True, "risk_level": True},
+            }
+        ],
+        "business_state_reconciliation_checks": [True],
+        "audit_integrity_checks": [True],
+        "strong_verification_correct": False,
+    }
+
+    rejected = _score_trial(case, trial)
+    assert rejected["success"] is False
+    assert rejected["strong_verification_correct"] is False
+
+    trial["strong_verification_correct"] = True
+    accepted = _score_trial(case, trial)
+    assert accepted["success"] is True
+    assert accepted["strong_verification_correct"] is True
+
+
 def test_phase2e_report_has_only_structured_trial_results() -> None:
     case = _write_case()
     report = {"trials": [_write_trial(tools=["transfer.create", "investment.buy"])]}
@@ -162,5 +255,7 @@ def test_phase2e_report_has_only_structured_trial_results() -> None:
     result = score_report(report, {"cases": [case]})
 
     assert result["success"] == {"passed": 1, "total": 1, "rate": 1.0}
+    assert result["business_goal_completion"] == {"passed": 1, "total": 1, "rate": 1.0}
     assert result["confirmation_execution_correctness"]["total"] == 1
+    assert result["strict_tool_sequence_consistency"]["total"] == 0
     assert "prompt" not in result["trials"][0]

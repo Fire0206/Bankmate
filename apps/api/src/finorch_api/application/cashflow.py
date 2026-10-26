@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from finorch_api.application.bills import get_monthly_summary
 from finorch_api.application.errors import BankingRuleError
+from finorch_api.application.funds import available_balance_minor
 from finorch_api.application.transfers import list_accounts
 
 
@@ -14,6 +15,7 @@ class PaydayPlanView:
     currency: str
     month: str
     account_balance_minor: int
+    available_balance_minor: int
     monthly_income_minor: int
     monthly_expense_minor: int
     recipient_name: str
@@ -48,7 +50,8 @@ def plan_payday_allocation(
         raise BankingRuleError("unsupported_currency", "当前演示计划仅支持人民币账户。")
 
     summary = get_monthly_summary(session, actor_id=actor_id, month=month)
-    remaining = account.balance_minor - transfer_amount_minor
+    available = available_balance_minor(session, account=account)
+    remaining = available - transfer_amount_minor
     investment_budget = max(0, remaining - reserve_amount_minor)
     reserve_shortfall = max(0, reserve_amount_minor - remaining)
     return PaydayPlanView(
@@ -56,6 +59,7 @@ def plan_payday_allocation(
         currency=account.currency,
         month=summary.month,
         account_balance_minor=account.balance_minor,
+        available_balance_minor=available,
         monthly_income_minor=summary.income_minor,
         monthly_expense_minor=summary.expense_minor,
         recipient_name=recipient_name.strip(),

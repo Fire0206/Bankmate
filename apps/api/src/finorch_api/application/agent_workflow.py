@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 
 from finorch_api.agent.intent import (
     _has_query_cue,
+    birthday_plan_intent,
     has_explicit_investment_write_intent,
     has_explicit_transfer_write_intent,
+    is_annual_bill_query,
+    is_birthday_status_query,
     is_planning_only_request,
     is_split_creation_request,
+    is_subscription_reminder_query,
     parse_split_intent,
 )
 from finorch_api.agent.intent import (
@@ -71,6 +75,7 @@ def task_progress_context(session: Session, *, actor_id: UUID, task_id: UUID) ->
         "task_progress": {
             "status": task.status,
             "tools": tools[-24:],
+            "workflow_plan": task.workflow_plan,
         }
     }
 
@@ -200,15 +205,31 @@ def missing_requested_write_tools(
     if not advisory_question and "取消" in request and "定时转账" in request:
         if "transfer.cancel_scheduled" not in succeeded:
             required.append("transfer.cancel_scheduled")
+    birthday_intent = birthday_plan_intent(request_text)
     if (
         not advisory_question
-        and "生日" in request
-        and any(word in request for word in ("预留", "留出", "安排", "预约"))
-        and re.search(r"(?<!\d)20\d{2}(?:-|年)\d{1,2}(?:-|月)\d{1,2}日?(?!\d)", request)
+        and birthday_intent is not None
+        and birthday_intent.birthday_on is not None
+        and birthday_intent.budget_minor is not None
         and has_amount
         and "birthday.plan" not in succeeded
     ):
         required.append("birthday.plan")
+    if not advisory_question and "生日" in request:
+        if any(term in request for term in ("确认购买", "现在订", "下单", "购买", "订购")):
+            if "birthday.order" not in succeeded:
+                required.append("birthday.order")
+        elif "取消" in request and any(
+            term in request for term in ("计划", "预算", "预订", "生日")
+        ):
+            if "birthday.cancel" not in succeeded:
+                required.append("birthday.cancel")
+        elif (
+            "预算" in request
+            and any(term in request for term in ("调整", "改为", "增加", "减少", "提高", "降低"))
+            and "birthday.budget_update" not in succeeded
+        ):
+            required.append("birthday.budget_update")
     if not advisory_question:
         card_tool = _requested_card_tool(request)
         if card_tool and card_tool not in succeeded:
@@ -238,6 +259,25 @@ def missing_requested_write_tools(
     return tuple(
         name for name in dict.fromkeys(required) if user_authorized_write(request_text, name)
     )
+
+
+def missing_required_read_tools(
+    request_text: str, task_progress: dict[str, Any]
+) -> tuple[str, ...]:
+    """Require task-critical report/reminder reads while allowing harmless extra reads elsewhere."""
+    succeeded = {
+        item.get("tool_name")
+        for item in task_progress.get("tools", [])
+        if isinstance(item, dict) and item.get("status") == "succeeded"
+    }
+    required: list[str] = []
+    if is_subscription_reminder_query(request_text):
+        required.append("subscription.reminders")
+    if is_annual_bill_query(request_text):
+        required.append("bill.annual_report")
+    if is_birthday_status_query(request_text):
+        required.append("birthday.list")
+    return tuple(name for name in dict.fromkeys(required) if name not in succeeded)
 
 
 def missing_write_input_message(
@@ -366,6 +406,10 @@ def missing_explicit_write_parameters_message(request_text: str) -> str | None:
 
     supplement = request_text.rsplit("\n\n用户补充：", 1)
     active_text = supplement[-1].casefold() if len(supplement) > 1 else request
+    birthday = birthday_plan_intent(request_text)
+    if birthday is not None and birthday.birthday_on is None:
+        return "请补充生日日期，例如11月20日。"
+
     card_change = _requested_card_tool(request) in {
         "card.freeze",
         "card.unfreeze",

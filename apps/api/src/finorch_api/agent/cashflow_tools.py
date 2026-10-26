@@ -32,6 +32,7 @@ class PaydayPlanOutput(BaseModel):
     currency: str
     month: str
     account_balance_minor: int
+    available_balance_minor: int
     monthly_income_minor: int
     monthly_expense_minor: int
     recipient_name: str

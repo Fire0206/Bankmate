@@ -9,8 +9,9 @@ from finorch_api.application.subscriptions import (
     generate_due_subscription_reminders,
     list_subscription_reminders,
 )
+from finorch_api.config import Settings
 from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import AuditEvent, Subscription, utc_now
+from finorch_api.infrastructure.models import Account, AuditEvent, Subscription, utc_now
 from finorch_api.main import app
 from finorch_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
@@ -18,6 +19,7 @@ from finorch_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
+from finorch_api.subscription_scheduler import run_subscription_reminder_tick
 from sqlalchemy import func, select
 
 
@@ -196,3 +198,41 @@ def test_refresh_api_generates_only_once_from_server_clock(seeded_database) -> N
     finally:
         app.dependency_overrides.pop(get_db_session, None)
         app.dependency_overrides.pop(get_current_demo_actor, None)
+
+
+def test_development_scheduler_persists_due_reminders_idempotently(seeded_database) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2030, 4, 1, 12, tzinfo=UTC)
+    with seeded_database.session_factory.begin() as session:
+        rows = list(
+            session.scalars(
+                select(Subscription)
+                .join(Account)
+                .where(
+                    Account.demo_user_id == DEMO_USER_ONE_ID,
+                    Subscription.status == "active",
+                )
+            )
+        )
+        assert rows
+        for row in rows:
+            row.next_charge_at = now + timedelta(days=90)
+        target = rows[0]
+        target.next_charge_at = now + timedelta(days=1)
+        target_id = target.id
+
+    settings = Settings(
+        _env_file=None,
+        environment="development",
+        database_url=seeded_database.url,
+        demo_user_id=DEMO_USER_ONE_ID,
+        demo_now=now,
+    )
+
+    assert run_subscription_reminder_tick(settings) == 1
+    assert run_subscription_reminder_tick(settings) == 0
+    with seeded_database.session_factory() as session:
+        target = session.get(Subscription, target_id)
+        assert target is not None
+        assert target.last_reminded_charge_at == target.next_charge_at

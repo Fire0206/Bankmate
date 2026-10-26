@@ -1,6 +1,6 @@
 # 安全设计
 
-> 当前状态：Phase 1E 已实现本地 Demo Identity、六类模拟业务工具、持久化可续跑 Task/Workflow、受控资金操作、多次服务端确认、幂等和通用审计。未实现生产身份认证、真实银行/支付/商户数据与服务或生产部署。Demo Identity 仅用于本地 development/test，不具备生产级安全性。
+> 当前状态：Phase 3 已实现本地 Demo Identity、六类模拟业务工具、持久化可续跑 Task/Workflow、三条轻量依赖 DAG、服务端确认/幂等/审计、卡片交易限制、模拟 OTP 和生日资金预留/二次确认订单。未实现生产身份认证、真实银行/支付/商户数据与服务或生产部署。Demo Identity/OTP 仅用于本地 development/test，不具备生产级安全性。队友 `/showcase` 已展示 OTP 输入和完整生日订单影响摘要；本轮通过浏览器验证了生日订单付款闭环，但只验证高风险 OTP 卡的输入/取消，没有提交验证码。
 
 ## 权限与风险
 

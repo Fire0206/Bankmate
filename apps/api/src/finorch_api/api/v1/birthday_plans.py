@@ -1,6 +1,6 @@
 """Read confirmed synthetic birthday budget intentions."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -24,22 +24,40 @@ class BirthdayProductResponse(BaseModel):
     quantity: int
 
 
+class BirthdayOrderResponse(BaseModel):
+    id: UUID
+    merchant: str
+    items: list[BirthdayProductResponse]
+    total_amount_minor: int
+    currency: Literal["CNY"]
+    pickup_location: str
+    scheduled_for: date
+    status: str
+    transaction_id: UUID | None
+    paid_at: datetime | None
+
+
 class BirthdayPlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
     account_id: UUID
     account_label: str
+    card_suffix: str | None
     birthday_on: date
     purchase_on: date
     budget_minor: int
     catalog_total_minor: int
     currency: Literal["CNY"]
-    status: Literal["scheduled"]
+    status: Literal["pending_confirmation", "scheduled", "cancelled", "completed"]
+    due_for_confirmation: bool
     due_for_reconfirmation: bool
-    funds_held: Literal[False]
-    order_placed: Literal[False]
+    funds_held: bool
+    held_minor: int
+    order_status: str | None
+    order_placed: bool
     items: list[BirthdayProductResponse]
+    order: BirthdayOrderResponse | None
     next_action: str
 
 

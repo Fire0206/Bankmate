@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from finorch_api.infrastructure.models import (
     AuditEvent,
+    BirthdayOrder,
+    BirthdayPlan,
     Card,
     ConfirmationChallenge,
     InvestmentOrder,
@@ -35,6 +37,31 @@ def aware(value: datetime) -> datetime:
 def challenge_risk(
     session: Session, challenge: ConfirmationChallenge, now: datetime
 ) -> RiskDecision:
+    if challenge.tool_name in {"birthday.order", "birthday.plan", "birthday.budget_update"}:
+        execution = session.get(ToolExecution, challenge.tool_execution_id)
+        proposal = execution.result_data if execution else None
+        amount = (
+            proposal.get("amount_minor", proposal.get("budget_minor"))
+            if isinstance(proposal, dict)
+            else None
+        )
+        if challenge.birthday_plan_id is not None:
+            plan = session.get(BirthdayPlan, challenge.birthday_plan_id)
+            if plan is None or plan.actor_id != challenge.actor_id:
+                raise ValueError("Invalid birthday plan ownership.")
+            amount = (
+                proposal.get("budget_minor", plan.budget_minor)
+                if isinstance(proposal, dict)
+                else plan.budget_minor
+            )
+        if challenge.birthday_order_id is not None:
+            order = session.get(BirthdayOrder, challenge.birthday_order_id)
+            if order is None or order.actor_id != challenge.actor_id:
+                raise ValueError("Invalid birthday order ownership.")
+            amount = order.total_amount_minor
+        if type(amount) is int and amount > 1_000_000:
+            return decide_risk(operation="sensitive_card")
+        return decide_risk(operation="write")
     if challenge.tool_name in {"card.report_lost", "card.replace"}:
         return decide_risk(operation="sensitive_card")
     if challenge.tool_name in {"card.controls", "card.purchase"}:
@@ -98,6 +125,8 @@ def binding(challenge: ConfirmationChallenge, decision: RiskDecision, now: datet
             challenge.transfer_version,
             challenge.split_bill_version,
             challenge.investment_order_version,
+            challenge.birthday_plan_version,
+            challenge.birthday_order_version,
         ],
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
