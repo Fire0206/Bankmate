@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.application.confirmation import create_confirmation_challenge, parameters_hash
 from finorch_api.application.errors import BankingRuleError
+from finorch_api.application.funds import available_balance_minor
 from finorch_api.application.transactions import write_transaction
 from finorch_api.domain.transfers import split_amount
 from finorch_api.infrastructure.models import (
@@ -35,6 +36,7 @@ class AccountBalanceView:
     label: str
     currency: str
     balance_minor: int
+    available_balance_minor: int
 
 
 @dataclass(frozen=True)
@@ -101,7 +103,14 @@ def list_accounts(session: Session, *, actor_id: UUID) -> tuple[AccountBalanceVi
         .order_by(Account.created_at, Account.id)
     )
     return tuple(
-        AccountBalanceView(row.id, row.label, row.currency, row.balance_minor) for row in rows
+        AccountBalanceView(
+            row.id,
+            row.label,
+            row.currency,
+            row.balance_minor,
+            available_balance_minor(session, account=row),
+        )
+        for row in rows
     )
 
 
@@ -289,8 +298,8 @@ def propose_transfer(
         raise BankingRuleError("invalid_destination", "收款账户无效，或不能转给同一账户。")
     if currency != account.currency or currency != destination.currency:
         raise BankingRuleError("currency_mismatch", "转出和收款账户的币种必须相同。")
-    if account.balance_minor < amount_minor:
-        raise BankingRuleError("insufficient_funds", "账户余额不足，未创建转账。")
+    if available_balance_minor(session, account=account) < amount_minor:
+        raise BankingRuleError("insufficient_funds", "扣除已预留资金后，可用余额不足，未创建转账。")
     if scheduled_at is not None:
         scheduled_at = _utc(scheduled_at)
         now = utc_now()
@@ -481,6 +490,8 @@ def _execute_money_transfer(
         or destination.currency != transfer.currency
     ):
         raise BankingRuleError("transfer_integrity_error", "转账账户或收款人信息已变化。")
+    if available_balance_minor(session, account=source) < transfer.amount_minor:
+        raise BankingRuleError("insufficient_funds", "扣除已预留资金后，可用余额不足，转账未执行。")
     debit_ok = _account_delta(session, account_id=source.id, amount_minor=-transfer.amount_minor)
     if not debit_ok:
         raise BankingRuleError("insufficient_funds", "账户余额不足，转账未执行。")
@@ -743,8 +754,8 @@ def propose_split(
     except ValueError as exc:
         raise BankingRuleError("invalid_split", str(exc)) from exc
     account = _owned_account(session, actor_id=context.actor_id, label=account_label)
-    if account.balance_minor < amount_minor:
-        raise BankingRuleError("insufficient_funds", "账户余额不足，未创建分账。")
+    if available_balance_minor(session, account=account) < amount_minor:
+        raise BankingRuleError("insufficient_funds", "扣除已预留资金后，可用余额不足，未创建分账。")
     title = title.strip() or "AA 分账"
     bill = SplitBill(
         id=uuid4(),
@@ -925,8 +936,10 @@ def confirm_split(
         raise BankingRuleError("split_account_not_found", "分账账户不可用。")
     before = bill.status
     if target_status == "open" and bill.status == "awaiting_confirmation":
-        if account.balance_minor < bill.total_amount_minor:
-            raise BankingRuleError("insufficient_funds", "账户余额不足，分账没有执行。")
+        if available_balance_minor(session, account=account) < bill.total_amount_minor:
+            raise BankingRuleError(
+                "insufficient_funds", "扣除已预留资金后，可用余额不足，分账没有执行。"
+            )
         if not _account_delta(
             session, account_id=account.id, amount_minor=-bill.total_amount_minor
         ):

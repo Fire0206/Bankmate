@@ -6,6 +6,7 @@ from finorch_api.application.agent_workflow import (
     missing_explicit_write_parameters_message,
     missing_payday_parameters_message,
     missing_requested_write_tools,
+    missing_required_read_tools,
     missing_write_input_message,
     requires_transfer_before_investment,
     split_proposal_mismatch_message,
@@ -323,6 +324,9 @@ def test_server_product_risk_result_becomes_authoritative_rejection() -> None:
 
 
 def test_incomplete_write_intents_pause_before_any_proposal() -> None:
+    assert missing_explicit_write_parameters_message("我爱人生日想预留1000元买鲜花和蛋糕") == (
+        "请补充生日日期，例如11月20日。"
+    )
     assert missing_explicit_write_parameters_message("冻结银行卡尾号1042或4318") == (
         "请明确选择一张银行卡，并提供唯一的尾号。"
     )
@@ -416,3 +420,28 @@ def test_split_creation_with_per_person_amount_requires_total() -> None:
         )
         == "请补充分账总金额后再创建操作确认。"
     )
+
+
+def test_renewal_reminders_are_required_and_combined_annual_reads_are_both_required() -> None:
+    assert missing_required_read_tools("最近有哪些会员快要扣费？", _history()) == (
+        "subscription.reminders",
+    )
+    assert missing_required_read_tools(
+        "查看2025年度账单并告诉我订阅什么时候续费",
+        _history(_tool("bill.annual_report")),
+    ) == ("subscription.reminders",)
+    assert missing_required_read_tools("我有哪些订阅？", _history()) == ()
+
+
+def test_saved_birthday_budget_and_order_status_require_the_read_tool() -> None:
+    request = "查看已保存的生日赠礼预算和订单状态。"
+
+    assert missing_required_read_tools(request, _history()) == ("birthday.list",)
+    assert missing_required_read_tools(request, _history(_tool("birthday.list"))) == ()
+    assert missing_required_read_tools("安排生日鲜花和蛋糕，预留1000元。", _history()) == ()
+
+
+def test_birthday_plan_with_month_day_requires_the_planning_tool() -> None:
+    request = "为11月20日生日的朋友安排鲜花和蛋糕，日常账户预留2000元预算。"
+
+    assert missing_requested_write_tools(request, _history()) == ("birthday.plan",)

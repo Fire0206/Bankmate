@@ -12,6 +12,7 @@ class AccountBalanceResponse(BaseModel):
     label: str
     currency: str
     balance_minor: int
+    available_balance_minor: int
 
 
 class AccountBalanceListResponse(BaseModel):

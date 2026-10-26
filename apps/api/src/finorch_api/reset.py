@@ -12,11 +12,13 @@ from finorch_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
+    BirthdayOrder,
     BirthdayPlan,
     Card,
     CardApplication,
     ConfirmationChallenge,
     DemoUser,
+    FundsReservation,
     HumanHandoff,
     InvestmentHolding,
     InvestmentOrder,
@@ -82,9 +84,12 @@ def reset_demo_data(session: Session) -> None:
     session.execute(delete(Transfer))
     session.execute(delete(Payee))
     session.execute(delete(Subscription))
-    session.execute(delete(Transaction))
     session.execute(delete(CardApplication))
+    session.execute(delete(BirthdayOrder))
+    session.execute(delete(FundsReservation))
     session.execute(delete(BirthdayPlan))
+    # Birthday orders keep a restrictive FK to the transaction that paid them.
+    session.execute(delete(Transaction))
     # Replaced cards point to their replacement, so clear these self-references
     # before deleting the card set while foreign key enforcement stays enabled.
     session.execute(update(Card).values(replaced_by_card_id=None))

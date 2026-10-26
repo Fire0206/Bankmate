@@ -40,6 +40,7 @@ from finorch_api.application.agent_workflow import (
     missing_explicit_write_parameters_message,
     missing_payday_parameters_message,
     missing_requested_write_tools,
+    missing_required_read_tools,
     missing_write_input_message,
     requires_transfer_before_investment,
     split_proposal_mismatch_message,
@@ -49,10 +50,16 @@ from finorch_api.application.agent_workflow import (
     unsuitable_requested_investment_message,
 )
 from finorch_api.application.birthday_plans import (
-    POLICY_VERSION as BIRTHDAY_POLICY_VERSION,
+    PLAN_POLICY_VERSION as BIRTHDAY_POLICY_VERSION,
 )
 from finorch_api.application.birthday_plans import (
+    POLICY_VERSION as BIRTHDAY_ORDER_POLICY_VERSION,
+)
+from finorch_api.application.birthday_plans import (
+    confirm_birthday_order,
     confirm_birthday_plan,
+    confirm_birthday_plan_change,
+    plan_details,
 )
 from finorch_api.application.card_applications import (
     POLICY_VERSION as CARD_APPLICATION_POLICY_VERSION,
@@ -88,6 +95,7 @@ from finorch_api.application.transactions import write_transaction
 from finorch_api.application.transfers import confirm_split, confirm_transfer
 from finorch_api.application.workflow_graph import (
     build_workflow_plan,
+    next_ready_workflow_tool,
     unsatisfied_dependencies,
 )
 from finorch_api.domain.cards import CardStatus, InvalidCardTransition
@@ -98,9 +106,12 @@ from finorch_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
+    BirthdayOrder,
     BirthdayPlan,
+    Card,
     CardApplication,
     ConfirmationChallenge,
+    FundsReservation,
     InvestmentOrder,
     InvestmentProduct,
     SplitBill,
@@ -395,12 +406,17 @@ def _record_workflow_block(
     request_id: str,
     code: str,
     message: str,
+    required_next_tools: tuple[str, ...] = (),
 ) -> ToolDispatchResult:
     """Persist a rejected out-of-order tool call without ending the planner turn."""
     execution.status = "failed"
     execution.error_code = code
     execution.result_summary = message
-    execution.result_data = {"status": "blocked", "error_code": code}
+    execution.result_data = {
+        "status": "blocked",
+        "error_code": code,
+        "required_next_tools": list(required_next_tools),
+    }
     execution.completed_at = utc_now()
     step.status = "failed"
     step.error_code = code
@@ -722,6 +738,7 @@ def _dispatch_tool(
                 request_id=request_id,
                 code="workflow_step_not_ready",
                 message="请先完成工作流前置步骤：" + "、".join(missing_dependencies) + "。",
+                required_next_tools=missing_dependencies,
             )
 
         if spec.permission_level != "read_only" and parsed is not None:
@@ -842,7 +859,19 @@ def _dispatch_tool(
             elif resource_type == "card_application":
                 target = f"{label}模拟借记卡申请"
             elif resource_type == "birthday_plan":
-                target = "生日预算和到期提醒"
+                if spec.name == "birthday.plan":
+                    return ToolDispatchResult(
+                        "awaiting_confirmation",
+                        result_data,
+                        "已准备好生日预算与商品预订计划；确认后会预留预算，到期购买仍需再次确认。",
+                    )
+                target = "生日预算" if target_status == "updated" else "生日计划"
+            elif resource_type == "birthday_order":
+                return ToolDispatchResult(
+                    "awaiting_confirmation",
+                    result_data,
+                    "已准备好生日礼品模拟订单；确认后才会扣款并记录流水。",
+                )
             else:
                 target = label
             return ToolDispatchResult(
@@ -983,12 +1012,31 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                 )
             )
             if plan is not None:
-                account = session.get(Account, plan.account_id)
+                plan_data = plan_details(session, actor_id=actor_id, plan=plan)
+                proposal_execution = session.get(ToolExecution, challenge.tool_execution_id)
+                proposal = (
+                    proposal_execution.result_data
+                    if proposal_execution is not None
+                    and isinstance(proposal_execution.result_data, dict)
+                    else {}
+                )
+                plan_data["current_budget_minor"] = proposal.get(
+                    "current_budget_minor", plan.budget_minor
+                )
+                if isinstance(proposal.get("budget_minor"), int):
+                    plan_data["proposed_budget_minor"] = proposal["budget_minor"]
+                plan_data["target_status"] = challenge.target_status
                 confirmation = ConfirmationView(
                     id=challenge.id,
                     resource_type="birthday_plan",
                     resource_id=plan.id,
-                    resource_label="生日预算与到期提醒",
+                    resource_label=(
+                        "生日预算"
+                        if challenge.target_status == "updated"
+                        else "生日计划"
+                        if challenge.target_status == "cancelled"
+                        else "生日预算与预订计划"
+                    ),
                     resource_version=challenge.birthday_plan_version or plan.version,
                     current_status=plan.status,
                     target_status=challenge.target_status,
@@ -998,15 +1046,50 @@ def _task_view(session: Session, *, actor_id: UUID, task_id: UUID) -> AgentTaskV
                     policy_version=challenge.policy_version,
                     tool_name=challenge.tool_name,
                     tool_version=challenge.tool_version,
+                    details=plan_data,
+                )
+        elif challenge.birthday_order_id is not None:
+            order = session.scalar(
+                select(BirthdayOrder).where(
+                    BirthdayOrder.id == challenge.birthday_order_id,
+                    BirthdayOrder.actor_id == actor_id,
+                )
+            )
+            if order is not None:
+                plan = session.get(BirthdayPlan, order.plan_id)
+                account = session.get(Account, order.account_id)
+                card = session.get(Card, order.card_id)
+                reservation = session.scalar(
+                    select(FundsReservation).where(
+                        FundsReservation.birthday_plan_id == order.plan_id
+                    )
+                )
+                confirmation = ConfirmationView(
+                    id=challenge.id,
+                    resource_type="birthday_order",
+                    resource_id=order.id,
+                    resource_label="生日礼品订单",
+                    resource_version=challenge.birthday_order_version or order.version,
+                    current_status=order.status,
+                    target_status=challenge.target_status,
+                    parameters_hash=challenge.parameters_hash,
+                    idempotency_key=challenge.idempotency_key,
+                    expires_at=_utc(challenge.expires_at),
+                    policy_version=challenge.policy_version,
+                    tool_name=challenge.tool_name,
+                    tool_version=challenge.tool_version,
                     details={
+                        "plan_id": str(plan.id) if plan else None,
                         "account_label": account.label if account else "模拟账户",
-                        "birthday_on": plan.birthday_on.isoformat(),
-                        "purchase_on": plan.purchase_on.isoformat(),
-                        "budget_minor": plan.budget_minor,
-                        "catalog_total_minor": plan.catalog_total_minor,
-                        "currency": "CNY",
-                        "funds_held": False,
-                        "order_placed": False,
+                        "card_suffix": card.card_suffix if card else None,
+                        "birthday_on": plan.birthday_on.isoformat() if plan else None,
+                        "scheduled_for": order.scheduled_for.isoformat(),
+                        "items": order.items,
+                        "amount_minor": order.total_amount_minor,
+                        "currency": order.currency,
+                        "merchant": order.merchant,
+                        "pickup_location": order.pickup_location,
+                        "held_minor": reservation.held_minor if reservation else 0,
                     },
                 )
         elif challenge.card_application_id is not None:
@@ -1362,6 +1445,28 @@ def _finalize_run(
             if target == "completed" and task.status == "planning":
                 target = "awaiting_input"
             _transition(task, target)
+        if status == "completed":
+            # A provider may continue with stale conversational context after a
+            # confirmation. Ground the final response in the persisted result
+            # of a paid birthday order so it cannot claim that payment is still
+            # pending after the server has committed the purchase.
+            order_execution = session.scalar(
+                select(ToolExecution)
+                .where(
+                    ToolExecution.task_id == task.id,
+                    ToolExecution.tool_name == "birthday.order",
+                    ToolExecution.status == "succeeded",
+                )
+                .order_by(ToolExecution.created_at.desc())
+            )
+            order_result = order_execution.result_data if order_execution is not None else None
+            order = order_result.get("order") if isinstance(order_result, dict) else None
+            if isinstance(order_result, dict) and (
+                order_result.get("order_placed") is True
+                or order_result.get("order_status") == "paid"
+                or (isinstance(order, dict) and order.get("status") == "paid")
+            ):
+                message = "生日礼品模拟订单已支付，余额、流水和预留记录已更新。"
         task.message = message[:1200]
         task.error_code = error_code
         planner = session.scalar(
@@ -1456,6 +1561,29 @@ def _run_task(
         session, actor_id=actor_id, conversation_id=conversation_id
     )
     trusted_context.update(task_progress_context(session, actor_id=actor_id, task_id=task_id))
+    initial_required_reads = missing_required_read_tools(
+        request_text, trusted_context.get("task_progress", {})
+    )
+    if initial_required_reads:
+        trusted_context["task_progress"] = {
+            **trusted_context.get("task_progress", {}),
+            "required_next_tools": [initial_required_reads[0]],
+        }
+    else:
+        progress = trusted_context.get("task_progress", {})
+        next_workflow_tool = next_ready_workflow_tool(
+            progress.get("workflow_plan"),
+            succeeded_tools={
+                item.get("tool_name")
+                for item in progress.get("tools", [])
+                if isinstance(item, dict) and item.get("status") == "succeeded"
+            },
+        )
+        if next_workflow_tool is not None:
+            trusted_context["task_progress"] = {
+                **progress,
+                "required_next_tools": [next_workflow_tool],
+            }
     requires_ordered_transfer = requires_transfer_before_investment(request_text)
     is_payday = _is_payday_request(request_text)
     registry = build_tool_registry()
@@ -1518,6 +1646,24 @@ def _run_task(
                 continuation=continuation or replan_count > 0,
                 allowed_write_tools=allowed_write_tools,
             )
+            if result.error_code == "agent_required_tool_not_called" and replan_count < 2:
+                current_progress = task_progress_context(
+                    session, actor_id=actor_id, task_id=task_id
+                ).get("task_progress", {})
+                next_workflow_tool = next_ready_workflow_tool(
+                    current_progress.get("workflow_plan"),
+                    succeeded_tools={
+                        item.get("tool_name")
+                        for item in current_progress.get("tools", [])
+                        if isinstance(item, dict) and item.get("status") == "succeeded"
+                    },
+                )
+                if next_workflow_tool is not None:
+                    trusted_context["task_progress"] = {
+                        **current_progress,
+                        "required_next_tools": [next_workflow_tool],
+                    }
+                    continue
             if (
                 requires_ordered_transfer
                 and result.error_code == "agent_required_tool_mismatch"
@@ -1539,6 +1685,27 @@ def _run_task(
             current_progress = task_progress_context(
                 session, actor_id=actor_id, task_id=task_id
             ).get("task_progress", {})
+            missing_reads = missing_required_read_tools(request_text, current_progress)
+            if missing_reads and replan_count < 2:
+                trusted_context["task_progress"] = {
+                    **current_progress,
+                    "required_next_tools": [missing_reads[0]],
+                }
+                continue
+            next_workflow_tool = next_ready_workflow_tool(
+                current_progress.get("workflow_plan"),
+                succeeded_tools={
+                    item.get("tool_name")
+                    for item in current_progress.get("tools", [])
+                    if isinstance(item, dict) and item.get("status") == "succeeded"
+                },
+            )
+            if next_workflow_tool is not None and replan_count < 2:
+                trusted_context["task_progress"] = {
+                    **current_progress,
+                    "required_next_tools": [next_workflow_tool],
+                }
+                continue
             missing_tools = missing_requested_write_tools(request_text, current_progress)
             if not missing_tools or replan_count == 2:
                 break
@@ -1792,6 +1959,8 @@ def _challenge_resource(challenge: ConfirmationChallenge) -> tuple[str, UUID]:
     for kind, resource_id in (
         ("card", challenge.card_id),
         ("card_application", challenge.card_application_id),
+        ("birthday_plan", challenge.birthday_plan_id),
+        ("birthday_order", challenge.birthday_order_id),
         ("subscription", challenge.subscription_id),
         ("transfer", challenge.transfer_id),
         ("split", challenge.split_bill_id),
@@ -1805,6 +1974,13 @@ def _challenge_resource(challenge: ConfirmationChallenge) -> tuple[str, UUID]:
 def _cancel_unexecuted_proposal(
     session: Session, challenge: ConfirmationChallenge
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if challenge.birthday_plan_id is not None:
+        plan = session.get(BirthdayPlan, challenge.birthday_plan_id)
+        if plan is not None and plan.status == "pending_confirmation":
+            before = {"status": plan.status, "version": plan.version}
+            plan.status = "cancelled"
+            session.flush()
+            return before, {"status": plan.status, "version": plan.version}
     if challenge.card_application_id is not None:
         application = session.get(CardApplication, challenge.card_application_id)
         if application is not None and application.status == "pending_confirmation":
@@ -2434,24 +2610,80 @@ def confirm_task_operation(
                 )
                 if plan is None:
                     raise AgentTaskNotFoundError
-                normalized = {
-                    "tool_name": challenge.tool_name,
-                    "tool_version": challenge.tool_version,
-                    "plan_id": str(plan.id),
-                    "account_id": str(plan.account_id),
-                    "birthday_on": plan.birthday_on.isoformat(),
-                    "purchase_on": plan.purchase_on.isoformat(),
-                    "budget_minor": plan.budget_minor,
-                    "catalog_total_minor": plan.catalog_total_minor,
-                    "target_status": "scheduled",
-                }
+                if challenge.tool_name == "birthday.plan":
+                    normalized = {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "plan_id": str(plan.id),
+                        "account_id": str(plan.account_id),
+                        "card_id": str(plan.card_id),
+                        "birthday_on": plan.birthday_on.isoformat(),
+                        "purchase_on": plan.purchase_on.isoformat(),
+                        "budget_minor": plan.budget_minor,
+                        "catalog_total_minor": plan.catalog_total_minor,
+                        "items": [
+                            {
+                                "product_code": code,
+                                "product_name": CATALOG[code][0],
+                                "unit_price_minor": CATALOG[code][1],
+                                "quantity": 1,
+                            }
+                            for code in ("flowers", "cake")
+                        ],
+                        "merchant": "BankMate 模拟礼品商户",
+                        "pickup_location": "BankMate 模拟领取点（仅演示）",
+                        "target_status": "scheduled",
+                    }
+                    expected_status = "pending_confirmation"
+                    expected_target = "scheduled"
+                    expected_policy = BIRTHDAY_POLICY_VERSION
+                else:
+                    reservation = session.scalar(
+                        select(FundsReservation).where(FundsReservation.birthday_plan_id == plan.id)
+                    )
+                    order = session.scalar(
+                        select(BirthdayOrder).where(BirthdayOrder.plan_id == plan.id)
+                    )
+                    if reservation is None or order is None:
+                        _mark_confirmation_rejected(
+                            session,
+                            task=task,
+                            challenge=challenge,
+                            execution=execution,
+                            request_id=request_id,
+                            error_code="birthday_plan_state_conflict",
+                            outcome="rejected",
+                        )
+                        session.flush()
+                        return _task_view(session, actor_id=actor_id, task_id=task.id)
+                    normalized = {
+                        "tool_name": challenge.tool_name,
+                        "tool_version": challenge.tool_version,
+                        "plan_id": str(plan.id),
+                        "plan_version": plan.version,
+                        "reservation_id": str(reservation.id),
+                        "reservation_version": reservation.version,
+                        "order_id": str(order.id),
+                        "order_version": order.version,
+                        "target_status": challenge.target_status,
+                        "budget_minor": execution.result_data.get("budget_minor")
+                        if isinstance(execution.result_data, dict)
+                        else None,
+                    }
+                    expected_status = "scheduled"
+                    expected_target = {
+                        "birthday.budget_update": "updated",
+                        "birthday.cancel": "cancelled",
+                    }.get(challenge.tool_name)
+                    expected_policy = BIRTHDAY_POLICY_VERSION
                 if (
                     plan.version != challenge.birthday_plan_version
-                    or plan.status != "pending_confirmation"
-                    or challenge.target_status != "scheduled"
-                    or challenge.tool_name != "birthday.plan"
+                    or plan.status != expected_status
+                    or challenge.target_status != expected_target
+                    or challenge.tool_name
+                    not in {"birthday.plan", "birthday.budget_update", "birthday.cancel"}
                     or challenge.tool_version != TOOL_VERSION
-                    or challenge.policy_version != BIRTHDAY_POLICY_VERSION
+                    or challenge.policy_version != expected_policy
                     or _hash(normalized) != challenge.parameters_hash
                     or execution.input_hash != challenge.parameters_hash
                     or execution.idempotency_key != challenge.idempotency_key
@@ -2469,10 +2701,144 @@ def confirm_task_operation(
                     return _task_view(session, actor_id=actor_id, task_id=task.id)
                 try:
                     with session.begin_nested():
-                        result = confirm_birthday_plan(
+                        if challenge.tool_name == "birthday.plan":
+                            result = confirm_birthday_plan(
+                                session,
+                                actor_id=actor_id,
+                                plan_id=plan.id,
+                                request_id=request_id,
+                                task_id=task.id,
+                                tool_execution_id=execution.id,
+                            )
+                        else:
+                            result = confirm_birthday_plan_change(
+                                session,
+                                actor_id=actor_id,
+                                plan_id=plan.id,
+                                target_status=challenge.target_status,
+                                budget_minor=normalized["budget_minor"],
+                                request_id=request_id,
+                                task_id=task.id,
+                                tool_execution_id=execution.id,
+                            )
+                except BankingRuleError as exc:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code=exc.code,
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                _transition(task, "running")
+                challenge.status = "consumed"
+                challenge.consumed_at = utc_now()
+                message = (
+                    "生日预算已预留；到期后仍需再次确认模拟订单。"
+                    if challenge.tool_name == "birthday.plan"
+                    else "生日预算已调整，预留金额已按新预算更新。"
+                    if challenge.tool_name == "birthday.budget_update"
+                    else "生日计划已取消，剩余预留资金已释放。"
+                )
+                return _complete_confirmed_resource(
+                    session,
+                    actor_id=actor_id,
+                    task=task,
+                    challenge=challenge,
+                    execution=execution,
+                    request_id=request_id,
+                    resource_type="birthday_plan",
+                    resource_id=plan.id,
+                    result_data=result,
+                    result_summary=message,
+                    user_message=message,
+                    before_state={"status": expected_status},
+                    after_state={
+                        "status": result.get("status"),
+                        "funds_held": result.get("funds_held"),
+                        "held_minor": result.get("held_minor"),
+                        "order_status": result.get("order_status"),
+                    },
+                )
+
+            if challenge.birthday_order_id is not None:
+                order = session.scalar(
+                    select(BirthdayOrder).where(
+                        BirthdayOrder.id == challenge.birthday_order_id,
+                        BirthdayOrder.actor_id == actor_id,
+                    )
+                )
+                if order is None:
+                    raise AgentTaskNotFoundError
+                plan = session.get(BirthdayPlan, order.plan_id)
+                reservation = session.scalar(
+                    select(FundsReservation).where(
+                        FundsReservation.birthday_plan_id == order.plan_id
+                    )
+                )
+                card = session.get(Card, order.card_id)
+                if plan is None or reservation is None or card is None:
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="birthday_order_state_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                normalized = {
+                    "tool_name": challenge.tool_name,
+                    "tool_version": challenge.tool_version,
+                    "plan_id": str(plan.id),
+                    "order_id": str(order.id),
+                    "reservation_id": str(reservation.id),
+                    "account_id": str(order.account_id),
+                    "card_id": str(order.card_id),
+                    "card_version": card.version,
+                    "order_version": order.version,
+                    "reservation_version": reservation.version,
+                    "items": order.items,
+                    "amount_minor": order.total_amount_minor,
+                    "currency": order.currency,
+                    "merchant": order.merchant,
+                    "pickup_location": order.pickup_location,
+                    "scheduled_for": order.scheduled_for.isoformat(),
+                    "target_status": "paid",
+                }
+                if (
+                    order.version != challenge.birthday_order_version
+                    or order.status != "awaiting_confirmation"
+                    or challenge.target_status != "paid"
+                    or challenge.tool_name != "birthday.order"
+                    or challenge.tool_version != TOOL_VERSION
+                    or challenge.policy_version != BIRTHDAY_ORDER_POLICY_VERSION
+                    or _hash(normalized) != challenge.parameters_hash
+                    or execution.input_hash != challenge.parameters_hash
+                    or execution.idempotency_key != challenge.idempotency_key
+                ):
+                    _mark_confirmation_rejected(
+                        session,
+                        task=task,
+                        challenge=challenge,
+                        execution=execution,
+                        request_id=request_id,
+                        error_code="birthday_order_version_conflict",
+                        outcome="rejected",
+                    )
+                    session.flush()
+                    return _task_view(session, actor_id=actor_id, task_id=task.id)
+                try:
+                    with session.begin_nested():
+                        result = confirm_birthday_order(
                             session,
                             actor_id=actor_id,
-                            plan_id=plan.id,
+                            order_id=order.id,
                             request_id=request_id,
                             task_id=task.id,
                             tool_execution_id=execution.id,
@@ -2492,7 +2858,7 @@ def confirm_task_operation(
                 _transition(task, "running")
                 challenge.status = "consumed"
                 challenge.consumed_at = utc_now()
-                message = "生日预算意向与到期提醒已保存；资金未冻结，鲜花和蛋糕尚未购买。"
+                message = "生日礼品模拟订单已支付，余额、流水和预留记录已更新。"
                 return _complete_confirmed_resource(
                     session,
                     actor_id=actor_id,
@@ -2500,13 +2866,13 @@ def confirm_task_operation(
                     challenge=challenge,
                     execution=execution,
                     request_id=request_id,
-                    resource_type="birthday_plan",
-                    resource_id=plan.id,
+                    resource_type="birthday_order",
+                    resource_id=order.id,
                     result_data=result,
                     result_summary=message,
                     user_message=message,
-                    before_state={"status": "pending_confirmation"},
-                    after_state={"status": "scheduled", "funds_held": False, "order_placed": False},
+                    before_state={"status": "awaiting_confirmation"},
+                    after_state={"status": "paid", "amount_minor": order.total_amount_minor},
                 )
 
             if challenge.card_application_id is not None:

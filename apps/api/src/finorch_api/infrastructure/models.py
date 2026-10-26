@@ -624,14 +624,14 @@ class AuditEvent(Base):
 
 
 class BirthdayPlan(Base):
-    """A confirmed budget intention and due reminder, never a funds hold or order."""
+    """An actor-owned synthetic birthday plan with a bounded budget reservation."""
 
     __tablename__ = "birthday_plans"
     __table_args__ = (
         CheckConstraint("budget_minor > 0", name="birthday_budget_positive"),
         CheckConstraint("catalog_total_minor > 0", name="birthday_catalog_total_positive"),
         CheckConstraint(
-            "status in ('pending_confirmation', 'scheduled', 'cancelled')",
+            "status in ('pending_confirmation', 'scheduled', 'cancelled', 'completed')",
             name="birthday_status_allowed",
         ),
         Index("ix_birthday_plans_actor_due", "actor_id", "purchase_on"),
@@ -644,6 +644,9 @@ class BirthdayPlan(Base):
     account_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
     )
+    card_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("cards.id", ondelete="RESTRICT"), nullable=True
+    )
     birthday_on: Mapped[date] = mapped_column(Date, nullable=False)
     purchase_on: Mapped[date] = mapped_column(Date, nullable=False)
     budget_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -652,6 +655,99 @@ class BirthdayPlan(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    __mapper_args__ = {"version_id_col": version}
+
+
+class FundsReservation(Base):
+    """Synthetic funds held for one confirmed plan without debiting the account."""
+
+    __tablename__ = "fund_reservations"
+    __table_args__ = (
+        UniqueConstraint("birthday_plan_id", name="uq_fund_reservations_birthday_plan"),
+        CheckConstraint("amount_minor > 0", name="reservation_amount_positive"),
+        CheckConstraint("held_minor >= 0", name="reservation_held_nonnegative"),
+        CheckConstraint("consumed_minor >= 0", name="reservation_consumed_nonnegative"),
+        CheckConstraint("released_minor >= 0", name="reservation_released_nonnegative"),
+        CheckConstraint(
+            "status in ('held', 'consumed', 'released')", name="reservation_status_allowed"
+        ),
+        CheckConstraint(
+            "amount_minor = held_minor + consumed_minor + released_minor",
+            name="reservation_amount_reconciles",
+        ),
+        Index("ix_fund_reservations_account_status", "account_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("demo_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    birthday_plan_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("birthday_plans.id", ondelete="RESTRICT"), nullable=False
+    )
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    held_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    consumed_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    released_minor: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="held")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    __mapper_args__ = {"version_id_col": version}
+
+
+class BirthdayOrder(Base):
+    """A scheduled or confirmed simulated order for a birthday plan."""
+
+    __tablename__ = "birthday_orders"
+    __table_args__ = (
+        UniqueConstraint("plan_id", name="uq_birthday_orders_plan"),
+        CheckConstraint("total_amount_minor > 0", name="birthday_order_amount_positive"),
+        CheckConstraint(
+            "status in ('scheduled', 'awaiting_confirmation', 'confirmed', 'paid', "
+            "'failed', 'cancelled')",
+            name="birthday_order_status_allowed",
+        ),
+        Index("ix_birthday_orders_due", "status", "scheduled_for"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("demo_users.id", ondelete="RESTRICT"), nullable=False
+    )
+    plan_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("birthday_plans.id", ondelete="RESTRICT"), nullable=False
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    card_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("cards.id", ondelete="RESTRICT"), nullable=False
+    )
+    merchant: Mapped[str] = mapped_column(String(80), nullable=False)
+    items: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
+    total_amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    pickup_location: Mapped[str] = mapped_column(String(120), nullable=False)
+    scheduled_for: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="scheduled")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    due_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    transaction_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("transactions.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
     __mapper_args__ = {"version_id_col": version}
 
 
@@ -836,7 +932,7 @@ class ConfirmationChallenge(Base):
         UniqueConstraint("tool_execution_id", name="uq_confirmation_challenges_tool_execution_id"),
         CheckConstraint(
             "target_status in ('active', 'frozen', 'paused', 'cancelled', 'executed', "
-            "'scheduled', 'open', 'settled', 'lost', 'replaced', 'submitted', 'updated')",
+            "'scheduled', 'open', 'settled', 'lost', 'replaced', 'submitted', 'updated', 'paid')",
             name="challenge_target_status_allowed",
         ),
         CheckConstraint(
@@ -846,7 +942,8 @@ class ConfirmationChallenge(Base):
             "case when split_bill_id is not null then 1 else 0 end + "
             "case when investment_order_id is not null then 1 else 0 end + "
             "case when card_application_id is not null then 1 else 0 end + "
-            "case when birthday_plan_id is not null then 1 else 0 end) = 1",
+            "case when birthday_plan_id is not null then 1 else 0 end + "
+            "case when birthday_order_id is not null then 1 else 0 end) = 1",
             name="challenge_single_resource",
         ),
         CheckConstraint(
@@ -891,6 +988,9 @@ class ConfirmationChallenge(Base):
     birthday_plan_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("birthday_plans.id"), nullable=True
     )
+    birthday_order_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("birthday_orders.id"), nullable=True
+    )
     subscription_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey(
@@ -924,6 +1024,7 @@ class ConfirmationChallenge(Base):
     card_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     card_application_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     birthday_plan_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    birthday_order_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subscription_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     transfer_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_bill_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

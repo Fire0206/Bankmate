@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from finorch_api.agent.context import ToolCallContext
 from finorch_api.application.confirmation import create_confirmation_challenge, parameters_hash
 from finorch_api.application.errors import BankingRuleError
+from finorch_api.application.funds import available_balance_minor
 from finorch_api.infrastructure.models import Account, AuditEvent, Card, Transaction, utc_now
 from finorch_api.security.risk_policy import business_day_bounds
 
@@ -272,6 +273,8 @@ def execute_card_purchase(
     )
     if account is None or account.currency != "CNY":
         raise BankingRuleError("account_not_found", "卡片绑定账户不可用。")
+    if available_balance_minor(session, account=account) < amount:
+        raise BankingRuleError("insufficient_funds", "扣除已预留资金后，可用余额不足，消费未执行。")
     debit = session.execute(
         update(Account)
         .where(Account.id == account.id, Account.balance_minor >= amount)

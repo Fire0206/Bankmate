@@ -4,7 +4,7 @@
 
 ## 项目与目录
 
-- 面向用户的产品品牌为 BankMate，FinOrch 保留为仓库及内部技术标识。BankMate 目标是模拟银行场景的 AI Banking Agent。六大场景及跨场景联动已实现；Phase 2C 的只读财务提示/资金计划预览和独立 `/showcase` 展示已交付。真实模型小样本结果与限制见 `docs/development.md`。交接字段与扩展能力见 `docs/frontend-handoff.md`。生产认证、真实金融服务及生产部署仍为 Planned。所有金额、产品与账户数据均为合成数据。
+- 面向用户的产品品牌为 BankMate，FinOrch 保留为仓库及内部技术标识。六大模拟场景及跨场景联动已实现；卡片申请/限额、风险问卷、续费提醒、人工接管、生日预算预留和需二次确认的模拟订单也已实现。队友维护的 `/showcase` 用于独立前端联调；生日预留、到期付款确认和任务刷新恢复已通过本地合成 API 浏览器验收；高风险 OTP 输入入口已显示，但本轮没有在 UI 中提交验证码。详见 `docs/BANKMATE_ACCEPTANCE_MATRIX.md`。真实模型小样本结果与限制见 `docs/development.md`。生产认证、真实金融服务及生产部署仍为 Planned。所有金额、产品与账户数据均为合成数据。
 - 技术栈：`apps/web` 使用 React、TypeScript、Vite、Tailwind CSS、pnpm；`apps/api` 使用 Python、FastAPI、Pydantic、SQLAlchemy、SQLite、Alembic、uv、pytest。单 Agent、持久化 Workflow、多确认续跑、受控 Tool Registry、Fake Provider 和 OpenAI-compatible Provider Adapter 已实现；发薪日调度和可疑扣款处置有版本化持久依赖图，工具入口再次校验依赖。服务端提供必需下一步骤时，兼容 Provider 使用指定工具选择，服务端仍校验工具、参数、权限和确认。理财申购由服务端要求同一任务提供适当性查询结果。真实模型验证结果以当前分支的实际测试记录为准，不得沿用过期状态或夸大样本。
 - `docs/` 是架构、产品、API、Agent、Workflow、安全、开发和协作契约入口；`docs/decisions/` 保存 ADR。
 - 逻辑分层：Web UI；API 验证和响应；Application 流程；Domain 规则；Infrastructure 存储/外部适配；Agent 意图/规划/工具编排；Security 授权/确认/策略/审计。按需落地，不为逻辑分层制造空模块。

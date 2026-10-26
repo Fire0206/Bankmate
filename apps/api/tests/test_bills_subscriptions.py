@@ -132,6 +132,30 @@ def test_annual_report_aggregates_owned_transactions_and_agent_reads_it(bill_age
     assert client.get("/api/v1/bills/annual?year=1999").status_code == 422
 
 
+def test_fake_agent_completes_annual_report_and_renewal_reminders_together(bill_agent_context):
+    client, _actor, _database = bill_agent_context
+    annual = client.get("/api/v1/bills/annual", params={"year": 2026}).json()
+
+    task = submit(
+        client,
+        "查看2026年度账单，并列出即将到期的续费提醒",
+        "annual-bill-and-reminders",
+    )
+
+    assert task["status"] == "completed", [
+        (step["tool_name"], step["status"], step["error_code"]) for step in task["steps"]
+    ]
+    successful_tools = [
+        step["tool_name"]
+        for step in task["steps"]
+        if step["tool_name"] and step["status"] == "succeeded"
+    ]
+    assert successful_tools.count("bill.annual_report") == 1
+    assert successful_tools.count("subscription.reminders") == 1
+    assert tool_result(task, "bill.annual_report")["expense_minor"] == annual["expense_minor"]
+    assert len(tool_result(task, "subscription.reminders")["items"]) == 3
+
+
 def test_transaction_filters_and_demo_actor_scope(bill_agent_context):
     client, actor, _database = bill_agent_context
     response = client.get(

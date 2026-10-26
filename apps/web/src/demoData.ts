@@ -35,12 +35,14 @@ export const demoAccounts: AccountBalanceListResponse = {
       label: "Everyday account",
       currency: "CNY",
       balance_minor: 1_250_000,
+      available_balance_minor: 1_250_000,
     },
     {
       id: "10000000-0000-4000-8000-000000000002",
       label: "Savings account",
       currency: "CNY",
       balance_minor: 8_000_000,
+      available_balance_minor: 8_000_000,
     },
   ],
 };

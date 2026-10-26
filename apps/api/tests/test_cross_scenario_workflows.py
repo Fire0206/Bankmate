@@ -486,7 +486,7 @@ def test_payday_clarification_preserves_goal_and_resumes_after_input(workflow_co
     assert task["confirmation"]["resource_type"] == "transfer"
 
 
-def test_out_of_order_transfer_is_blocked_then_retried_after_suitability_read(
+def test_out_of_order_transfer_is_rejected_before_suitability_read(
     workflow_context,
 ) -> None:
     client, database = workflow_context
@@ -504,17 +504,14 @@ def test_out_of_order_transfer_is_blocked_then_retried_after_suitability_read(
     finally:
         app.dependency_overrides[get_provider_selection] = previous_override
 
-    assert task["status"] == "awaiting_confirmation", task
-    assert task["confirmation"]["resource_type"] == "transfer"
-    assert "investment.products" in tool_names(task)
-    blocked = [
-        step for step in task["steps"] if step.get("error_code") == "workflow_step_not_ready"
-    ]
-    assert len(blocked) == 1
-    assert blocked[0]["status"] == "failed"
+    assert task["status"] == "failed", task
+    assert task["error_code"] == "agent_required_tool_mismatch"
+    assert tool_names(task) == []
+    assert task["confirmation"] is None
     with database.session_factory() as session:
-        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 1
+        assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
         assert session.scalar(select(func.count()).select_from(InvestmentOrder)) == 0
+        assert session.scalar(select(func.count()).select_from(Transfer)) == 0
         source = session.get(Account, SOURCE_ACCOUNT_ID)
         assert source is not None and source.balance_minor == 1_250_000
 
@@ -536,9 +533,8 @@ def test_investment_proposal_cannot_bypass_required_transfer(workflow_context) -
         )
 
     assert task["status"] == "failed"
-    # The provider repeats an invalid call ID after the first premature buy is
-    # blocked; the runtime rejects that response without any business effect.
-    assert task["error_code"] == "llm_provider_invalid_response"
+    # A model write proposal cannot replace the server-required product read.
+    assert task["error_code"] == "agent_required_tool_mismatch"
     assert task["confirmation"] is None
     with database.session_factory() as session:
         assert session.scalar(select(func.count()).select_from(ConfirmationChallenge)) == 0
@@ -874,7 +870,6 @@ class _PaydayRequiredToolProbe:
     def complete_required_tool(
         self, messages: list[dict], tools: list[dict], tool_name: str
     ) -> ModelTurn:
-        assert tool_name == "transfer.create"
         context = next(
             json.loads(message["content"].removeprefix("Trusted demo context: "))
             for message in messages
@@ -886,7 +881,13 @@ class _PaydayRequiredToolProbe:
             for item in context.get("task_progress", {}).get("tools", [])
             if item.get("status") == "succeeded"
         }
-        assert {"finance.payday_plan", "investment.products"} <= succeeded
+        expected_dependencies = {
+            "finance.payday_plan": set(),
+            "investment.products": {"finance.payday_plan"},
+            "transfer.create": {"finance.payday_plan", "investment.products"},
+        }
+        assert tool_name in expected_dependencies
+        assert expected_dependencies[tool_name] <= succeeded
         self.required_calls += 1
         return self.delegate.complete(messages, tools)
 

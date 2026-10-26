@@ -67,6 +67,18 @@ def user_authorized_write(request_text: str, tool_name: str) -> bool:
             value is not None
             for value in (intent.birthday_on, intent.budget_minor, intent.account_label)
         )
+    if tool_name == "birthday.order":
+        return "生日" in request and any(
+            term in request for term in ("确认购买", "现在订", "下单", "购买", "订购")
+        )
+    if tool_name == "birthday.budget_update":
+        return (
+            "生日" in request
+            and "预算" in request
+            and any(term in request for term in ("调整", "改为", "增加", "减少", "提高", "降低"))
+        )
+    if tool_name == "birthday.cancel":
+        return "生日" in request and "取消" in request
     if tool_name == "investment.buy":
         return has_explicit_investment_write_intent(request) and "赎回" not in request
     if tool_name == "investment.redeem":

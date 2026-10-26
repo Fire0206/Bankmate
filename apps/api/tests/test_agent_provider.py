@@ -307,6 +307,74 @@ def test_runtime_uses_provider_required_tool_entrypoint_for_pending_workflow_ste
     assert result.status == "awaiting_confirmation"
 
 
+def test_runtime_forces_missing_persisted_workflow_dependency_after_block() -> None:
+    registry = ToolRegistry(
+        (
+            ToolSpec(
+                name="card.catalog",
+                description="Read the synthetic gift catalog.",
+                version="1.0",
+                input_model=EmptyToolInput,
+                output_model=CardListOutput,
+                permission_level="read_only",
+                risk_level="low",
+                confirmation_requirement="never",
+                handler=lambda _arguments, _context: {"items": []},
+            ),
+            ToolSpec(
+                name="birthday.plan",
+                description="Propose a synthetic birthday plan.",
+                version="1.0",
+                input_model=EmptyToolInput,
+                output_model=CardListOutput,
+                permission_level="funds_write",
+                risk_level="medium",
+                confirmation_requirement="always",
+                handler=lambda _arguments, _context: {},
+            ),
+        )
+    )
+
+    class DependencyProvider(FakeProvider):
+        def __init__(self) -> None:
+            self.required_tools: list[str] = []
+
+        def complete(self, messages, tools):
+            del messages, tools
+            return ModelTurn(None, (ModelToolCall("plan-call", "birthday.plan", "{}"),))
+
+        def complete_required_tool(self, messages, tools, tool_name):
+            del messages
+            self.required_tools.append(tool_name)
+            assert tool_name == "card.catalog"
+            assert [item["function"]["name"] for item in tools] == ["card__catalog"]
+            return ModelTurn(None, (ModelToolCall("catalog-call", "card__catalog", "{}"),))
+
+    provider = DependencyProvider()
+    dispatched: list[str] = []
+
+    def dispatch(spec, _arguments, _call, _sequence, _error):
+        dispatched.append(spec.name)
+        if spec.name == "birthday.plan":
+            return ToolDispatchResult(
+                "blocked",
+                {"status": "blocked", "required_next_tools": ["card.catalog"]},
+            )
+        return ToolDispatchResult("succeeded", {"items": []})
+
+    result = AgentRuntime(provider).run(
+        request_text="Plan a birthday gift.",
+        trusted_context={},
+        registry=registry,
+        dispatch=dispatch,
+        allowed_write_tools=frozenset({"birthday.plan"}),
+    )
+
+    assert result.status == "completed"
+    assert provider.required_tools == ["card.catalog"]
+    assert dispatched == ["birthday.plan", "card.catalog"]
+
+
 def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
     monkeypatch, tmp_path
 ) -> None:

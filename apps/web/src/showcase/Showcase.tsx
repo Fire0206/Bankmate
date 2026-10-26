@@ -191,10 +191,25 @@ function dateLabel(value: string | null | undefined): string {
       }).format(date);
 }
 
+function dateTimeLabel(value: string | null | undefined): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : new Intl.DateTimeFormat("zh-CN", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(date);
+}
+
 function statusName(status: string): string {
   const labels: Record<string, string> = {
     active: "正常",
     frozen: "已冻结",
+    pending_confirmation: "待确认",
+    due_for_confirmation: "到期待确认",
     paused: "已暂停",
     cancelled: "已取消",
     awaiting_confirmation: "等待确认",
@@ -208,6 +223,11 @@ function statusName(status: string): string {
     failed: "未完成",
     scheduled: "待执行",
     executed: "已执行",
+    lost: "已挂失",
+    replaced: "已补卡",
+    submitted: "已提交",
+    updated: "已更新",
+    paid: "已支付",
     open: "待收款",
     settled: "已结清",
   };
@@ -1002,37 +1022,173 @@ function ConfirmationPanel({
 }: {
   confirmation: Confirmation;
   busy: boolean;
-  onConfirm: () => void;
+  onConfirm: (verificationCode?: string) => void;
   onCancel: () => void;
 }) {
+  const [verificationCode, setVerificationCode] = useState("");
   const details = confirmation.details ?? {};
-  const operation =
-    confirmation.target_status === "frozen"
-      ? "冻结银行卡"
-      : confirmation.target_status === "active"
-        ? "恢复自动续费"
-        : confirmation.target_status === "paused"
-          ? "暂停自动续费"
-          : confirmation.target_status === "cancelled"
-            ? "取消自动续费"
-            : confirmation.target_status === "executed"
-              ? "确认资金操作"
-              : "确认操作";
-  const amount =
-    typeof details.amount_minor === "number"
-      ? money(details.amount_minor)
+  const currency =
+    typeof details.currency === "string" ? details.currency : "CNY";
+  const readText = (key: string): string | null => {
+    const value = details[key];
+    return typeof value === "string" && value.trim() ? value : null;
+  };
+  const readAmount = (key: string): string | null =>
+    typeof details[key] === "number"
+      ? money(details[key] as number, currency)
       : null;
+  const rows: Array<[string, string]> = [];
+  const addText = (label: string, key: string) => {
+    const value = readText(key);
+    if (value) rows.push([label, value]);
+  };
+  const addAmount = (label: string, key: string) => {
+    const value = readAmount(key);
+    if (value) rows.push([label, value]);
+  };
+
+  if (confirmation.resource_type === "birthday_order") {
+    const products = Array.isArray(details.items)
+      ? details.items.flatMap((value) => {
+          if (typeof value !== "object" || value === null) return [];
+          const item = value as Record<string, unknown>;
+          const name =
+            typeof item.product_name === "string"
+              ? item.product_name
+              : typeof item.product_code === "string"
+                ? item.product_code
+                : "商品";
+          const quantity =
+            typeof item.quantity === "number" ? item.quantity : 1;
+          return [`${name} × ${quantity}`];
+        })
+      : [];
+    if (products.length) rows.push(["商品", products.join("、")]);
+    addText("生日日期", "birthday_on");
+    addText("预订日期", "scheduled_for");
+    addAmount("订单金额", "amount_minor");
+    addAmount("已预留预算", "held_minor");
+    addText("付款账户", "account_label");
+    addText("银行卡尾号", "card_suffix");
+    addText("模拟商户", "merchant");
+    addText("领取方式", "pickup_location");
+  } else if (confirmation.resource_type === "birthday_plan") {
+    const products = Array.isArray(details.items)
+      ? details.items.flatMap((value) => {
+          if (typeof value !== "object" || value === null) return [];
+          const item = value as Record<string, unknown>;
+          const name =
+            typeof item.product_name === "string"
+              ? item.product_name
+              : typeof item.product_code === "string"
+                ? item.product_code
+                : "商品";
+          const quantity =
+            typeof item.quantity === "number" ? item.quantity : 1;
+          return [name + " × " + quantity];
+        })
+      : [];
+    if (products.length) rows.push(["预订商品", products.join("、")]);
+    addText("生日日期", "birthday_on");
+    addText("预订日期", "purchase_on");
+    addAmount("当前预算", "current_budget_minor");
+    addAmount(
+      confirmation.target_status === "updated" ? "调整为" : "预算",
+      confirmation.target_status === "updated"
+        ? "proposed_budget_minor"
+        : "budget_minor",
+    );
+    addAmount("商品参考总价", "catalog_total_minor");
+    addText("付款账户", "account_label");
+    addText("银行卡尾号", "card_suffix");
+  } else if (confirmation.resource_type === "split") {
+    addAmount("总金额", "total_amount_minor");
+    const participants = Array.isArray(details.participants)
+      ? details.participants.flatMap((value) => {
+          if (typeof value !== "object" || value === null) return [];
+          const person = value as Record<string, unknown>;
+          if (typeof person.display_name !== "string") return [];
+          const share =
+            typeof person.amount_minor === "number"
+              ? ` ${money(person.amount_minor, currency)}`
+              : "";
+          return [`${person.display_name}${share}`];
+        })
+      : [];
+    if (participants.length) rows.push(["参与人", participants.join("、")]);
+  } else if (confirmation.resource_type === "transfer") {
+    addText("收款人", "payee_name");
+    addAmount("转账金额", "amount_minor");
+    addText("付款账户", "source_account_label");
+    addText("备注", "remark");
+    addText("执行日期", "scheduled_at");
+  } else if (confirmation.resource_type === "investment_order") {
+    addText("理财产品", "product_name");
+    addAmount("操作金额", "amount_minor");
+    addText("操作类型", "order_type");
+    addText("付款账户", "account_label");
+  } else if (confirmation.resource_type === "card") {
+    addText("银行卡尾号", "card_suffix");
+    addText("商品", "product_name");
+    addAmount("消费金额", "amount_minor");
+    addAmount("单笔限额", "single_limit_minor");
+    addAmount("每日限额", "daily_limit_minor");
+  } else if (confirmation.resource_type === "subscription") {
+    addText("商户", "merchant");
+    addAmount("周期金额", "amount_minor");
+  }
+
+  const operation =
+    confirmation.tool_name === "card.report_lost"
+      ? "挂失银行卡"
+      : confirmation.tool_name === "card.replace"
+        ? "补办银行卡"
+        : confirmation.tool_name === "card.controls"
+          ? "调整银行卡设置"
+          : confirmation.tool_name === "card.purchase"
+            ? "确认模拟消费"
+            : confirmation.resource_type === "birthday_order"
+              ? "确认生日礼品订单"
+              : confirmation.resource_type === "birthday_plan"
+                ? confirmation.target_status === "updated"
+                  ? "调整生日预算"
+                  : confirmation.target_status === "cancelled"
+                    ? "取消生日计划"
+                    : "预留生日预算"
+                : confirmation.resource_type === "investment_order"
+                  ? confirmation.tool_name === "investment.buy"
+                    ? "确认模拟申购"
+                    : "确认模拟赎回"
+                  : confirmation.target_status === "frozen"
+                    ? "冻结银行卡"
+                    : confirmation.resource_type === "card" &&
+                        confirmation.target_status === "active"
+                      ? "解冻银行卡"
+                      : confirmation.target_status === "active"
+                        ? "恢复自动续费"
+                        : confirmation.target_status === "paused"
+                          ? "暂停自动续费"
+                          : confirmation.target_status === "cancelled"
+                            ? "取消自动续费"
+                            : confirmation.target_status === "executed"
+                              ? "确认资金操作"
+                              : "确认操作";
+  const requiresOtp = confirmation.confirmation_method === "demo_otp";
+  const validOtp = /^[0-9]{6}$/.test(verificationCode);
   return (
     <section className="showcase-confirmation" aria-live="polite">
       <div>
         <span className="showcase-confirmation-label">需要你确认</span>
         <h3>{operation}</h3>
-        <p>
-          {confirmation.resource_label}
-          {amount ? ` · ${amount}` : ""}
-        </p>
+        <p>{confirmation.resource_label}</p>
       </div>
       <dl>
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
         <div>
           <dt>执行前</dt>
           <dd>{statusName(confirmation.current_status)}</dd>
@@ -1043,17 +1199,46 @@ function ConfirmationPanel({
         </div>
         <div>
           <dt>有效期至</dt>
-          <dd>{dateLabel(confirmation.expires_at)}</dd>
+          <dd>{dateTimeLabel(confirmation.expires_at)}</dd>
         </div>
       </dl>
+      {requiresOtp ? (
+        <div className="showcase-verification">
+          <label htmlFor="showcase-demo-verification">本地模拟验证码</label>
+          <input
+            autoComplete="off"
+            id="showcase-demo-verification"
+            inputMode="numeric"
+            maxLength={6}
+            onChange={(event) =>
+              setVerificationCode(
+                event.target.value.replace(/\D/g, "").slice(0, 6),
+              )
+            }
+            pattern="[0-9]{6}"
+            placeholder="输入 6 位验证码"
+            value={verificationCode}
+          />
+          <small>
+            在 API 本地终端运行{" "}
+            <code>
+              uv run --project apps/api python -m finorch_api.demo_verification
+              --latest
+            </code>{" "}
+            获取。它只用于模拟强验证，不是短信或银行验证码。
+          </small>
+        </div>
+      ) : null}
       <p className="showcase-note">
-        确认后只执行此处显示的模拟操作。确认由服务端校验，页面不会直接改动业务状态。
+        {requiresOtp
+          ? "这是高风险模拟操作。验证码与当前确认绑定，服务端会再次校验权限、参数和卡片状态。"
+          : "确认后只执行此处显示的模拟操作。确认由服务端校验，页面不会直接改动业务状态。"}
       </p>
       <div className="showcase-button-row">
         <button
           className="showcase-button showcase-button-primary"
-          disabled={busy}
-          onClick={onConfirm}
+          disabled={busy || (requiresOtp && !validOtp)}
+          onClick={() => onConfirm(requiresOtp ? verificationCode : undefined)}
           type="button"
         >
           确认操作
@@ -1072,9 +1257,69 @@ function ConfirmationPanel({
 }
 
 function resultDescription(
+  toolName: string | null,
   data: Record<string, unknown> | null,
 ): string | null {
   if (!data) return null;
+  if (toolName === "bill.monthly_summary") {
+    const currency = typeof data.currency === "string" ? data.currency : "CNY";
+    const totals = [
+      typeof data.income_minor === "number"
+        ? "收入 " + money(data.income_minor, currency)
+        : null,
+      typeof data.expense_minor === "number"
+        ? "支出 " + money(data.expense_minor, currency)
+        : null,
+      typeof data.net_minor === "number"
+        ? "结余 " + money(data.net_minor, currency)
+        : null,
+    ].filter((value): value is string => value !== null);
+    const month = typeof data.month === "string" ? data.month : "月度账单";
+    const anomalyCount = Array.isArray(data.anomalies)
+      ? data.anomalies.length
+      : 0;
+    if (anomalyCount) totals.push(anomalyCount + " 条账单提示");
+    return [month, ...totals].join(" · ");
+  }
+  if (toolName === "bill.annual_report") {
+    const year =
+      typeof data.year === "number" ? `${data.year} 年度` : "年度账单";
+    const totals = [
+      typeof data.income_minor === "number"
+        ? `收入 ${money(data.income_minor, typeof data.currency === "string" ? data.currency : "CNY")}`
+        : null,
+      typeof data.expense_minor === "number"
+        ? `支出 ${money(data.expense_minor, typeof data.currency === "string" ? data.currency : "CNY")}`
+        : null,
+      typeof data.net_minor === "number"
+        ? `结余 ${money(data.net_minor, typeof data.currency === "string" ? data.currency : "CNY")}`
+        : null,
+    ].filter((value): value is string => value !== null);
+    if (typeof data.top_expense_category === "string")
+      totals.push(`主要支出：${data.top_expense_category}`);
+    return [year, ...totals].join(" · ");
+  }
+  if (toolName === "subscription.reminders") {
+    const reminders = Array.isArray(data.items)
+      ? data.items.flatMap((value) => {
+          if (typeof value !== "object" || value === null) return [];
+          const item = value as Record<string, unknown>;
+          if (typeof item.merchant !== "string") return [];
+          const amount =
+            typeof item.amount_minor === "number"
+              ? ` ${money(item.amount_minor, typeof item.currency === "string" ? item.currency : "CNY")}`
+              : "";
+          const due =
+            typeof item.next_charge_at === "string"
+              ? ` · 下次扣款 ${dateLabel(item.next_charge_at)}`
+              : "";
+          return [`${item.merchant}${amount}${due}`];
+        })
+      : [];
+    return reminders.length
+      ? reminders.slice(0, 3).join("；")
+      : "未来 30 天暂无续费提醒。";
+  }
   const preferred = [
     "merchant",
     "product_name",
@@ -1230,7 +1475,7 @@ function AgentPanel({
     }
   };
 
-  const confirm = async () => {
+  const confirm = async (verificationCode?: string) => {
     if (!task?.confirmation || busy) return;
     setBusy(true);
     setError("");
@@ -1242,6 +1487,7 @@ function AgentPanel({
           challenge.id,
           challenge.parameters_hash,
           challenge.idempotency_key,
+          verificationCode,
         ),
       );
     } catch (reason) {
@@ -1358,8 +1604,10 @@ function AgentPanel({
                         {errorLabelMap[step.error_code] ?? "该步骤未完成。"}
                       </p>
                     ) : null}
-                    {resultDescription(step.result_data) ? (
-                      <small>{resultDescription(step.result_data)}</small>
+                    {resultDescription(step.tool_name, step.result_data) ? (
+                      <small>
+                        {resultDescription(step.tool_name, step.result_data)}
+                      </small>
                     ) : null}
                   </div>
                   <span>{statusName(step.status)}</span>
@@ -1370,10 +1618,11 @@ function AgentPanel({
         </div>
         {task?.confirmation ? (
           <ConfirmationPanel
+            key={task.confirmation.id}
             busy={busy}
             confirmation={task.confirmation}
             onCancel={() => void cancel()}
-            onConfirm={() => void confirm()}
+            onConfirm={(verificationCode) => void confirm(verificationCode)}
           />
         ) : null}
         {error ? (
@@ -1765,8 +2014,15 @@ function renderScene(
   return <AgentPanel data={data} onRefreshData={() => undefined} />;
 }
 
+function initialPage(): PageId {
+  const requested = window.location.hash.replace(/^#\/?/, "") as PageId;
+  return pageItems.some((item) => item.id === requested)
+    ? requested
+    : "overview";
+}
+
 export default function Showcase() {
-  const [page, setPage] = useState<PageId>("overview");
+  const [page, setPage] = useState<PageId>(initialPage);
   const [month, setMonth] = useState(currentMonth);
   const { data, loading, error, refresh } = useShowcaseData(month);
   const [assistantPrompt, setAssistantPrompt] = useState("");
@@ -1778,7 +2034,15 @@ export default function Showcase() {
 
   useEffect(() => {
     document.title = `${brand.name} · ${title}`;
-  }, [title]);
+    const pageHash = "#" + page;
+    if (window.location.hash !== pageHash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + pageHash,
+      );
+    }
+  }, [page, title]);
 
   return (
     <div className="showcase-shell">

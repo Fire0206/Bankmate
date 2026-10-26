@@ -53,7 +53,7 @@ def test_migration_creates_banking_tables_and_revision(database) -> None:
     }
     with database.engine.connect() as connection:
         revision = connection.scalar(text("SELECT version_num FROM alembic_version"))
-        assert revision == "0016_workflow_plans"
+        assert revision == "0017_birthday_reservations_orders"
         assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar_one() == 1
     assert "phone_number" in {
         column["name"] for column in inspect(database.engine).get_columns("payees")
@@ -171,7 +171,16 @@ def test_birthday_migration_preserves_existing_synthetic_accounts(tmp_path: Path
             assert connection.scalar(text("SELECT COUNT(*) FROM accounts")) == before
             assert connection.scalar(text("SELECT COUNT(*) FROM birthday_plans")) == 0
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0016_workflow_plans"
+                "0017_birthday_reservations_orders"
+            )
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'birthday_orders'"
+                    )
+                )
+                == 1
             )
             assert connection.exec_driver_sql("PRAGMA foreign_key_check").all() == []
     finally:
@@ -315,7 +324,7 @@ def test_transfer_phone_remark_migration_preserves_existing_rows(tmp_path: Path)
             ).one()
             assert transfer == (1000, None)
             assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-                "0016_workflow_plans"
+                "0017_birthday_reservations_orders"
             )
     finally:
         engine.dispose()

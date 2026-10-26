@@ -1,6 +1,8 @@
 import json
 import sys
+import threading
 from collections import Counter
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.phase2d_case_catalog import cases
 from scripts.phase2d_eval import (
     _aggregate,
+    _api_request,
     _balances_reconcile,
     _business_effect_unchanged,
     _confirmation_field_results,
@@ -122,6 +125,59 @@ def test_confirmation_gate_requires_exact_expected_fields_and_plan_amount() -> N
     assert _expected_confirmation_matches(plan_expected, investment_challenge, plan_task)
     investment_challenge["details"]["amount_minor"] = 875001
     assert not _expected_confirmation_matches(plan_expected, investment_challenge, plan_task)
+
+
+def test_confirmation_gate_checks_birthday_budget_fields() -> None:
+    expected = {
+        "resource_type": "birthday_plan",
+        "target_status": "scheduled",
+        "budget_minor": 200000,
+    }
+    challenge = {
+        "resource_type": "birthday_plan",
+        "target_status": "scheduled",
+        "details": {"budget_minor": 200000},
+    }
+
+    assert _expected_confirmation_matches(expected, challenge, {"steps": []})
+    assert _confirmation_field_results(expected, challenge, {"steps": []}) == {
+        "resource_type": True,
+        "target_status": True,
+        "budget_minor": True,
+    }
+    challenge["details"]["budget_minor"] = 200001
+    assert not _expected_confirmation_matches(expected, challenge, {"steps": []})
+
+
+def test_isolated_api_requests_bypass_system_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setenv("no_proxy", "")
+    try:
+        status, payload, _headers = _api_request(
+            f"http://127.0.0.1:{server.server_port}", "GET", "/api/v1/health", timeout=2
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=2)
+        server.server_close()
+
+    assert status == 200
+    assert payload == {"status": "ok"}
 
 
 def test_independent_confirmations_can_arrive_in_either_order_without_relaxing_fields() -> None:

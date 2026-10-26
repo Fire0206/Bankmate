@@ -1,7 +1,10 @@
+import asyncio
 import hashlib
 import logging
 import re
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -23,18 +26,38 @@ from finorch_api.api.v1.subscriptions import router as subscriptions_router
 from finorch_api.api.v1.transfers import router as transfers_router
 from finorch_api.config import get_settings
 from finorch_api.schemas import ApiError, ApiErrorResponse, ErrorDetail
+from finorch_api.subscription_scheduler import run_subscription_reminder_scheduler
 
 logger = logging.getLogger("finorch.api")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 settings = get_settings()
+logger = logging.getLogger("finorch.api")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    scheduler = None
+    if settings.environment == "development" and settings.subscription_reminder_scheduler_enabled:
+        scheduler = asyncio.create_task(run_subscription_reminder_scheduler(settings))
+        logger.info("Local subscription reminder scheduler enabled")
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.cancel()
+            await asyncio.gather(scheduler, return_exceptions=True)
+
+
 app = FastAPI(
-    title="FinOrch API",
+    title="BankMate API",
     version=settings.service_version,
     description=(
-        "Synthetic banking demo for cards, bills, subscriptions, transfers, and investments. "
+        "BankMate synthetic banking demo for cards, bills, subscriptions, transfers, and "
+        "investments. "
         "No real bank, merchant, or payment-network integration."
     ),
+    lifespan=lifespan,
     responses={
         401: {"model": ApiErrorResponse, "description": "Authentication required."},
         403: {"model": ApiErrorResponse, "description": "Permission denied."},

@@ -1,6 +1,6 @@
-# FinOrch 前端能力交接
+# BankMate 前端能力交接
 
-本文按当前 FastAPI 路由、Pydantic Schema、受控 Tool 输出和生成的 OpenAPI 核对。它说明前端现在能读取什么，以及哪些后续产品能力值得设计；不表示候选能力已经交付。
+本文按当前 FastAPI 路由、Pydantic Schema、受控 Tool 输出和生成的 OpenAPI 核对。它说明前端现在能读取什么，以及哪些后续产品能力值得设计；不表示候选能力已经交付。当前独立工作台为队友维护的 `/showcase`，本轮使用真实本地 API 和合成数据库联调：月度收支摘要、生日预算预留、到期提示、二次确认付款及刷新恢复均已在浏览器验证；高风险确认卡提供 OTP 输入，但本轮仅验证输入和取消，没有提交验证码。详见[浏览器验收矩阵](BANKMATE_ACCEPTANCE_MATRIX.md)。
 
 状态标记：
 
@@ -65,11 +65,11 @@
 
 当前异常规则是可解释的演示提示：非住房单笔支出达到 ¥1,000，以及同一账户、商户、金额、币种在同一 UTC 日期出现多笔扣款。它不是风控评分或欺诈检测。演示种子中 2026-10 有工资、餐饮、交通、住房、大额数码消费，以及腾讯视频相同金额的重复扣费样例；全部为合成流水。
 
-### 生日预算与到期提醒（部分实现）
+### 生日预算预留与到期订单
 
-`GET /api/v1/birthday-plans` 返回 `{items: BirthdayPlanResponse[]}`，仅列出当前 Demo actor 已确认的计划。每项包含 `id`、`account_id`、`account_label`、`birthday_on`（无时区日历日期）、`purchase_on`（提前两天）、`budget_minor`、`catalog_total_minor`、`currency="CNY"`、`status="scheduled"`、`due_for_reconfirmation`、`funds_held=false`、`order_placed=false`、`items[]`（固定鲜花和蛋糕的代码、名称、单价、数量）和 `next_action`。读接口按当前模拟日期计算到期提示；刷新后可重新读取。
+`GET /api/v1/birthday-plans` 返回 `{items: BirthdayPlanResponse[]}`，仅列当前 Demo actor 的已确认/取消/完成计划，不返回尚未确认的提案。`BirthdayPlanResponse` 字段：`id`、`account_id`、`account_label`、可空 `card_suffix`、`birthday_on`、`purchase_on`（按服务端约定提前两天）、`budget_minor`、`catalog_total_minor`、`currency="CNY"`、`status` (`pending_confirmation`/`scheduled`/`cancelled`/`completed`)、`due_for_confirmation`、`due_for_reconfirmation`、`funds_held`、`held_minor`、可空 `order_status`、`order_placed`、`items[]`、可空 `order` 和 `next_action`。计划商品的项目含 `product_code`、`product_name`、`unit_price_minor`、`quantity`。`order` 含 `id`、`merchant`、`items[]`、`total_amount_minor`、`currency`、`pickup_location`、`scheduled_for`、`status`、可空 `transaction_id` 和 `paid_at`。到期扫描仅把订单设为 `awaiting_confirmation`；刷新后重新读取服务端状态，不在前端推断到期或付款。
 
-助手中的 `birthday.plan` 只生成服务端确认提案。确认卡须显示账户、日期、预算和参考总价；确认后保存预算意向，不锁资金、不扣款、不生成订单。`birthday.list` 可用自然语言查询。到期时只能提示用户重新确认购买，不能展示“已购买”或自动调用 `card.purchase`；后续模拟购买还需卡片、余额、限额与交付方式核对。建议前端用简洁时间线呈现“预算已保存 → 到期待再次确认 → 实际购买尚未执行”，不要把计划等同于真实预订。
+助手中的 `birthday.plan` 先生成确认提案，proposal 的 `details` 有生日/购买日期、账户、卡尾号、预算和商品总价；首次确认成功后后端在同一事务创建资金预留和唯一模拟订单。`funds_held=true` 表示从可用余额预留，不会减少账户总余额。到期订单仍须由用户发起 `birthday.order`，创建新的确认挑战；成功付款后，订单、交易、预留消耗/释放和审计一起提交。界面应区分“预算已预留”“到期待确认”“订单已模拟支付”，并展示商品、金额、账户/卡片和领取方式。`birthday.order` 以及高风险限额计划可要求 `confirmation_method="demo_otp"`；确认请求 DTO 提供可空 `verification_code`，但当服务端要求 OTP 时必须填入有效六码。验证码只通过本地开发终端获得，不允许由模型生成、从 Task 详情读取或保存在浏览器。本轮 `/showcase` 浏览器实测了生日预算预留与到期订单付款；挂失确认 UI 已展示 OTP 输入，但没有提交验证码，因此 UI OTP 成功链路仍未验收。
 
 ### 订阅与代扣
 
@@ -150,7 +150,7 @@
 | `created_at`, `updated_at` | 创建、更新时间                             | 否；UTC date-time                                                                                                   |
 | `steps`                    | 有序 `AgentTaskStepResponse[]`             | 否；可能为空                                                                                                        |
 | `confirmation`             | 当前待确认项                               | 是；已过期/已消费后为 `null`                                                                                        |
-| `workflow_plan`            | 可选的服务端依赖 DAG                       | 是；仅发薪日调度及可疑扣款复合任务生成，普通/历史任务可能为 `null`                                                  |
+| `workflow_plan`            | 可选的服务端依赖 DAG                       | 是；发薪日调度、可疑扣款及生日预订复合任务生成，普通/历史任务可能为 `null`                                          |
 
 `workflow_plan.nodes[]` 提供节点 `node_id` / `node_type` / `tool_name`、前置 `depends_on[]`、`requires_confirmation`、`failure_policy`、服务端派生 `status`、`result_summary` 和 `error_code`。依赖和顺序只能以此字段及 TaskStep 为准；前端不自行推进节点或把待处理标成成功。适合在折叠的任务详情里显示为轻量进度图/依赖列表；业务结果仍以 `steps[].result_data`、确认 Challenge 和业务 GET 为准。
 
@@ -171,13 +171,18 @@
 | 分账：`transfer.splits`                                                   | 分账与参与人列表；分账项含总额、币种、参与人数、状态、版本和逐人金额/收付状态。                                                                                                                                                                                                      |
 | 分账：`transfer.split_create`、`transfer.split_collect`                   | 先返回总额、参与人/份额和 challenge；确认后返回分账及状态结果。                                                                                                                                                                                                                      |
 | 资金计划：`finance.payday_plan`                                           | 账户余额、当月收入/支出、转账金额、预留金额、转账后余额、服务端计算的 `investment_budget_minor` 和 `reserve_shortfall_minor`。只读计划，不改余额。                                                                                                                                   |
+| 生日：`birthday.list`                                                     | `{items: BirthdayPlanItem[]}`，每项含计划状态、预算/预留、商品、订单状态与 `next_action`；刷新后从服务端重新读取。                                                                                                                                                                   |
+| 生日：`birthday.plan`                                                     | 确认提案含 `birthday_on`、`purchase_on`、`budget_minor`、`catalog_total_minor`、商品、账户、卡片和 `funds_held:false`；只有确认后才创建资金预留与订单计划。                                                                                                                          |
+| 生日：`birthday.order`                                                    | 到期后提出二次购买确认；`amount_minor`、商品、预留额、模拟商户/领取点、订单 ID 与挑战字段均来自后端。确认成功后 Task 返回已执行结果，`GET /birthday-plans` 可读取 paid 状态及关联流水 ID。                                                                                           |
 | 理财：`investment.products`、`investment.compare`                         | 产品列表、当前风险等级，以及 `suitable` 适当性结果。                                                                                                                                                                                                                                 |
 | 理财：`investment.profile`、`investment.portfolio`、`investment.orders`   | 风险档案、真实模拟持仓/估值/现金，或模拟订单列表。                                                                                                                                                                                                                                   |
 | 理财：`investment.buy`、`investment.redeem`                               | 提案含订单、产品、账户、金额、份额、风险等级及确认字段；确认后含实际订单结果。                                                                                                                                                                                                       |
 
 这里列的是当前实现的主要字段，不建立第二套前端 DTO。详细 Schema 仍以生成的 OpenAPI 为准。`ToolExecution` 没有单独查询 API；前端通过 Task Step 的 `result_summary` / `result_data` 展示。未注册工具、输入参数错误或执行失败时，步骤包含错误码和服务端失败结果；不得把失败的模型文本当成成功结果。
 
-**ConfirmationResponse** 的稳定公共字段为 `id`（challenge UUID）、`resource_type` (`card`/`card_application`/`birthday_plan`/`subscription`/`transfer`/`split`/`investment_order`)、`resource_id`、`resource_label`、`resource_version`、`current_status`、`target_status`、`parameters_hash`、`idempotency_key`、`expires_at`、`policy_version`、`tool_name`、`tool_version`。卡片可能另含 `card_id`、`card_suffix`、`card_label`、`card_version`；订阅可能另含 `subscription_id`、`merchant`、`subscription_version`；其他操作通过 `resource_id` 和可空 `details` 承载特定信息。`details` 对生日计划含账户、生日、提醒日期、预算和参考总价，且 `funds_held=false`、`order_placed=false`；对转账含金额/币种/类型/计划时间/来源账户/收款人，对分账含金额/币种/参与人，对理财含买入或赎回、金额/币种/份额/风险/账户。前端应根据 `resource_type` 分支，不假设每种资源字段都存在。
+**ConfirmationResponse** 的稳定公共字段为 `id`（challenge UUID）、`resource_type` (`card`/`card_application`/`birthday_plan`/`birthday_order`/`subscription`/`transfer`/`split`/`investment_order`)、`resource_id`、`resource_label`、`resource_version`、`current_status`、`target_status`、`parameters_hash`、`idempotency_key`、`expires_at`、`policy_version`、`tool_name`、`tool_version`、`risk_level` (`yellow`/`red`)、`confirmation_method` (`explicit`/`demo_otp`) 和 `risk_rules[]`。卡片可能另含 `card_id`、`card_suffix`、`card_label`、`card_version`；订阅可能另含 `subscription_id`、`merchant`、`subscription_version`；业务特定字段位于可空 `details`。生日计划提案详情包含账户/卡尾号、生日/购买日期、预算、固定商品及总价；确认后计划 GET 返回 `funds_held`、`held_minor`、订单状态和订单详情。生日订单购买提案详情包含生日/预订日、商品、金额/币种、模拟商户/领取点及预留金额。转账详情含金额/币种/类型/计划时间/来源账户/收款人；分账详情含金额/币种/参与人；理财详情含买入或赎回、金额/币种/份额/风险/账户。前端按 `resource_type` 与 `confirmation_method` 分支，不能假设所有资源字段都存在；显示的影响范围必须完整来自当前挑战详情。
+
+`AgentConfirmationRequest` 请求包含 `challenge_id`、`parameters_hash`，以及可空的 `verification_code`（仅六位数字）。只有 `confirmation_method="demo_otp"` 的挑战需要向用户收集验证码。API 不提供读取明文 OTP 的接口；本地开发者从 `uv run --project apps/api python -m finorch_api.demo_verification --latest` 独立终端取得后，才可在本地演示页面输入。页面不能自行生成验证码，未支持 OTP 的前端不得显示可执行的红色确认按钮。
 
 Audit Event 字段：`id`、`event_type`、`resource_type`、`resource_id`、可空 `tool_execution_id`、`outcome`、可空 `before_state` / `after_state`、`occurred_at`。`AgentAuditResponse` 为 `{task_id,events[]}`。这是任务范围摘要，不是全部账户历史审计查询 API。
 
@@ -293,4 +298,4 @@ Audit Event 字段：`id`、`event_type`、`resource_type`、`resource_id`、可
 - **解释与结果**：`task.message`、`step.summary`、`result_summary` 是说明文本，可能受模型措辞影响；任务状态、待确认 Challenge、成功 Tool 的 `result_data`、业务 GET 和 Audit 是服务端记录。模型文字不能作为余额、风险、适当性或操作成功的证据。
 - **前端可做**：金额格式化、状态文案映射、列表筛选交互、图表、布局、时间线和已有 API 数据的展示性比较。前端不要重新判断余额充足、用户权限、风险适当性、重复收费规则或操作是否成功。
 - **新增接口需求**：提交字段英文名/含义、类型/单位/可空性、数据来源、空/错误/并发行为、是否写操作、确认/幂等与审计需求、兼容影响及示例。先由前后端共同确认，再改 Pydantic Schema、测试、OpenAPI 和生成类型。
-- **Demo 与银行能力边界**：收款人、账户、余额、交易、订阅、产品、价格、收益和两条跨场景流程都是确定性合成数据；没有真实银行、支付网络、商户通知或生产认证。`Fake Provider` 不调用外部模型；`openai-compatible` 才会将合成上下文发送到配置的模型服务，仍须由受控工具和服务端确认执行业务写入。
+- **Demo 与银行能力边界**：收款人、账户、余额、交易、订阅、产品、价格、收益和三条跨场景流程都是确定性合成数据；没有真实银行、支付网络、商户通知或生产认证。`Fake Provider` 不调用外部模型；`openai-compatible` 才会将合成上下文发送到配置的模型服务，仍须由受控工具和服务端确认执行业务写入。

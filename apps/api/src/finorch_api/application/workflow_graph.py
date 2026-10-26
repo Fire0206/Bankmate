@@ -1,4 +1,4 @@
-"""Small persisted dependency graphs for the two supported cross-scenario flows."""
+"""Small persisted dependency graphs for the supported multi-step task flows."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 from finorch_api.agent.intent import (
     has_explicit_investment_write_intent,
     has_explicit_transfer_write_intent,
+    is_birthday_status_query,
     is_planning_only_request,
     requested_card_tool,
     requested_subscription_tool,
@@ -87,6 +88,58 @@ def build_workflow_plan(request_text: str, registry: ToolRegistry) -> dict[str, 
     suspicious = any(term in request for term in ("可疑扣款", "重复扣费", "重复扣款"))
     card_tool = requested_card_tool(request_text)
     subscription_tool = requested_subscription_tool(request_text)
+
+    birthday_plan = (
+        "生日" in request
+        and not is_birthday_status_query(request_text)
+        and any(term in request for term in ("预留", "留出", "预算", "安排", "预约"))
+        and not any(term in request for term in ("购买", "下单", "取消", "调整", "改为"))
+    )
+    birthday_purchase = "生日" in request and any(
+        term in request for term in ("确认购买", "现在订", "下单", "购买", "订购")
+    )
+    birthday_cancel = "生日" in request and "取消" in request
+    birthday_budget_update = (
+        "生日" in request
+        and "预算" in request
+        and any(term in request for term in ("调整", "改为", "增加", "减少", "提高", "降低"))
+    )
+    if birthday_plan:
+        nodes = [
+            _node("birthday_account", "transfer.accounts", registry),
+            _node("birthday_catalog", "card.catalog", registry),
+            _node(
+                "birthday_reservation",
+                "birthday.plan",
+                registry,
+                "birthday_account",
+                "birthday_catalog",
+            ),
+        ]
+        validate_workflow_nodes(nodes)
+        return {
+            "version": WORKFLOW_PLAN_VERSION,
+            "workflow_id": "birthday_budget_and_order",
+            "nodes": _serialize_nodes(nodes),
+        }
+    if birthday_purchase or birthday_cancel or birthday_budget_update:
+        action = (
+            "birthday.order"
+            if birthday_purchase
+            else "birthday.cancel"
+            if birthday_cancel
+            else "birthday.budget_update"
+        )
+        nodes = [
+            _node("birthday_plan_read", "birthday.list", registry),
+            _node("birthday_plan_action", action, registry, "birthday_plan_read"),
+        ]
+        validate_workflow_nodes(nodes)
+        return {
+            "version": WORKFLOW_PLAN_VERSION,
+            "workflow_id": "birthday_due_order" if birthday_purchase else "birthday_plan_change",
+            "nodes": _serialize_nodes(nodes),
+        }
 
     if suspicious and (card_tool == "card.freeze" or subscription_tool == "subscription.pause"):
         nodes: list[WorkflowNode] = []
@@ -168,3 +221,45 @@ def unsatisfied_dependencies(
         elif dependency["tool_name"] not in succeeded_tools:
             missing.append(dependency["tool_name"])
     return tuple(missing)
+
+
+def next_ready_workflow_tool(
+    plan: Mapping[str, Any] | None, *, succeeded_tools: set[str]
+) -> str | None:
+    """Return the first persisted DAG step whose dependencies have succeeded.
+
+    This is a planning aid, not an authorization decision. Dispatch still checks
+    the persisted graph, actor ownership, user intent, confirmation, risk policy,
+    and current resource versions before any state change.
+    """
+    if plan is None:
+        return None
+    raw_nodes = plan.get("nodes")
+    if not isinstance(raw_nodes, list):
+        return None
+    nodes = {
+        item.get("node_id"): item
+        for item in raw_nodes
+        if isinstance(item, dict) and isinstance(item.get("node_id"), str)
+    }
+    succeeded_node_ids = {
+        node_id
+        for node_id, item in nodes.items()
+        if isinstance(item.get("tool_name"), str) and item["tool_name"] in succeeded_tools
+    }
+    for item in raw_nodes:
+        if not isinstance(item, dict):
+            continue
+        tool_name = item.get("tool_name")
+        node_id = item.get("node_id")
+        dependencies = item.get("depends_on", [])
+        if (
+            not isinstance(tool_name, str)
+            or not isinstance(node_id, str)
+            or not isinstance(dependencies, list)
+            or tool_name in succeeded_tools
+        ):
+            continue
+        if all(dependency in succeeded_node_ids for dependency in dependencies):
+            return tool_name
+    return None

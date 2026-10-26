@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "FinOrch API",
-    "description": "Synthetic banking demo for cards, bills, subscriptions, transfers, and investments. No real bank, merchant, or payment-network integration.",
+    "title": "BankMate API",
+    "description": "BankMate synthetic banking demo for cards, bills, subscriptions, transfers, and investments. No real bank, merchant, or payment-network integration.",
     "version": "0.1.0"
   },
   "paths": {
@@ -4304,6 +4304,10 @@
           "balance_minor": {
             "type": "integer",
             "title": "Balance Minor"
+          },
+          "available_balance_minor": {
+            "type": "integer",
+            "title": "Available Balance Minor"
           }
         },
         "additionalProperties": false,
@@ -4312,7 +4316,8 @@
           "id",
           "label",
           "currency",
-          "balance_minor"
+          "balance_minor",
+          "available_balance_minor"
         ],
         "title": "AccountBalanceResponse"
       },
@@ -5016,6 +5021,86 @@
         ],
         "title": "BillTrendResponse"
       },
+      "BirthdayOrderResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "merchant": {
+            "type": "string",
+            "title": "Merchant"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BirthdayProductResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_amount_minor": {
+            "type": "integer",
+            "title": "Total Amount Minor"
+          },
+          "currency": {
+            "type": "string",
+            "const": "CNY",
+            "title": "Currency"
+          },
+          "pickup_location": {
+            "type": "string",
+            "title": "Pickup Location"
+          },
+          "scheduled_for": {
+            "type": "string",
+            "format": "date",
+            "title": "Scheduled For"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "transaction_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transaction Id"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "merchant",
+          "items",
+          "total_amount_minor",
+          "currency",
+          "pickup_location",
+          "scheduled_for",
+          "status",
+          "transaction_id",
+          "paid_at"
+        ],
+        "title": "BirthdayOrderResponse"
+      },
       "BirthdayPlanResponse": {
         "properties": {
           "id": {
@@ -5031,6 +5116,17 @@
           "account_label": {
             "type": "string",
             "title": "Account Label"
+          },
+          "card_suffix": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Suffix"
           },
           "birthday_on": {
             "type": "string",
@@ -5057,8 +5153,17 @@
           },
           "status": {
             "type": "string",
-            "const": "scheduled",
+            "enum": [
+              "pending_confirmation",
+              "scheduled",
+              "cancelled",
+              "completed"
+            ],
             "title": "Status"
+          },
+          "due_for_confirmation": {
+            "type": "boolean",
+            "title": "Due For Confirmation"
           },
           "due_for_reconfirmation": {
             "type": "boolean",
@@ -5066,12 +5171,25 @@
           },
           "funds_held": {
             "type": "boolean",
-            "const": false,
             "title": "Funds Held"
+          },
+          "held_minor": {
+            "type": "integer",
+            "title": "Held Minor"
+          },
+          "order_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Status"
           },
           "order_placed": {
             "type": "boolean",
-            "const": false,
             "title": "Order Placed"
           },
           "items": {
@@ -5080,6 +5198,16 @@
             },
             "type": "array",
             "title": "Items"
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BirthdayOrderResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "next_action": {
             "type": "string",
@@ -5092,16 +5220,21 @@
           "id",
           "account_id",
           "account_label",
+          "card_suffix",
           "birthday_on",
           "purchase_on",
           "budget_minor",
           "catalog_total_minor",
           "currency",
           "status",
+          "due_for_confirmation",
           "due_for_reconfirmation",
           "funds_held",
+          "held_minor",
+          "order_status",
           "order_placed",
           "items",
+          "order",
           "next_action"
         ],
         "title": "BirthdayPlanResponse"
@@ -5399,6 +5532,7 @@
               "card",
               "card_application",
               "birthday_plan",
+              "birthday_order",
               "subscription",
               "transfer",
               "split",
@@ -6251,6 +6385,10 @@
             "type": "integer",
             "title": "Account Balance Minor"
           },
+          "available_balance_minor": {
+            "type": "integer",
+            "title": "Available Balance Minor"
+          },
           "monthly_income_minor": {
             "type": "integer",
             "title": "Monthly Income Minor"
@@ -6291,6 +6429,7 @@
           "currency",
           "month",
           "account_balance_minor",
+          "available_balance_minor",
           "monthly_income_minor",
           "monthly_expense_minor",
           "recipient_name",

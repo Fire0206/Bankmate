@@ -46,7 +46,7 @@ Vite 将 `/api` 代理到本地 API。默认 Fake Provider 可无密钥演示银
 
 在智能助手输入“我想做风险测评”可打开四题模拟问卷。用户本人选择答案并提交后，服务端更新当前演示用户风险等级并追加审计；“查询最新结果”可核对网络中断后的真实结果。重复 Seed 保留已测评等级，显式 Reset 清除测评并恢复初始画像。问卷不是生产适当性审核；后续申购仍由服务端重新检查产品匹配。
 
-输入“我有哪些即将续费的提醒”可通过只读 Agent Tool 查看未来 30 天的合成订阅。展开自动扣费查询结果可设置每项提前 0–30 天的应用内提醒偏好；“检查到期提醒”按服务端当前时间生成本地提醒，同一扣款周期只生成一次。当前没有后台定时调度或短信/商户通知；需要本地演示到期生成时，可在临时测试数据库中调用 `generate_due_subscription_reminders(..., now=...)` 注入模拟时间，不能将客户端时间当作服务端执行依据。
+输入“我有哪些即将续费的提醒”可通过只读 Agent Tool 查看合成订阅。每项可设置提前 0–30 天的应用内提醒偏好；服务端按账期幂等生成提醒。可手动刷新，也可在 development 环境显式启用 `FINORCH_SUBSCRIPTION_REMINDER_SCHEDULER_ENABLED=true` 的本地轮询调度器；它只写应用内提醒，不发送短信或调用商户。使用 `FINORCH_DEMO_NOW` 或测试用例注入时间演示到期提醒，不能将客户端时间当作服务端执行依据。
 
 Phase 3 本地模拟二次验证：单笔或当日累计转账超过 ¥1,000、R4/R5 模拟产品申购，以及策略要求强验证的卡片限额上调，需要在普通确认外输入随机六位验证码。保持同一仓库根目录和同一个本地开发数据库，在**另一个本机终端**运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest`；该终端显示的验证码只在本地使用，最多有效三分钟，不能复制进聊天、Issue 或日志。`--latest` 只选当前配置的演示用户最新待确认操作；并行演示多个任务时使用 `--confirmation-id <ID>` 指定挑战。错误尝试最多五次。没有本地终端就不能完成红色操作；此机制不是短信、人脸或生产级多因素认证。定时转账到期时再次按当日累计金额评估；若升为红色则失败并留下审计，必须重新发起授权，不会静默扣款。
 
@@ -97,7 +97,7 @@ uv run --project apps/api python -m finorch_api
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py
 ```
 
-Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。它会在调用方事务中清理当前所有合成业务及工作流记录（包括卡片申请、生日计划和人工接管），再重建种子数据；替换卡的自引用也会先解除。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
+Reset 需要显式 opt-in，且同时校验 `test` 环境与临时 `finorch-test*.sqlite3` 路径。它会在调用方事务中清理当前所有合成业务、资金预留、生日订单及工作流记录，再重建种子数据；替换卡的自引用也会先解除。真实调用会消耗模型额度；CI 仍使用 Fake Provider 和 Mock HTTP。
 
 新增功能的真实模型留出集使用被冻结的 `phase3-feature-holdout-v1`（10 个案例），与开发案例分开保存，并由 SHA-256 manifest 校验。它覆盖年度账单、续费提醒、多只读查询、办卡申请、挂失、补卡、风险问卷边界、适当性查询和卡片限额强验证。留出评测会在每个案例前重置数据库，并只允许在 `FINORCH_ENVIRONMENT=test`、显式 `FINORCH_EVAL_RESET_SYNTHETIC=1` 且临时 `finorch-test*.sqlite3` 数据库中运行；测试 OTP 仅由评测脚本服务端签发，不打印到报告。请按上面的双终端方法启动 API，在评测终端设置：
 
@@ -205,8 +205,14 @@ uv run --project apps/api python apps/api/scripts/card_application_operator.py <
 
 也可将 `approve` 换成 `reject`。脚本仅允许 development/test 环境、当前模拟用户的申请，批准时创建新的合成借记卡并追加审计。它不代表真实审核、发卡或授信。
 
-## 生日预算与到期提醒（部分实现）
+## 生日预算预留与到期订单模拟
 
-在助手中说明完整生日日期、预算和所属合成账户，例如“我爱人生日是 2026-11-20，从日常账户预留 1000 元，生日前两天安排鲜花和蛋糕”。缺少日期或账户时 Fake Provider 会追问；兼容模型也必须遵守服务端参数与账户校验。确认卡会显示生日、提醒日期、预算和固定商品参考价。只有用户确认后，计划才进入 `scheduled` 并可通过 `GET /api/v1/birthday-plans` 或 `birthday.list` 读取。
+在助手中说明完整生日日期、预算和所属合成账户，例如“我爱人生日是 2026-11-20，从日常账户预留 1000 元，生日前两天安排鲜花和蛋糕”。缺少日期或账户时 Fake Provider 会追问；服务端校验日期、账户、卡片和固定商品目录。用户确认 `birthday.plan` 后，计划和 `fund_reservations` 在同一事务中创建；`GET /api/v1/birthday-plans` 或 `birthday.list` 可读取计划、预留及订单状态。
 
-这项计划是**预算意向与到期提醒**：`funds_held=false`、`order_placed=false`，既不扣款也不保证将来有足够余额。到期后前端显示重新确认提示，用户须重新核对余额、卡片限额和领取方式，再经 `card.purchase` 的独立确认购买固定目录商品。当前没有后台自动下单、配送或商户接口，不得把计划状态展示为订单成功。
+确认计划后金额会从“可用余额”中预留，但不从账户总余额扣除；取消计划释放未消费预留。`birthday_scheduler` 可通过命令行或 Windows Task Scheduler/cron 周期运行，它只将到期订单转为待确认，不会付款。用户必须再发起 `birthday.order` 并通过独立服务端确认；确认时再次校验余额、预留、卡片状态/限额与商品目录，成功后才更新模拟账本、订单、预留和审计。没有真实商户、配送或银行支付接口。运行一次到期扫描：
+
+```powershell
+uv run --project apps/api python -m finorch_api.birthday_scheduler --now 2026-11-18T09:00:00+08:00
+```
+
+该命令只允许 development/test 环境；可重复运行且不会重复创建同一订单的到期提醒。
