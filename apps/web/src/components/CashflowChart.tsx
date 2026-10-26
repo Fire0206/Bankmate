@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 
 import type { BillSummaryResponse } from "../api/client";
 
@@ -39,7 +39,6 @@ export function CashflowChart({
   expenseMinor: number;
   height?: number;
 }) {
-  const gradientId = useId().replaceAll(":", "");
   const chart = useMemo(() => {
     const width = 1000;
     const top = 20;
@@ -101,16 +100,10 @@ export function CashflowChart({
         preserveAspectRatio="none"
         viewBox={`0 0 ${chart.width} ${height}`}
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#8ead97" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#8ead97" stopOpacity="0" />
-          </linearGradient>
-        </defs>
         {[25, 92, 159, 226].map((y) => (
           <line
             key={y}
-            stroke="#d8ddd5"
+            stroke="#e8e8e8"
             strokeDasharray="2 7"
             strokeWidth="1"
             vectorEffect="non-scaling-stroke"
@@ -120,11 +113,11 @@ export function CashflowChart({
             y2={y}
           />
         ))}
-        <path d={chart.areaPath} fill={`url(#${gradientId})`} />
+        <path d={chart.areaPath} fill="#f2f2f2" />
         <path
           d={chart.expensePath}
           fill="none"
-          stroke="#be9a58"
+          stroke="#888888"
           strokeDasharray="6 6"
           strokeWidth="1.7"
           vectorEffect="non-scaling-stroke"
@@ -132,7 +125,7 @@ export function CashflowChart({
         <path
           d={chart.incomePath}
           fill="none"
-          stroke="#3e725d"
+          stroke="#111111"
           strokeLinecap="round"
           strokeWidth="2.3"
           vectorEffect="non-scaling-stroke"
@@ -141,9 +134,9 @@ export function CashflowChart({
           <circle
             cx={chart.incomePoints.at(-1)!.x}
             cy={chart.incomePoints.at(-1)!.y}
-            fill="#f3f1e9"
+            fill="#ffffff"
             r="5"
-            stroke="#3e725d"
+            stroke="#111111"
             strokeWidth="2"
             vectorEffect="non-scaling-stroke"
           />

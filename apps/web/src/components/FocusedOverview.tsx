@@ -17,13 +17,14 @@ import {
   type AuditResponse,
   type BillSummaryResponse,
   type CardListResponse,
-  type DemoSessionResponse,
   type SubscriptionListResponse,
   type TransactionPageResponse,
 } from "../api/client";
 import { AppIcon } from "./AppIcon";
 import { CashflowChart } from "./CashflowChart";
 import { SkeletonLine } from "./Skeleton";
+import { statusLabel } from "./taskFormat";
+import { customerText } from "../userFacing";
 
 type OverviewData = {
   accounts: AccountBalanceListResponse;
@@ -36,29 +37,6 @@ type OverviewDialog = "transactions" | "risk" | "audit" | null;
 type Transaction = TransactionPageResponse["items"][number];
 type AuditEvent = AuditResponse["events"][number];
 type TransactionFilter = "all" | "income" | "expense" | "attention";
-
-const fallbackAudit = [
-  {
-    time: "09:43",
-    title: "核对账户与账单",
-    detail: "读取合成账户、卡片和本月交易摘要",
-  },
-  {
-    time: "09:43",
-    title: "检查异常规则",
-    detail: "所有提示均来自服务端确定性规则",
-  },
-  {
-    time: "09:44",
-    title: "生成资金建议",
-    detail: "未执行任何资金动作，等待用户确认",
-  },
-  {
-    time: "09:44",
-    title: "记录审计结果",
-    detail: "证据、判断和用户动作均可追溯",
-  },
-];
 
 function money(
   valueMinor: number | null | undefined,
@@ -106,9 +84,9 @@ function auditTime(value: string) {
 
 function auditCopy(event: AuditEvent) {
   const labels: Record<string, string> = {
-    task_created: "创建 Agent 任务",
+    task_created: "创建处理任务",
     task_confirmed: "完成关键动作确认",
-    task_cancelled: "取消 Agent 任务",
+    task_cancelled: "取消任务",
     tool_succeeded: "工具调用成功",
     tool_failed: "工具调用失败",
     confirmation_requested: "生成确认挑战",
@@ -226,7 +204,6 @@ function TransactionRow({
 }
 
 export function FocusedOverview({
-  session,
   cards,
   refreshKey,
   activeTask,
@@ -234,7 +211,6 @@ export function FocusedOverview({
   busy,
   onPrompt,
 }: {
-  session: DemoSessionResponse | null;
   cards: CardListResponse["items"];
   refreshKey: string;
   activeTask: AgentTaskResponse | null;
@@ -321,14 +297,13 @@ export function FocusedOverview({
   }, [data?.transactions.items, transactionFilter]);
 
   const visibleTransactions = filteredTransactions.slice(0, 8);
-  const auditEvents =
-    activeTask && audit.length
-      ? audit.slice(-6).map((event) => ({
-          time: auditTime(event.occurred_at),
-          title: auditCopy(event),
-          detail: `${event.resource_type} · ${event.outcome}`,
-        }))
-      : fallbackAudit;
+  const auditEvents = activeTask
+    ? audit.slice(-6).map((event) => ({
+        time: auditTime(event.occurred_at),
+        title: auditCopy(event),
+        detail: `${event.resource_type} · ${event.outcome}`,
+      }))
+    : [];
 
   const exportTransactions = () => {
     const rows = [
@@ -360,7 +335,7 @@ export function FocusedOverview({
   return (
     <section className="focused-overview">
       <div className="focused-overview-meta">
-        <span>OVERVIEW / PERSONAL ACCOUNT</span>
+        <span>账户总览</span>
         <span>{dateLabel}</span>
       </div>
 
@@ -381,7 +356,7 @@ export function FocusedOverview({
           </strong>
           <span>本月净现金流</span>
           <i />
-          <span>{data?.accounts.items.length ?? 0} 个合成账户</span>
+          <span>{data?.accounts.items.length ?? 0} 个账户</span>
         </div>
       </div>
 
@@ -415,7 +390,7 @@ export function FocusedOverview({
             <h2>现金流</h2>
             <span>近 6 个月</span>
           </div>
-          <small>所有数据来自合成账户</small>
+          <small>近六个月收支记录</small>
         </header>
         {loading ? (
           <div aria-hidden="true" className="focused-chart-skeleton">
@@ -471,7 +446,7 @@ export function FocusedOverview({
           <strong>
             {leadingAnomaly
               ? money(leadingAnomaly.amount_minor, leadingAnomaly.currency)
-              : "暂无风险"}
+              : "暂无异常提醒"}
           </strong>
           <small>
             {leadingAnomaly ? "需要你的确认" : "所有提示均有规则依据"}
@@ -482,21 +457,19 @@ export function FocusedOverview({
             处置记录
             <AppIcon name="arrow-right" size={14} />
           </span>
-          <strong>
-            {activeTask && audit.length ? audit.length : 4} 个事件
-          </strong>
+          <strong>{audit.length} 个事件</strong>
           <small>证据与确认均写入审计</small>
         </button>
       </div>
 
       <footer className="focused-overview-footer">
         <span>
-          <i /> 演示环境 · 合成数据
+          <i /> 虚拟账户 · 不连接真实银行或支付网络
         </span>
         <span>
           {frozenCards} 张卡已冻结 · {activeSubscriptions.length} 项自动扣费
         </span>
-        <span>决策优先 · 证据可追溯 · 关键动作需确认</span>
+        <span>资金操作需确认</span>
       </footer>
 
       {error ? (
@@ -511,7 +484,7 @@ export function FocusedOverview({
       {dialog === "transactions" ? (
         <OverviewDialog
           className="figma-transactions-dialog"
-          eyebrow="RECENT TRANSACTIONS / ACTIVITY"
+          eyebrow="账户活动"
           onClose={() => setDialog(null)}
           subtitle="过去一段时间内的账户活动。可疑项不会被自动处置。"
           title="最近交易"
@@ -571,7 +544,7 @@ export function FocusedOverview({
       {dialog === "risk" ? (
         <OverviewDialog
           className="figma-risk-dialog"
-          eyebrow="RISK REVIEW / HUMAN IN THE LOOP"
+          eyebrow="风险提示与待处理"
           onClose={() => setDialog(null)}
           title={leadingAnomaly ? "一笔交易需要你的确认" : "本月暂未发现异常"}
         >
@@ -606,8 +579,10 @@ export function FocusedOverview({
                 <div>
                   <i />
                   <span>
-                    <strong>{leadingAnomaly.anomaly_reason}</strong>
-                    <small>服务端规则命中的提示，不代表欺诈结论。</small>
+                    <strong>
+                      {customerText(leadingAnomaly.anomaly_reason)}
+                    </strong>
+                    <small>账单规则提醒，仅供核对，不代表欺诈结论。</small>
                   </span>
                 </div>
                 <div>
@@ -620,8 +595,8 @@ export function FocusedOverview({
                 <div>
                   <i />
                   <span>
-                    <strong>交易与账户数据来自合成数据集</strong>
-                    <small>{session?.dataset_version ?? "演示数据"}。</small>
+                    <strong>当前为虚拟账户</strong>
+                    <small>操作不会连接真实银行或支付网络。</small>
                   </span>
                 </div>
               </div>
@@ -638,14 +613,14 @@ export function FocusedOverview({
                   }}
                   type="button"
                 >
-                  交给 FinOrch 复核
+                  请助手核对
                   <AppIcon name="arrow-right" size={14} />
                 </button>
               </div>
             </>
           ) : (
             <div className="figma-dialog-empty">
-              当前合成数据没有命中异常规则。
+              当前账户暂无符合规则的异常提醒。
             </div>
           )}
         </OverviewDialog>
@@ -654,17 +629,15 @@ export function FocusedOverview({
       {dialog === "audit" ? (
         <OverviewDialog
           className="figma-audit-dialog"
-          eyebrow={`AUDIT / ${activeTask ? activeTask.id.slice(0, 8) : "DEMO SESSION"}`}
+          eyebrow="操作记录"
           onClose={() => setDialog(null)}
           subtitle="每一次调用、判断、证据和确认都会进入可追溯记录。"
           title="处置记录"
         >
           <div className="figma-audit-summary">
-            <span>{auditEvents.length} 个事件 · 证据完整 · 等待确认</span>
+            <span>{auditEvents.length} 条操作记录</span>
             <small>
-              {activeTask
-                ? `TASK ${activeTask.status.toUpperCase()}`
-                : "SYNTHETIC LOG"}
+              {activeTask ? statusLabel(activeTask.status) : "账户记录"}
             </small>
           </div>
           <ol className="figma-audit-list">
@@ -681,7 +654,7 @@ export function FocusedOverview({
           </ol>
           <div className="figma-audit-footer">
             <span>所有关键动作都需要明确确认</span>
-            <small>IMMUTABLE LOG</small>
+            <small>记录由服务端生成</small>
           </div>
         </OverviewDialog>
       ) : null}

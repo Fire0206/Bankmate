@@ -1,8 +1,10 @@
 import type { CardListResponse } from "../api/client";
+import { brand } from "../brand";
 import { AppIcon } from "../components/AppIcon";
 import { PageHeader } from "../components/PageHeader";
 import { SkeletonRows } from "../components/Skeleton";
 import { cardLabel } from "../components/cardFormat";
+import { customerText } from "../userFacing";
 
 function yuan(minor: number): string {
   return `¥${(minor / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2 })}`;
@@ -33,8 +35,8 @@ export function CardsPage({
       <PageHeader
         actionLabel="咨询卡片安全"
         busy={busy}
-        description="查看模拟银行卡状态、消费限额与线上支付设置。变更需确认。"
-        eyebrow="Card controls"
+        description="查看银行卡状态、消费限额与线上支付设置。变更前需确认。"
+        eyebrow="银行卡"
         onAction={() =>
           onPrompt("帮我检查银行卡状态，并告诉我有哪些安全控制可以做")
         }
@@ -63,10 +65,10 @@ export function CardsPage({
       <div className="card-page-actions">
         <button
           disabled={busy}
-          onClick={() => onPrompt("为我的日常账户申请一张模拟借记卡")}
+          onClick={() => onPrompt("为我的日常账户申请一张借记卡")}
           type="button"
         >
-          申请模拟借记卡
+          申请借记卡
         </button>
         <button
           disabled={busy}
@@ -98,7 +100,7 @@ export function CardsPage({
               key={card.id}
             >
               <div className="physical-card-top">
-                <span>FinOrch</span>
+                <span>{brand.name}</span>
                 <span>
                   {card.status === "active"
                     ? "ACTIVE"
@@ -118,8 +120,8 @@ export function CardsPage({
               </div>
               <div className="physical-card-bottom">
                 <span>
-                  <small>模拟银行卡</small>
-                  <strong>{cardLabel(card.label)}</strong>
+                  <small>借记卡</small>
+                  <strong>{customerText(cardLabel(card.label))}</strong>
                 </span>
                 <span>
                   <small>状态</small>
@@ -144,7 +146,7 @@ export function CardsPage({
       <section className="card-management-card">
         <header>
           <div>
-            <p className="eyebrow">Safe actions</p>
+            <p className="eyebrow">安全设置</p>
             <h2>卡片控制</h2>
           </div>
           <span>每次操作都需要服务端确认</span>
@@ -159,7 +161,7 @@ export function CardsPage({
                   <AppIcon name="cards" size={18} />
                 </span>
                 <span>
-                  <strong>{cardLabel(card.label)}</strong>
+                  <strong>{customerText(cardLabel(card.label))}</strong>
                   <small>
                     尾号 {card.card_suffix} ·{" "}
                     {card.status === "active"
@@ -181,12 +183,12 @@ export function CardsPage({
                     disabled={busy}
                     onClick={() =>
                       onPrompt(
-                        `为尾号 ${card.card_suffix} 的已挂失银行卡申请模拟补卡`,
+                        `为尾号 ${card.card_suffix} 的已挂失银行卡申请补卡`,
                       )
                     }
                     type="button"
                   >
-                    申请模拟补卡
+                    申请补卡
                   </button>
                 ) : card.status !== "replaced" ? (
                   <div className="management-actions">
@@ -225,8 +227,7 @@ export function CardsPage({
         </div>
         <div className="page-alert">
           <AppIcon name="info" size={17} />
-          FinOrch 不显示完整卡号或
-          PIN。冻结后仍可随时解冻，但旧确认会因卡片版本变化而失效。
+          {brand.name} 不显示完整卡号或 PIN。挂失后无法解冻；补卡后旧卡停用。
         </div>
       </section>
     </div>

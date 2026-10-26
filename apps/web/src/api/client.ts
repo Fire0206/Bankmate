@@ -101,7 +101,7 @@ function preview<T>(value: T): Promise<T> {
 function previewWrite(): Promise<never> {
   return Promise.reject(
     new ApiError(
-      "当前是静态展示包。页面可以浏览，资金类操作请连接本地 API 后体验。",
+      "账户服务暂不可用。请检查网络连接后重试。",
       503,
       "static_preview_read_only",
       null,
@@ -338,7 +338,8 @@ export const apiClient = {
         category: "bill_review" as const,
         priority: index === 0 ? ("high" as const) : ("medium" as const),
         title: "核对 " + item.merchant + " 的扣费",
-        explanation: item.anomaly_reason ?? "该交易命中了演示规则提示。",
+        explanation:
+          item.anomaly_reason ?? "该交易命中流水规则提示，请核对明细。",
         amount_minor: item.amount_minor,
         currency: item.currency,
         source_transaction_ids: [item.id],

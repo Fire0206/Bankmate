@@ -1,5 +1,6 @@
 import type { components } from "../generated/api";
 import type { IconName } from "./AppIcon";
+import { customerText } from "../userFacing";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 
@@ -59,8 +60,8 @@ export function taskMessage(task: Task): string {
   if (task.status === "awaiting_confirmation")
     return "请核对下面的操作内容。确认前，业务状态不会变更。";
   if (task.status === "awaiting_input")
-    return task.message || "请补充必要信息后继续。";
-  if (task.status !== "failed") return task.message;
+    return customerText(task.message || "请补充必要信息后继续。");
+  if (task.status !== "failed") return customerText(task.message);
   const known: Record<string, string> = {
     provider_not_configured: "当前无法处理这项请求，请稍后再试。",
     card_not_found: "没有找到这张银行卡，请检查尾号后重试。",

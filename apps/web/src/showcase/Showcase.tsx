@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react";
 
 import { ApiError, apiClient } from "../api/client";
 import { brand } from "../brand";
+import { customerName, customerText } from "../userFacing";
 import type {
   AccountListResponse,
   AgentTaskResponse,
@@ -55,17 +56,17 @@ type ShowcaseData = {
 };
 type Confirmation = NonNullable<AgentTaskResponse["confirmation"]>;
 type PendingCreate = { key: string; body: CreateTaskRequest };
-type PageItem = { id: PageId; label: string; number: string };
+type PageItem = { id: PageId; label: string };
 
 const pageItems: PageItem[] = [
-  { id: "overview", label: "账户总览", number: "01" },
-  { id: "assistant", label: "智能助手", number: "02" },
-  { id: "cards", label: "银行卡", number: "03" },
-  { id: "bills", label: "账单分析", number: "04" },
-  { id: "transfers", label: "转账与分账", number: "05" },
-  { id: "subscriptions", label: "订阅代扣", number: "06" },
-  { id: "investments", label: "理财", number: "07" },
-  { id: "cross-scene", label: "跨场景计划", number: "08" },
+  { id: "overview", label: "账户总览" },
+  { id: "assistant", label: "助手" },
+  { id: "cards", label: "银行卡" },
+  { id: "bills", label: "账单分析" },
+  { id: "transfers", label: "转账与分账" },
+  { id: "subscriptions", label: "订阅代扣" },
+  { id: "investments", label: "理财" },
+  { id: "cross-scene", label: "综合办理" },
 ];
 
 const labelMap: Record<string, string> = {
@@ -111,7 +112,7 @@ const toolLabelMap: Record<string, string> = {
   "transfer.history": "查询转账记录",
   "transfer.payees": "查询收款人",
   "transfer.schedule": "准备定时转账",
-  "transfer.simulate_due": "模拟执行已确认的定时转账",
+  "transfer.simulate_due": "执行已确认的定时转账",
   "transfer.split_collect": "准备收取分账",
   "transfer.split_create": "准备创建分账",
   "transfer.splits": "查询分账记录",
@@ -120,7 +121,7 @@ const toolLabelMap: Record<string, string> = {
 const errorLabelMap: Record<string, string> = {
   card_not_found: "未找到这张银行卡。",
   insufficient_funds: "可用余额不足，未执行操作。",
-  risk_mismatch: "该产品与当前演示风险等级不匹配。",
+  risk_mismatch: "该产品与当前账户风险等级不匹配。",
   subscription_not_found: "未找到对应的订阅。",
   transfer_payee_not_found: "未找到对应的收款人。",
 };
@@ -135,14 +136,14 @@ const auditEventLabelMap: Record<string, string> = {
   "agent.tool_execution_succeeded": "业务步骤已完成",
   "agent.workflow_continued": "任务继续执行",
   "card.status_changed": "银行卡状态已更新",
-  "investment.buy_executed": "模拟申购已执行",
-  "investment.redeem_executed": "模拟赎回已执行",
+  "investment.buy_executed": "申购已记账",
+  "investment.redeem_executed": "赎回已记账",
   "split.status_changed": "分账状态已更新",
   "subscription.status_changed": "订阅状态已更新",
   "transfer.cancelled": "定时转账已取消",
-  "transfer.executed": "模拟转账已执行",
+  "transfer.executed": "转账已记账",
   "transfer.scheduled": "定时转账已创建",
-  "transfer.simulated_execution_failed": "定时转账模拟执行失败",
+  "transfer.simulated_execution_failed": "定时转账未执行",
 };
 
 function currentMonth(): string {
@@ -404,7 +405,7 @@ function CardTile({ item }: { item: CardListResponse["items"][number] }) {
         •••• &nbsp;•••• &nbsp;•••• &nbsp;{item.card_suffix}
       </p>
       <div className="showcase-bank-card-bottom">
-        <strong>{item.label}</strong>
+        <strong>{customerText(item.label)}</strong>
         <span>{item.status === "active" ? "正常" : "已冻结"}</span>
       </div>
     </article>
@@ -431,7 +432,7 @@ function TransactionTable({ items }: { items: TransactionsResponse["items"] }) {
                 <strong>{item.merchant}</strong>
                 {item.anomaly_reason ? (
                   <small className="showcase-risk-copy">
-                    {item.anomaly_reason}
+                    {customerText(item.anomaly_reason)}
                   </small>
                 ) : null}
               </td>
@@ -469,7 +470,7 @@ function RecommendationList({ data }: { data: RecommendationsResponse }) {
                 <span>{money(item.amount_minor, item.currency)}</span>
               ) : null}
             </div>
-            <p>{item.explanation}</p>
+            <p>{customerText(item.explanation)}</p>
           </div>
         </article>
       ))}
@@ -494,7 +495,7 @@ function OverviewPage({
     <>
       <div className="showcase-overview-head">
         <div>
-          <p className="showcase-kicker">个人金融工作台</p>
+          <p className="showcase-kicker">我的账户</p>
           <h1>账户总览</h1>
           <p className="showcase-subtitle">
             查看账户、近期收支和需要留意的事项。
@@ -509,7 +510,7 @@ function OverviewPage({
         <Metric
           label="账户余额"
           value={money(totalBalance)}
-          detail={`${data.accounts.items.length} 个模拟账户`}
+          detail={`${data.accounts.items.length} 个账户`}
           tone="accent"
         />
         <Metric
@@ -535,7 +536,7 @@ function OverviewPage({
         <section className="showcase-panel showcase-panel-wide">
           <SectionTitle
             title="收支概览"
-            hint={`${month} · 基于模拟交易流水`}
+            hint={`${month} · 基于账户流水`}
             action={
               <button
                 className="showcase-text-action"
@@ -578,7 +579,7 @@ function OverviewPage({
         <section className="showcase-panel">
           <SectionTitle
             title="账单提示"
-            hint="按确定性规则生成"
+            hint="根据账单记录整理"
             action={
               <button
                 className="showcase-text-action"
@@ -591,16 +592,15 @@ function OverviewPage({
           />
           <RecommendationList data={data.recommendations} />
           <p className="showcase-note">
-            提示来自模拟流水规则，不构成欺诈判定或投资建议。
+            提醒仅用于账单核对，不代表欺诈结论或投资建议。
           </p>
         </section>
       </div>
       <section className="showcase-panel showcase-shortcuts">
-        <SectionTitle title="常用场景" hint="通过对话查询或发起操作" />
+        <SectionTitle title="常用服务" hint="选择一项继续办理" />
         <div className="showcase-shortcut-grid">
           {pageItems.slice(2, 7).map((item) => (
             <button key={item.id} onClick={() => onPage(item.id)} type="button">
-              <span>{item.number}</span>
               <strong>{item.label}</strong>
               <b aria-hidden="true">↗</b>
             </button>
@@ -622,7 +622,7 @@ function CardsPage({ data }: { data: ShowcaseData }) {
       </div>
       {!data.cards.items.length ? <EmptyState text="当前没有银行卡。" /> : null}
       <p className="showcase-note">
-        可在智能助手中查询、冻结或解冻银行卡；状态变更需要服务端确认。
+        可在助手中查询、冻结或解冻银行卡；状态变更需要服务端确认。
       </p>
     </section>
   );
@@ -683,7 +683,7 @@ function BillsPage({ data, month }: { data: ShowcaseData; month: string }) {
         )}
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="收支趋势" hint="最近六个月的模拟流水汇总" />
+        <SectionTitle title="收支趋势" hint="最近六个月的账户流水汇总" />
         <div className="showcase-trend-grid">
           {data.bills.trends.map((item) => {
             const max = Math.max(item.income_minor, item.expense_minor, 1);
@@ -736,7 +736,7 @@ function BillsPage({ data, month }: { data: ShowcaseData; month: string }) {
             <div className="showcase-anomaly-row" key={item.id}>
               <div>
                 <strong>{item.merchant}</strong>
-                <p>{item.anomaly_reason}</p>
+                <p>{customerText(item.anomaly_reason)}</p>
               </div>
               <span>{money(item.amount_minor, item.currency)}</span>
             </div>
@@ -802,7 +802,7 @@ function SubscriptionsPage({ data }: { data: ShowcaseData }) {
           <EmptyState text="没有识别到周期性订阅。" />
         )}
         <p className="showcase-note">
-          暂停、恢复或取消自动续费，请通过智能助手发起并核对确认信息。
+          暂停、恢复或取消自动续费，请通过助手发起并核对确认信息。
         </p>
       </section>
     </>
@@ -813,13 +813,13 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
   return (
     <>
       <section className="showcase-panel">
-        <SectionTitle title="账户与收款人" hint="仅显示当前模拟用户的数据" />
+        <SectionTitle title="账户与收款人" hint="仅显示当前账户的数据" />
         <div className="showcase-two-column">
           <div>
             <h3 className="showcase-minor-heading">账户余额</h3>
             {data.accounts.items.map((item) => (
               <div className="showcase-simple-row" key={item.id}>
-                <span>{item.label}</span>
+                <span>{customerText(item.label)}</span>
                 <strong>{money(item.balance_minor, item.currency)}</strong>
               </div>
             ))}
@@ -830,7 +830,7 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
               data.payees.items.map((item) => (
                 <div className="showcase-simple-row" key={item.id}>
                   <span>{item.display_name}</span>
-                  <small>{item.destination_account_label}</small>
+                  <small>{customerText(item.destination_account_label)}</small>
                 </div>
               ))
             ) : (
@@ -840,7 +840,7 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
         </div>
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="转账记录" hint="模拟转账及定时转账" />
+        <SectionTitle title="转账记录" hint="转账及定时转账" />
         {data.transfers.items.length ? (
           <div className="showcase-list">
             {data.transfers.items.map((item) => (
@@ -849,7 +849,7 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
                 <div className="showcase-row-main">
                   <strong>{item.payee_name}</strong>
                   <small>
-                    {item.source_account_label} ·{" "}
+                    {customerText(item.source_account_label)} ·{" "}
                     {item.transfer_type === "scheduled"
                       ? `计划 ${dateLabel(item.scheduled_at)}`
                       : "即时转账"}
@@ -869,7 +869,7 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
         )}
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="AA 分账" hint="模拟收付款进度" />
+        <SectionTitle title="AA 分账" hint="收付款进度" />
         {data.splits.items.length ? (
           data.splits.items.map((item) => (
             <div className="showcase-split" key={item.id}>
@@ -896,7 +896,7 @@ function TransfersPage({ data }: { data: ShowcaseData }) {
         )}
       </section>
       <p className="showcase-note">
-        所有写操作均通过智能助手任务确认；这里不提供绕过确认的直接转账入口。
+        所有写操作均通过助手任务确认；这里不提供直接转账入口。
       </p>
     </>
   );
@@ -929,7 +929,7 @@ function InvestmentsPage({ data }: { data: ShowcaseData }) {
           )}
         />
         <Metric
-          label="模拟浮动收益"
+          label="浮动收益估值"
           value={money(
             data.portfolio.estimated_gain_minor,
             data.portfolio.currency,
@@ -938,14 +938,14 @@ function InvestmentsPage({ data }: { data: ShowcaseData }) {
         />
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="模拟持仓" hint="按演示净值估算" />
+        <SectionTitle title="持仓" hint="按参考净值估算" />
         {data.portfolio.holdings.length ? (
           <div className="showcase-list">
             {data.portfolio.holdings.map((item) => (
               <div className="showcase-list-row" key={item.id}>
                 <div className="showcase-row-mark">理</div>
                 <div className="showcase-row-main">
-                  <strong>{item.product_name}</strong>
+                  <strong>{customerText(item.product_name)}</strong>
                   <small>
                     {item.units_micros.toLocaleString("zh-CN")} 份 · 成本{" "}
                     {money(item.purchase_price_minor, item.currency)}
@@ -972,11 +972,11 @@ function InvestmentsPage({ data }: { data: ShowcaseData }) {
         )}
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="模拟产品" hint="展示产品风险等级与适当性结果" />
+        <SectionTitle title="理财产品" hint="查看风险等级与适配结果" />
         {data.products.items.map((item) => (
           <div className="showcase-product-row" key={item.id}>
             <div>
-              <strong>{item.name}</strong>
+              <strong>{customerText(item.name)}</strong>
               <small>
                 {item.category} · 风险 R{item.risk_level} · 起购{" "}
                 {money(item.minimum_amount_minor, item.currency)}
@@ -994,7 +994,7 @@ function InvestmentsPage({ data }: { data: ShowcaseData }) {
           data.orders.items.map((item) => (
             <div className="showcase-simple-row" key={item.id}>
               <span>
-                {item.product_name} ·{" "}
+                {customerText(item.product_name)} ·{" "}
                 {item.order_type === "buy" ? "申购" : "赎回"}
               </span>
               <strong>
@@ -1008,7 +1008,7 @@ function InvestmentsPage({ data }: { data: ShowcaseData }) {
         )}
       </section>
       <p className="showcase-note">
-        产品、净值和收益均为虚构模拟数据，不构成投资建议。
+        产品、净值和收益为虚拟信息，不构成投资建议。
       </p>
     </>
   );
@@ -1031,7 +1031,9 @@ function ConfirmationPanel({
     typeof details.currency === "string" ? details.currency : "CNY";
   const readText = (key: string): string | null => {
     const value = details[key];
-    return typeof value === "string" && value.trim() ? value : null;
+    return typeof value === "string" && value.trim()
+      ? customerText(value)
+      : null;
   };
   const readAmount = (key: string): string | null =>
     typeof details[key] === "number"
@@ -1070,7 +1072,7 @@ function ConfirmationPanel({
     addAmount("已预留预算", "held_minor");
     addText("付款账户", "account_label");
     addText("银行卡尾号", "card_suffix");
-    addText("模拟商户", "merchant");
+    addText("商户", "merchant");
     addText("领取方式", "pickup_location");
   } else if (confirmation.resource_type === "birthday_plan") {
     const products = Array.isArray(details.items)
@@ -1146,7 +1148,7 @@ function ConfirmationPanel({
         : confirmation.tool_name === "card.controls"
           ? "调整银行卡设置"
           : confirmation.tool_name === "card.purchase"
-            ? "确认模拟消费"
+            ? "确认消费"
             : confirmation.resource_type === "birthday_order"
               ? "确认生日礼品订单"
               : confirmation.resource_type === "birthday_plan"
@@ -1157,8 +1159,8 @@ function ConfirmationPanel({
                     : "预留生日预算"
                 : confirmation.resource_type === "investment_order"
                   ? confirmation.tool_name === "investment.buy"
-                    ? "确认模拟申购"
-                    : "确认模拟赎回"
+                    ? "确认申购"
+                    : "确认赎回"
                   : confirmation.target_status === "frozen"
                     ? "冻结银行卡"
                     : confirmation.resource_type === "card" &&
@@ -1204,10 +1206,10 @@ function ConfirmationPanel({
       </dl>
       {requiresOtp ? (
         <div className="showcase-verification">
-          <label htmlFor="showcase-demo-verification">本地模拟验证码</label>
+          <label htmlFor="showcase-security-verification">安全验证码</label>
           <input
             autoComplete="off"
-            id="showcase-demo-verification"
+            id="showcase-security-verification"
             inputMode="numeric"
             maxLength={6}
             onChange={(event) =>
@@ -1219,20 +1221,13 @@ function ConfirmationPanel({
             placeholder="输入 6 位验证码"
             value={verificationCode}
           />
-          <small>
-            在 API 本地终端运行{" "}
-            <code>
-              uv run --project apps/api python -m finorch_api.demo_verification
-              --latest
-            </code>{" "}
-            获取。它只用于模拟强验证，不是短信或银行验证码。
-          </small>
+          <small>验证码由本地验证服务生成，并非银行短信验证码。</small>
         </div>
       ) : null}
       <p className="showcase-note">
         {requiresOtp
-          ? "这是高风险模拟操作。验证码与当前确认绑定，服务端会再次校验权限、参数和卡片状态。"
-          : "确认后只执行此处显示的模拟操作。确认由服务端校验，页面不会直接改动业务状态。"}
+          ? "这项操作需要额外验证。验证码与当前确认绑定，服务端会再次校验权限、参数和账户状态。"
+          : "确认后将按此处显示的内容记账。服务端会再次校验操作权限和参数。"}
       </p>
       <div className="showcase-button-row">
         <button
@@ -1553,22 +1548,16 @@ function AgentPanel({
       <section className="showcase-panel showcase-agent-panel">
         <div className="showcase-agent-heading">
           <div>
-            <p className="showcase-kicker">自然语言办理</p>
             <h2>你想处理什么？</h2>
           </div>
-          <span
-            className={`showcase-provider provider-${data.session.agent_provider}`}
-          >
-            {data.session.agent_provider === "fake" ? "演示模式" : "模型模式"}
-          </span>
         </div>
         <p className="showcase-agent-intro">
-          可查询账户、账单、银行卡、订阅和理财。所有业务操作均需在服务端确认。
+          可查看账户、账单、银行卡、订阅与理财。涉及资金或状态变化时，会先请你确认。
         </p>
         <div aria-live="polite" className="showcase-task-stream">
           <div className="showcase-assistant-message">
             <span>{brand.name}</span>
-            <p>你好，我可以帮你查看账户信息，或准备一项需要确认的业务操作。</p>
+            <p>你好，想查账单、管理银行卡，还是安排一笔转账？</p>
           </div>
           {task ? (
             <>
@@ -1578,12 +1567,12 @@ function AgentPanel({
               </div>
               <div className="showcase-assistant-message">
                 <div className="showcase-assistant-status">
-                  <span>任务状态</span>
+                  <span>处理进度</span>
                   <strong className={`showcase-status status-${task.status}`}>
                     {statusName(task.status)}
                   </strong>
                 </div>
-                <p>{task.message}</p>
+                <p>{customerText(task.message)}</p>
               </div>
               {task.steps.map((step) => (
                 <div
@@ -1727,15 +1716,10 @@ function AgentPanel({
       </section>
       <aside className="showcase-agent-context">
         <section className="showcase-panel">
-          <SectionTitle title="当前用户" />
-          <strong>{data.session.display_name}</strong>
-          <p>
-            {data.session.environment === "development"
-              ? "本地演示环境"
-              : "测试环境"}{" "}
-            · 合成数据
-          </p>
-          <small>身份由服务端模拟，不是登录凭证。</small>
+          <SectionTitle title="账户持有人" />
+          <strong>{customerName(data.session.display_name)}</strong>
+          <p>个人账户</p>
+          <small>个人账户</small>
         </section>
         <section className="showcase-panel">
           <SectionTitle
@@ -1745,7 +1729,7 @@ function AgentPanel({
           {data.cards.items.map((item) => (
             <div className="showcase-context-row" key={item.id}>
               <span>
-                {item.label} · {item.card_suffix}
+                {customerText(item.label)} · {item.card_suffix}
               </span>
               <strong>{statusName(item.status)}</strong>
             </div>
@@ -1767,7 +1751,9 @@ function AgentPanel({
           />
           {task ? (
             <>
-              <p className="showcase-context-task">{task.message}</p>
+              <p className="showcase-context-task">
+                {customerText(task.message)}
+              </p>
               <small>{new Date(task.updated_at).toLocaleString("zh-CN")}</small>
             </>
           ) : (
@@ -1852,7 +1838,7 @@ function CrossScenePage({
         <div className="showcase-demo-grid">
           {prompts.map((prompt, index) => (
             <article key={prompt}>
-              <span>演示流程 0{index + 1}</span>
+              <span>常用安排 0{index + 1}</span>
               <h3>{index === 0 ? "可疑扣款处置" : "发薪日资金调度"}</h3>
               <p>
                 {index === 0
@@ -1864,7 +1850,7 @@ function CrossScenePage({
                 onClick={() => onStartTask(prompt)}
                 type="button"
               >
-                在智能助手中开始
+                在助手中开始
               </button>
             </article>
           ))}
@@ -1926,7 +1912,7 @@ function CrossScenePage({
             <div className="showcase-plan-summary">
               <div>
                 <span>付款账户</span>
-                <strong>{plan.account_label}</strong>
+                <strong>{customerText(plan.account_label)}</strong>
               </div>
               <div>
                 <span>当前余额</span>
@@ -1981,14 +1967,14 @@ function CrossScenePage({
               <p className="showcase-warning">
                 按当前余额计算，预留目标还差{" "}
                 {money(plan.reserve_shortfall_minor, plan.currency)}
-                ；这只是模拟预览。
+                ；这只是资金安排预览，不会创建转账或订单。
               </p>
             ) : null}
           </div>
         ) : null}
       </section>
       <section className="showcase-panel">
-        <SectionTitle title="当前账单提示" hint="来自服务端确定性规则" />
+        <SectionTitle title="账单提示" hint="根据账单记录整理" />
         <RecommendationList data={data.recommendations} />
       </section>
     </>
@@ -2059,21 +2045,16 @@ export default function Showcase() {
           <LogoMark />
           <span>
             <strong>{brand.name}</strong>
-            <small>个人金融助手</small>
+            <small>个人账户</small>
           </span>
         </a>
         <div className="showcase-topbar-status">
-          <span className="showcase-demo-tag">演示环境</span>
           <details className="showcase-mode-details">
-            <summary>
-              {data?.session.agent_provider === "openai-compatible"
-                ? "模型模式"
-                : "规则演示"}
-            </summary>
+            <summary>账户说明</summary>
             <div>
               {data?.session.agent_provider === "openai-compatible"
-                ? "当前请求由服务端转发至已配置的兼容模型；只使用合成演示数据。"
-                : "当前使用确定性模拟规则，未调用外部模型。"}
+                ? "账户、交易和产品信息为虚拟数据，不连接真实银行或支付网络。请求由当前配置的服务处理。"
+                : "账户、交易和产品信息为虚拟数据，不连接真实银行或支付网络。请求在本地处理，不会发送到外部模型。"}
             </div>
           </details>
           <span
@@ -2099,7 +2080,7 @@ export default function Showcase() {
       </header>
       <div className="showcase-layout">
         <nav aria-label="主要导航" className="showcase-nav">
-          <div className="showcase-nav-label">工作台</div>
+          <div className="showcase-nav-label">账户服务</div>
           {pageItems.map((item) => (
             <button
               aria-current={page === item.id ? "page" : undefined}
@@ -2108,18 +2089,16 @@ export default function Showcase() {
               onClick={() => setPage(item.id)}
               type="button"
             >
-              <span>{item.number}</span>
               <strong>{item.label}</strong>
-              {item.id === "cross-scene" ? <i>演示</i> : null}
             </button>
           ))}
           <div className="showcase-nav-footer">
             <span className="showcase-avatar">
-              {data?.session.display_name.slice(0, 1) ?? "F"}
+              {customerName(data?.session.display_name).slice(0, 1)}
             </span>
             <div>
-              <strong>{data?.session.display_name ?? "模拟用户"}</strong>
-              <small>本地合成数据</small>
+              <strong>{customerName(data?.session.display_name)}</strong>
+              <small>个人账户</small>
             </div>
           </div>
         </nav>
@@ -2131,15 +2110,17 @@ export default function Showcase() {
               </p>
               {page === "overview" ? null : <h1>{title}</h1>}
             </div>
-            <label className="showcase-month-select">
-              账单月份
-              <input
-                aria-label="账单月份"
-                onChange={(event) => setMonth(event.target.value)}
-                type="month"
-                value={month}
-              />
-            </label>
+            {page === "overview" || page === "bills" ? (
+              <label className="showcase-month-select">
+                账单月份
+                <input
+                  aria-label="账单月份"
+                  onChange={(event) => setMonth(event.target.value)}
+                  type="month"
+                  value={month}
+                />
+              </label>
+            ) : null}
           </div>
           {error ? (
             <div className="showcase-load-error" role="alert">
@@ -2151,7 +2132,7 @@ export default function Showcase() {
           ) : null}
           {loading && !data ? (
             <div className="showcase-loading" role="status">
-              正在读取模拟账户…
+              正在读取账户信息…
             </div>
           ) : data ? (
             <>
@@ -2172,7 +2153,7 @@ export default function Showcase() {
             </div>
           ) : null}
           <footer className="showcase-footer">
-            所有账户、交易、产品及收益数据均为合成演示数据。没有连接真实银行或支付网络。
+            当前为虚拟账户，不连接真实银行或支付网络。
           </footer>
         </main>
       </div>

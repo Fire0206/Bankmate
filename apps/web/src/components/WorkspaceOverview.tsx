@@ -11,6 +11,7 @@ import type {
 import { AppIcon } from "./AppIcon";
 import { CashflowChart } from "./CashflowChart";
 import { SkeletonLine } from "./Skeleton";
+import { customerName, customerText } from "../userFacing";
 
 type OverviewData = {
   accounts: AccountBalanceListResponse;
@@ -87,10 +88,7 @@ export function WorkspaceOverview({
     return () => window.clearTimeout(timer);
   }, [load, refreshKey]);
 
-  const displayName =
-    session?.display_name === "Demo User One"
-      ? "演示用户"
-      : (session?.display_name ?? "你好");
+  const displayName = customerName(session?.display_name);
   const currencyCode =
     data?.accounts.items[0]?.currency ?? data?.bills.currency ?? "CNY";
   const totalBalance =
@@ -112,16 +110,13 @@ export function WorkspaceOverview({
       <article className="overview-intro">
         <div className="overview-eyebrow">
           <span className="overview-status-dot" />
-          可信金融工作台
-          <span className="overview-environment">
-            {session?.dataset_version ?? "合成数据"}
-          </span>
+          账户总览
         </div>
         <h1 id="overview-title">
           {greeting()}，{displayName}
         </h1>
         <p className="overview-lede">
-          说出你的金融目标。FinOrch 会先解释判断和影响，再在确认后执行。
+          说出你要办理的业务，确认后即可继续处理。
         </p>
 
         <div className="overview-actions">
@@ -187,7 +182,7 @@ export function WorkspaceOverview({
                 ? "请重新读取账户与账单数据。"
                 : leadingAnomaly
                   ? `${leadingAnomaly.merchant} · ${currency(leadingAnomaly.amount_minor, leadingAnomaly.currency)} · 规则提示，不是欺诈结论`
-                  : "所有提示均由服务端确定性规则生成。"}
+                  : customerText("所有提示均由服务端账单规则生成。")}
             </small>
           </span>
           {anomalies.length > 0 ? (
@@ -281,7 +276,7 @@ export function WorkspaceOverview({
                 currency(totalBalance, currencyCode)
               )}
             </strong>
-            <em>{data?.accounts.items.length ?? 0} 个模拟账户</em>
+            <em>{data?.accounts.items.length ?? 0} 个账户</em>
           </span>
         </button>
         <button

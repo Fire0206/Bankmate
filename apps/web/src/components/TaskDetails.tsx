@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { components } from "../generated/api";
 import { AppIcon } from "./AppIcon";
 import { apiClient, type ApiError } from "../api/client";
+import { customerText } from "../userFacing";
 
 type Task = components["schemas"]["AgentTaskResponse"];
 type AuditEvent = components["schemas"]["AgentAuditEventResponse"];
@@ -30,7 +31,7 @@ const eventLabels: Record<string, string> = {
   "transfer.confirmation_invalidated": "确认已取消",
   "transfer.confirmation_rejected": "确认未通过",
   "transfer.confirmation_consumed": "转账已处理",
-  "transfer.executed": "模拟转账完成",
+  "transfer.executed": "转账已记账",
   "split.confirmation_requested": "等待确认",
   "split.confirmation_consumed": "分账已处理",
   "investment_order.confirmation_requested": "等待确认",
@@ -79,11 +80,11 @@ function stepLabel(step: Task["steps"][number]): string {
     "card.list": "查询银行卡",
     "card.get": "查询卡片状态",
     "card.freeze": "冻结银行卡",
-    "card.replace": "模拟补卡",
-    "card.apply": "申请模拟借记卡",
-    "card.catalog": "查询模拟商品",
+    "card.replace": "申请补卡",
+    "card.apply": "申请借记卡",
+    "card.catalog": "查看商品",
     "card.controls": "调整卡片消费设置",
-    "card.purchase": "模拟商品购买",
+    "card.purchase": "购买商品",
     "card.applications": "银行卡申请进度",
     "card.unfreeze": "解冻银行卡",
     "bill.monthly_summary": "查询月度账单",
@@ -102,14 +103,14 @@ function stepLabel(step: Task["steps"][number]): string {
     "transfer.simulate_due": "执行到期转账",
     "transfer.splits": "查询 AA 分账",
     "transfer.split_create": "创建 AA 分账",
-    "transfer.split_collect": "模拟收款",
-    "investment.products": "查询模拟理财产品",
+    "transfer.split_collect": "确认收款",
+    "investment.products": "查询理财产品",
     "investment.compare": "比较理财产品",
     "investment.profile": "查询风险等级",
-    "investment.portfolio": "查询模拟持仓",
+    "investment.portfolio": "查询持仓",
     "investment.orders": "查询理财记录",
-    "investment.buy": "申购模拟理财",
-    "investment.redeem": "赎回模拟理财",
+    "investment.buy": "申购理财",
+    "investment.redeem": "赎回理财",
     "finance.payday_plan": "计算发薪日资金安排",
   };
   return labels[key] ?? key;
@@ -140,10 +141,10 @@ function stepSummary(step: Task["steps"][number]): string {
     "card.list": "银行卡信息已读取，卡片状态未变更。",
     "card.get": "卡片状态已查询。",
     "card.freeze": "银行卡已冻结。",
-    "card.replace": "旧卡已停用，新模拟卡已创建。",
-    "card.apply": "模拟借记卡申请已提交，等待本地模拟审核。",
+    "card.replace": "旧卡已停用，新卡已创建。",
+    "card.apply": "借记卡申请已记录，等待系统处理。",
     "card.controls": "卡片消费设置已更新。",
-    "card.purchase": "模拟商品购买已完成。",
+    "card.purchase": "商品购买已记账。",
     "card.unfreeze": "银行卡已解冻。",
     "bill.monthly_summary": "账单统计已读取。",
     "bill.transactions": "交易明细已读取。",
@@ -156,10 +157,10 @@ function stepSummary(step: Task["steps"][number]): string {
     "transfer.payees": "收款人信息已读取。",
     "transfer.history": "转账记录已读取。",
     "transfer.splits": "AA 分账记录已读取。",
-    "investment.products": "模拟理财产品已读取。",
-    "investment.compare": "产品信息已按模拟数据比较。",
-    "investment.profile": "模拟风险等级已读取。",
-    "investment.portfolio": "模拟持仓已读取。",
+    "investment.products": "理财产品已读取。",
+    "investment.compare": "产品信息已比较。",
+    "investment.profile": "风险等级已读取。",
+    "investment.portfolio": "持仓已读取。",
     "investment.orders": "理财操作记录已读取。",
   };
   return summaries[key] ?? step.summary;
@@ -356,14 +357,6 @@ export function TaskDetails({
                 <code>{task.id}</code>
               </dd>
             </div>
-            <div>
-              <dt>运行模式</dt>
-              <dd>
-                {task.provider_mode === "fake"
-                  ? "确定性模拟规则"
-                  : "兼容模型服务"}
-              </dd>
-            </div>
             {task.error_code ? (
               <div>
                 <dt>错误代码</dt>
@@ -376,14 +369,14 @@ export function TaskDetails({
           {task.status === "failed" ? (
             <div className="raw-task-error">
               <strong>服务端返回</strong>
-              <p>{task.message}</p>
+              <p>{customerText(task.message)}</p>
             </div>
           ) : null}
 
           <div className="handoff-control">
             {handoff?.task_id === task.id ? (
               <p>
-                模拟人工处理：
+                协助请求：
                 {handoff.status === "pending"
                   ? "待处理"
                   : handoff.status === "in_progress"
@@ -397,11 +390,11 @@ export function TaskDetails({
                 disabled={handoffBusy}
                 onClick={() => void requestHumanHandoff()}
               >
-                {handoffBusy ? "提交中" : "申请模拟人工处理"}
+                {handoffBusy ? "正在提交" : "记录协助请求"}
               </button>
             )}
             {handoffError ? <p role="alert">{handoffError}</p> : null}
-            <small>此入口仅创建本地模拟工单，不会代替金融操作确认。</small>
+            <small>当前不会联系人工客服；协助记录不代替资金操作确认。</small>
           </div>
 
           {task.workflow_plan ? (

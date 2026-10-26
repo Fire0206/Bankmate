@@ -1,13 +1,14 @@
 import { pages, type PageKey } from "../pageConfig";
+import { brand } from "../brand";
 
 const navigationLabels: Record<PageKey, string> = {
-  overview: "总览",
-  assistant: "Agent 助理",
+  overview: "账户总览",
+  assistant: "助手",
   bills: "账单",
   cards: "银行卡",
   transfers: "转账",
-  subscriptions: "订阅",
-  investments: "投资",
+  subscriptions: "自动扣费",
+  investments: "理财",
 };
 
 export function Navigation({
@@ -15,14 +16,12 @@ export function Navigation({
   displayName,
   mobileOpen,
   onClose,
-  onExit,
   onNavigate,
 }: {
   activePage: PageKey;
   displayName: string;
   mobileOpen: boolean;
   onClose: () => void;
-  onExit: () => void;
   onNavigate: (page: PageKey) => void;
 }) {
   return (
@@ -41,7 +40,7 @@ export function Navigation({
         id="main-navigation"
       >
         <a
-          aria-label="FinOrch 首页"
+          aria-label={`${brand.name} 首页`}
           className="brand-block"
           href="#/overview"
           onClick={(event) => {
@@ -50,16 +49,16 @@ export function Navigation({
             onClose();
           }}
         >
-          <span aria-hidden="true" className="brand-symbol" />
+          <span aria-hidden="true" className="brand-symbol">
+            {brand.mark}
+          </span>
           <span className="brand-copy">
-            <strong className="brand-name">FinOrch</strong>
-            <small>PRIVATE BANKING</small>
+            <strong className="brand-name">{brand.name}</strong>
           </span>
         </a>
 
         <nav aria-label="工作区导航" className="nav-list">
-          <p className="nav-section-label">WORKSPACE</p>
-          {pages.map((page, index) => (
+          {pages.map((page) => (
             <a
               aria-current={activePage === page.key ? "page" : undefined}
               className={
@@ -74,25 +73,19 @@ export function Navigation({
               }}
             >
               <span>{navigationLabels[page.key]}</span>
-              <small>{String(index + 1).padStart(2, "0")}</small>
             </a>
           ))}
         </nav>
 
-        <button
-          className="sidebar-profile"
-          onClick={onExit}
-          title="退出演示账户"
-          type="button"
-        >
+        <div className="sidebar-profile">
           <span className="sidebar-profile-avatar">
             {displayName.slice(0, 1)}
           </span>
           <span className="sidebar-profile-copy">
             <strong>{displayName}</strong>
-            <small>个人账户 · Demo</small>
+            <small>个人账户</small>
           </span>
-        </button>
+        </div>
       </aside>
     </>
   );

@@ -28,7 +28,7 @@ export function CardList({
       <div className="section-heading">
         <div>
           <h2 id="cards-title">银行卡</h2>
-          <p>当前演示账户</p>
+          <p>当前账户</p>
         </div>
         <button
           aria-label="刷新银行卡"
