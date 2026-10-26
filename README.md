@@ -17,8 +17,6 @@
 
 官方赛题强制场景、最低覆盖范围和提交要求仍需按本届官方工作台核实；六大场景是 BankMate 的产品规划。详见[需求说明](docs/requirements.md)和[赛事要求核对记录](docs/competition-requirements.md)。
 
-比赛演示与答辩设计资料（Planned，不代表已实现）：[docs/competition/README.md](docs/competition/README.md)。
-
 ## 技术架构
 
 - **Web**：React、TypeScript、Vite、Tailwind CSS、pnpm，使用 Lightweight Charts 展示现金流时间序列。shadcn/ui 仅作为后续可选集成方案，当前未安装。
@@ -152,10 +150,8 @@ Phase 1E 历史基线与 Phase 2E 最新 DeepSeek 可靠性评测见[开发指�
 
 赛事要求及未确认事项按官方公开内容记录在[赛事核对文档](docs/competition-requirements.md)，并以文档内最近一次核对日期和官方通知为准。
 
-## 比赛材料
+## 比赛提交资料
 
 - [作品简介](docs/submission/作品简介.md)
-- [系统架构图与说明](docs/submission/系统架构图与说明.md)
-- [核心算法说明](docs/submission/核心算法说明.md)
-- [安全设计文档](docs/submission/安全设计文档.md)
+- 技术文档：[系统架构图与说明](docs/submission/系统架构图与说明.md)、[核心算法说明](docs/submission/核心算法说明.md)、[安全设计文档](docs/submission/安全设计文档.md)
 - [安全自评报告](docs/submission/安全自评报告.md)
