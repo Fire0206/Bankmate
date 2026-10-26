@@ -155,5 +155,8 @@ Phase 1E 历史基线与 Phase 2E 最新 DeepSeek 可靠性评测见[开发指�
 ## 比赛材料
 
 - [作品简介](docs/submission/作品简介.md)
-- [技术文档与安全自评](docs/submission/技术文档与安全自评.md)
-- [答辩材料](docs/submission/答辩材料.md)
+- [系统架构图与说明](docs/submission/系统架构图与说明.md)
+- [核心算法说明](docs/submission/核心算法说明.md)
+- [安全设计文档](docs/submission/安全设计文档.md)
+- [安全自评报告](docs/submission/安全自评报告.md)
+
