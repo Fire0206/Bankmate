@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import pytest
 from finorch_api.config import Settings
+from pydantic import ValidationError
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
@@ -35,6 +37,7 @@ def test_env_example_loads_settings(monkeypatch, tmp_path) -> None:
     assert settings.database_url == "sqlite:///./.data/finorch.db"
     assert settings.llm_timeout_seconds == 60.0
     assert settings.llm_temperature == 0.2
+    assert settings.llm_data_egress_enabled is False
     assert str(settings.demo_user_id) == "00000000-0000-4000-8000-000000000001"
 
 
@@ -44,3 +47,16 @@ def test_environment_variable_uses_pydantic_field_name(monkeypatch) -> None:
     settings = Settings(_env_file=None)
 
     assert settings.environment == "test"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
+def test_demo_api_accepts_loopback_hosts(host: str) -> None:
+    settings = Settings(_env_file=None, api_host=host)
+
+    assert settings.api_host == host.lower()
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::", "192.168.1.8", "api.example.com"])
+def test_demo_api_rejects_non_loopback_hosts(host: str) -> None:
+    with pytest.raises(ValidationError, match="loopback address"):
+        Settings(_env_file=None, api_host=host)
