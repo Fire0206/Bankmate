@@ -3,6 +3,7 @@ import urllib.error
 from typing import Any
 
 import pytest
+from finorch_api.agent import providers
 from finorch_api.agent.providers import OpenAICompatibleProvider, select_provider
 from finorch_api.agent.runtime import (
     AgentProviderError,
@@ -171,7 +172,7 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
         captured["timeout"] = timeout
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1",
         api_key=SecretStr("unit-test-key"),
@@ -215,7 +216,7 @@ def test_openai_compatible_adapter_can_force_a_server_required_workflow_tool(mon
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://api.deepseek.com/v1",
         api_key=SecretStr("unit-test-key"),
@@ -406,12 +407,13 @@ def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
             environment="test",
             agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
             llm_base_url="https://model.example/v1",
             llm_api_key=SecretStr("unit-test-key"),
             llm_model="mock-eval-model",
@@ -487,13 +489,14 @@ def test_evaluation_usage_telemetry_is_disabled_outside_test_environment(
             ).encode()
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers.urllib.request.urlopen", lambda *_args, **_kwargs: Response()
+        "finorch_api.agent.providers._open_provider_request", lambda *_args, **_kwargs: Response()
     )
     selection = select_provider(
         Settings(
             _env_file=None,
             environment="development",
             agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
             llm_base_url="https://model.example/v1",
             llm_api_key=SecretStr("unit-test-key"),
             llm_model="mock-eval-model",
@@ -516,12 +519,13 @@ def test_evaluation_hard_budget_guard_refuses_request_before_network(monkeypatch
         network_called = True
         raise AssertionError("Budget rejection must happen before the provider request.")
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
             environment="test",
             agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
             llm_base_url="https://model.example/v1",
             llm_api_key=SecretStr("unit-test-key"),
             llm_model="mock-eval-model",
@@ -548,12 +552,13 @@ def test_evaluation_hard_budget_guard_includes_previous_runs(monkeypatch, tmp_pa
         network_called = True
         raise AssertionError("Cumulative budget rejection must happen before the provider request.")
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
             environment="test",
             agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
             llm_base_url="https://model.example/v1",
             llm_api_key=SecretStr("unit-test-key"),
             llm_model="mock-eval-model",
@@ -590,7 +595,7 @@ def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypat
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://api.deepseek.com/v1",
         api_key=SecretStr("unit-test-key"),
@@ -623,7 +628,7 @@ def test_other_openai_compatible_adapters_keep_provider_defaults(monkeypatch) ->
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1",
         api_key=SecretStr("unit-test-key"),
@@ -683,7 +688,7 @@ def test_openai_compatible_adapter_preserves_multiple_tool_calls_and_empty_turn(
         captured.append(json.loads(request.data))
         return Response(responses.pop(0))
 
-    monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1/chat/completions",
         api_key=SecretStr("unit-test-key"),
@@ -752,7 +757,7 @@ def test_openai_compatible_adapter_maps_http_timeout_connection_and_json_errors(
         def fail_urlopen(*_args, **_kwargs):
             raise error
 
-        monkeypatch.setattr("finorch_api.agent.providers.urllib.request.urlopen", fail_urlopen)
+        monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fail_urlopen)
         try:
             provider.complete([], [])
         except Exception as raised:
@@ -779,7 +784,7 @@ def test_openai_compatible_adapter_maps_http_timeout_connection_and_json_errors(
             return b"not-json"
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers.urllib.request.urlopen",
+        "finorch_api.agent.providers._open_provider_request",
         lambda *_args, **_kwargs: InvalidJsonResponse(),
     )
     try:
@@ -821,7 +826,7 @@ def test_openai_compatible_adapter_rejects_duplicate_or_malformed_call_ids(monke
             ).encode()
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers.urllib.request.urlopen",
+        "finorch_api.agent.providers._open_provider_request",
         lambda *_args, **_kwargs: Response(),
     )
     provider = OpenAICompatibleProvider(
@@ -1135,3 +1140,113 @@ def test_openai_mode_without_settings_fails_closed_without_secret() -> None:
     assert selection.error is not None
     assert selection.error.code == "provider_not_configured"
     assert "unit-test-key" not in str(selection.error)
+
+
+def test_openai_mode_requires_explicit_data_egress_opt_in(monkeypatch) -> None:
+    def fail_if_called(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("Disabled model egress must fail before any network request.")
+
+    monkeypatch.setattr(providers, "_open_provider_request", fail_if_called)
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            agent_provider="openai-compatible",
+            llm_base_url="https://api.deepseek.com/v1",
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-model",
+        )
+    )
+
+    assert selection.provider is None
+    assert selection.error is not None
+    assert selection.error.code == "provider_not_configured"
+    assert "disabled" in str(selection.error).lower()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "message"),
+    [
+        ("http://model.example/v1", "HTTPS"),
+        ("https://user:pass@model.example/v1", "Credentials"),
+        ("https://model.example/v1?token=secret", "query or fragment"),
+        ("https://model.example/v1#fragment", "query or fragment"),
+        ("https:///missing-host", "absolute"),
+        ("https://model.example:invalid/v1", "invalid"),
+    ],
+)
+def test_openai_mode_rejects_unsafe_provider_urls_before_network(
+    monkeypatch, base_url: str, message: str
+) -> None:
+    def fail_if_called(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("An invalid model endpoint must never receive a request.")
+
+    monkeypatch.setattr(providers, "_open_provider_request", fail_if_called)
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
+            llm_base_url=base_url,
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-model",
+        )
+    )
+
+    assert selection.provider is None
+    assert selection.error is not None
+    assert message.lower() in str(selection.error).lower()
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.deepseek.com/v1",
+        "http://127.0.0.1:8000/v1",
+        "http://[::1]:8000/v1",
+        "http://localhost:8000/v1",
+    ],
+)
+def test_openai_mode_accepts_https_or_loopback_provider_urls(base_url: str) -> None:
+    selection = select_provider(
+        Settings(
+            _env_file=None,
+            agent_provider="openai-compatible",
+            llm_data_egress_enabled=True,
+            llm_base_url=base_url,
+            llm_api_key=SecretStr("unit-test-key"),
+            llm_model="mock-model",
+        )
+    )
+
+    assert selection.provider is not None
+    assert selection.error is None
+
+
+def test_openai_adapter_never_follows_provider_redirects(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class Opener:
+        def open(self, request, *, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return "response"
+
+    def build_opener(*handlers):
+        captured["handlers"] = handlers
+        return Opener()
+
+    monkeypatch.setattr(providers.urllib.request, "build_opener", build_opener)
+    request = providers.urllib.request.Request("https://model.example/v1")
+
+    assert providers._open_provider_request(request, timeout=3) == "response"
+    assert captured["request"] is request
+    assert captured["timeout"] == 3
+    assert len(captured["handlers"]) == 1
+    redirect_handler = captured["handlers"][0]
+    assert isinstance(redirect_handler, providers.urllib.request.HTTPRedirectHandler)
+    assert (
+        redirect_handler.redirect_request(
+            request, None, 302, "Found", {}, "https://other.example/target"
+        )
+        is None
+    )
