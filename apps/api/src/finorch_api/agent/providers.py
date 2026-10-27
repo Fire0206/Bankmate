@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import threading
 import urllib.error
@@ -29,6 +30,42 @@ class ProviderSelection:
     error: AgentProviderError | None = None
 
 
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+def _open_provider_request(request: urllib.request.Request, *, timeout: float) -> Any:
+    opener = urllib.request.build_opener(_RejectRedirects())
+    return opener.open(request, timeout=timeout)
+
+
+def _provider_url_error(base_url: str) -> str | None:
+    if base_url != base_url.strip() or any(character.isspace() for character in base_url):
+        return "The configured provider URL contains invalid whitespace."
+    try:
+        parsed = urlparse(base_url)
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError:
+        return "The configured provider URL is invalid."
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        return "The configured provider URL must be an absolute HTTP or HTTPS URL."
+    if parsed.username is not None or parsed.password is not None:
+        return "Credentials must not be embedded in the configured provider URL."
+    if parsed.query or parsed.fragment:
+        return "The configured provider URL must not contain a query or fragment."
+    if parsed.scheme == "http":
+        normalized_host = hostname.rstrip(".").lower()
+        try:
+            loopback = ipaddress.ip_address(normalized_host).is_loopback
+        except ValueError:
+            loopback = normalized_host == "localhost"
+        if not loopback:
+            return "Non-local model provider URLs must use HTTPS."
+    return None
+
+
 def select_provider(settings: Settings) -> ProviderSelection:
     if settings.agent_provider == "fake":
         return ProviderSelection(provider=FakeProvider(), mode="fake")
@@ -41,13 +78,22 @@ def select_provider(settings: Settings) -> ProviderSelection:
                 "OpenAI-compatible mode requires a base URL, API key, and model name.",
             ),
         )
-    if not settings.llm_base_url.startswith(("http://", "https://")):
+    if not settings.llm_data_egress_enabled:
         return ProviderSelection(
             provider=None,
             mode="openai-compatible",
             error=AgentProviderError(
-                "provider_not_configured", "The configured provider URL must use HTTP or HTTPS."
+                "provider_not_configured",
+                "External model requests are disabled. Explicitly enable model data egress "
+                "only when using synthetic data and a trusted provider.",
             ),
+        )
+    url_error = _provider_url_error(settings.llm_base_url)
+    if url_error:
+        return ProviderSelection(
+            provider=None,
+            mode="openai-compatible",
+            error=AgentProviderError("provider_not_configured", url_error),
         )
     return ProviderSelection(
         provider=OpenAICompatibleProvider(
@@ -263,7 +309,7 @@ class OpenAICompatibleProvider(LLMProvider):
                 }
             )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with _open_provider_request(request, timeout=self.timeout_seconds) as response:
                 payload = json.loads(response.read())
         except urllib.error.HTTPError as exc:
             raise AgentProviderError(
