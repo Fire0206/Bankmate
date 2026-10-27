@@ -71,8 +71,6 @@ type PendingWrite =
       taskId: string;
     };
 
-const pendingWriteStorageKey = "finorch.demo.pending-write";
-
 type ViewTransitionDocument = Document & {
   startViewTransition?: (update: () => void) => unknown;
 };
@@ -86,54 +84,6 @@ function withViewTransition(update: () => void) {
     transitionDocument.startViewTransition(update);
   } else {
     update();
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readPendingWrite(): PendingWrite | null {
-  try {
-    const parsed: unknown = JSON.parse(
-      sessionStorage.getItem(pendingWriteStorageKey) ?? "null",
-    );
-    if (!isRecord(parsed)) return null;
-    const {
-      kind,
-      key,
-      conversationId,
-      taskId,
-      requestText,
-      challengeId,
-      parametersHash,
-    } = parsed;
-    if (
-      typeof key !== "string" ||
-      typeof conversationId !== "string" ||
-      typeof kind !== "string"
-    )
-      return null;
-    if (kind === "create" && typeof requestText === "string")
-      return { kind, key, conversationId, requestText };
-    if (
-      kind === "input" &&
-      typeof taskId === "string" &&
-      typeof requestText === "string"
-    )
-      return { kind, key, conversationId, taskId, requestText };
-    if (
-      kind === "confirm" &&
-      typeof taskId === "string" &&
-      typeof challengeId === "string" &&
-      typeof parametersHash === "string"
-    )
-      return { kind, key, conversationId, taskId, challengeId, parametersHash };
-    if (kind === "cancel" && typeof taskId === "string")
-      return { kind, key, conversationId, taskId };
-    return null;
-  } catch {
-    return null;
   }
 }
 
@@ -333,8 +283,10 @@ function StatusIndicator({ status }: { status: ApiState }) {
 
 function AccountDetails({
   mode,
+  externalModelEgressEnabled,
 }: {
   mode: DemoSessionResponse["agent_provider"];
+  externalModelEgressEnabled: boolean;
 }) {
   return (
     <details className="environment-details">
@@ -348,7 +300,9 @@ function AccountDetails({
         <p className="environment-note">
           {mode === "fake"
             ? "请求在本地处理，不会发送到外部模型。"
-            : "请求由已配置的服务处理。请勿输入真实账户信息、密码或验证码。"}
+            : externalModelEgressEnabled
+              ? "外部模型请求已开启。请求文字、合成账户信息和工具结果会发送到配置的模型服务。请勿输入真实个人或账户信息。"
+              : "外部模型请求已关闭。新的请求不会发送到模型服务。"}
         </p>
       </div>
     </details>
@@ -377,9 +331,16 @@ export default function App() {
   const [cards, setCards] = useState<CardListResponse["items"]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeTask, setActiveTask] = useState<AgentTaskResponse | null>(null);
-  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(
-    readPendingWrite,
-  );
+  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(() => {
+    try {
+      // Remove pending request bodies left by older builds. Recovery reads
+      // authoritative task state from the server instead of browser storage.
+      sessionStorage.removeItem("finorch.demo.pending-write");
+    } catch {
+      // Storage may be disabled; task recovery still works through the API.
+    }
+    return null;
+  });
   const [auditState, setAuditState] = useState<{
     key: string;
     events: AuditResponse["events"];
@@ -462,13 +423,6 @@ export default function App() {
 
   const storePendingWrite = useCallback((write: PendingWrite | null) => {
     setPendingWrite(write);
-    try {
-      if (write)
-        sessionStorage.setItem(pendingWriteStorageKey, JSON.stringify(write));
-      else sessionStorage.removeItem(pendingWriteStorageKey);
-    } catch {
-      // Session storage is a recovery aid, never an identity or authorization source.
-    }
   }, []);
 
   const lookupPendingWrite = useCallback(async (write: PendingWrite) => {
@@ -510,30 +464,9 @@ export default function App() {
         if (!current) return;
         setSession(demo);
         setCards(cardPage.items);
-        const savedWrite = readPendingWrite();
         try {
-          if (savedWrite) {
-            const recovered = await lookupPendingWrite(savedWrite);
-            if (!current) return;
-            if (recovered.task) applyTask(recovered.task);
-            if (recovered.resolved) {
-              storePendingWrite(null);
-            } else {
-              setRequestError({
-                title: "提交状态尚未确认",
-                message: recovered.task
-                  ? "已读取服务端任务。请确认当前状态，或使用相同请求安全重试。"
-                  : "暂未找到这次提交的任务记录。请先查询结果，再使用原请求安全重试。",
-                code: null,
-                status: null,
-                requestId: null,
-                fieldDetails: [],
-              });
-            }
-          } else {
-            const recent = await apiClient.readRecentTask(conversationId);
-            if (current && recent) applyTask(recent);
-          }
+          const recent = await apiClient.readRecentTask(conversationId);
+          if (current && recent) applyTask(recent);
         } catch (error) {
           if (current) setRequestError(toUiError(error));
         }
@@ -547,7 +480,7 @@ export default function App() {
     return () => {
       current = false;
     };
-  }, [applyTask, conversationId, lookupPendingWrite, storePendingWrite]);
+  }, [applyTask, conversationId]);
 
   useEffect(() => {
     function onHashChange() {
@@ -956,6 +889,9 @@ export default function App() {
               <AccountDetails
                 mode={
                   activeTask?.provider_mode ?? session?.agent_provider ?? "fake"
+                }
+                externalModelEgressEnabled={
+                  session?.external_model_egress_enabled ?? false
                 }
               />
               <StatusIndicator status={apiState} />
