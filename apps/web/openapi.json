@@ -5451,17 +5451,17 @@
           },
           "version": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Version"
           },
           "single_limit_minor": {
             "type": "integer",
-            "exclusiveMinimum": 0.0,
+            "exclusiveMinimum": 0,
             "title": "Single Limit Minor"
           },
           "daily_limit_minor": {
             "type": "integer",
-            "exclusiveMinimum": 0.0,
+            "exclusiveMinimum": 0,
             "title": "Daily Limit Minor"
           },
           "online_enabled": {
@@ -5752,6 +5752,10 @@
               "openai-compatible"
             ],
             "title": "Agent Provider"
+          },
+          "external_model_egress_enabled": {
+            "type": "boolean",
+            "title": "External Model Egress Enabled"
           }
         },
         "additionalProperties": false,
@@ -5761,7 +5765,8 @@
           "display_name",
           "environment",
           "dataset_version",
-          "agent_provider"
+          "agent_provider",
+          "external_model_egress_enabled"
         ],
         "title": "DemoSessionResponse"
       },
@@ -6323,14 +6328,14 @@
           },
           "transfer_amount_minor": {
             "type": "integer",
-            "maximum": 10000000000.0,
-            "exclusiveMinimum": 0.0,
+            "maximum": 10000000000,
+            "exclusiveMinimum": 0,
             "title": "Transfer Amount Minor"
           },
           "reserve_amount_minor": {
             "type": "integer",
-            "maximum": 10000000000.0,
-            "minimum": 0.0,
+            "maximum": 10000000000,
+            "minimum": 0,
             "title": "Reserve Amount Minor"
           },
           "source_account_label": {
@@ -6544,13 +6549,13 @@
         "properties": {
           "days_before": {
             "type": "integer",
-            "maximum": 30.0,
-            "minimum": 0.0,
+            "maximum": 30,
+            "minimum": 0,
             "title": "Days Before"
           },
           "expected_version": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Expected Version"
           }
         },
@@ -6570,26 +6575,26 @@
           },
           "time_horizon": {
             "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Time Horizon"
           },
           "loss_tolerance": {
             "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Loss Tolerance"
           },
           "liquidity_capacity": {
             "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Liquidity Capacity"
           },
           "investment_experience": {
             "type": "integer",
-            "maximum": 5.0,
-            "minimum": 1.0,
+            "maximum": 5,
+            "minimum": 1,
             "title": "Investment Experience"
           }
         },
