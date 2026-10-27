@@ -15,6 +15,9 @@ def test_health_returns_api_process_status_and_request_id() -> None:
         "version": "0.1.0",
     }
     assert response.headers["X-Request-ID"] == "phase0-check-001"
+    assert response.headers["Cache-Control"] == "no-store"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
 
 
 def test_unknown_route_uses_standard_error_envelope() -> None:

@@ -24,6 +24,7 @@ class DemoSessionResponse(BaseModel):
     environment: Literal["development", "test"]
     dataset_version: str
     agent_provider: Literal["fake", "openai-compatible"]
+    external_model_egress_enabled: bool
 
 
 @router.get("", response_model=DemoSessionResponse, summary="Read local synthetic demo identity")
@@ -41,4 +42,7 @@ def read_demo_session(
         environment=settings.environment,
         dataset_version=identity.dataset_version,
         agent_provider=settings.agent_provider,
+        external_model_egress_enabled=(
+            settings.agent_provider == "openai-compatible" and settings.llm_data_egress_enabled
+        ),
     )

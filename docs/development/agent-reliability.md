@@ -30,6 +30,7 @@ pytest 使用 Mock HTTP 响应覆盖请求结构、多工具多轮、无工具�
 
 ```dotenv
 FINORCH_AGENT_PROVIDER=openai-compatible
+FINORCH_LLM_DATA_EGRESS_ENABLED=true
 FINORCH_LLM_BASE_URL=https://provider.example/v1
 FINORCH_LLM_API_KEY=<local secret>
 FINORCH_LLM_MODEL=<tool-calling model name>
@@ -37,7 +38,7 @@ FINORCH_LLM_TIMEOUT_SECONDS=60
 FINORCH_LLM_TEMPERATURE=0.2
 ```
 
-Base URL 填到兼容 API 的版本根路径，适配器会追加 `/chat/completions`。准备并启动 API/Web 的命令见[开发指南](../development.md)。真实 Smoke Test 只用 seed 合成数据，按顺序验证：
+Base URL 填到兼容 API 的版本根路径，适配器会追加 `/chat/completions`。默认关闭的模型数据外发开关必须由开发者显式打开；远端 endpoint 只接受 HTTPS，且不会跟随重定向。只用 seed 合成数据，不能输入真实个人、账户或验证码信息。准备并启动 API/Web 的命令见[开发指南](../development.md)。真实 Smoke Test 按顺序验证：
 
 1. 请求“查看我的银行卡”，确认任务结果来自 `card.list`。
 2. 请求查询一个 seed 卡片的尾号状态，确认由 `card.get` 返回。

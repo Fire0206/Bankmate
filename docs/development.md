@@ -70,7 +70,7 @@ pnpm run format:check
 
 ## 配置说明
 
-环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；DeepSeek 可通过本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。密钥只在服务端使用，不得提交到仓库。Demo Identity 只在 development/test 启用，不是用户认证系统。
+环境变量示例见根目录 `.env.example`。API 使用 `FINORCH_` 前缀，默认监听 `127.0.0.1:8000`；配置为非 loopback 地址时启动校验会失败。`FINORCH_AGENT_PROVIDER=fake` 是默认确定性演示模式；DeepSeek 可通过本地忽略文件 `.env` 配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_DATA_EGRESS_ENABLED=true`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。外部模型请求默认关闭；启用后只使用合成数据，远端 endpoint 必须使用 HTTPS。密钥只在服务端使用，不得提交到仓库。Demo Identity 只在 development/test 启用，不是用户认证系统。
 
 DeepSeek 真实模型测试使用 `apps/api/scripts/deepseek_eval.py` 的 15 个跨场景用例，检查完整工具序列、多次确认、不同措辞、补充输入、取消、失败恢复、工具参数和最终 API 状态。报告不包含原始提示词、模型回复或 API Key；只输出用例标签、工具名、任务状态、确认顺序和校验结果。真实调用会消耗模型额度；自动化 CI 仍使用 Fake Provider 和 Mock HTTP。模型调用默认等待 60 秒、temperature 为 0.2，可用 `FINORCH_LLM_TIMEOUT_SECONDS` 与 `FINORCH_LLM_TEMPERATURE` 调整。
 
@@ -82,6 +82,7 @@ $env:FINORCH_ENVIRONMENT = 'test'
 $env:FINORCH_DATABASE_URL = 'sqlite:///' + $phase2cDbPath.Replace('\','/')
 $env:FINORCH_API_PORT = '8123'
 $env:FINORCH_AGENT_PROVIDER = 'openai-compatible'
+$env:FINORCH_LLM_DATA_EGRESS_ENABLED = 'true'
 $env:FINORCH_LLM_BASE_URL = 'https://api.deepseek.com'
 $env:FINORCH_LLM_MODEL = 'deepseek-flash'
 $env:FINORCH_LLM_TIMEOUT_SECONDS = '60'
@@ -91,7 +92,7 @@ uv run --project apps/api python -m finorch_api.seed
 uv run --project apps/api python -m finorch_api
 ```
 
-另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8123`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。开始评测前确认该端口未被占用，并核验本地 API 返回 `agent_provider=openai-compatible`；API 与评测脚本必须使用同一临时数据库 URL，禁止指向已有服务或默认 Demo 数据库。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。默认数据集是 15 个 `cross_` 开发案例；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
+另开终端并设置相同的 `FINORCH_ENVIRONMENT`、`FINORCH_DATABASE_URL`、`FINORCH_AGENT_PROVIDER`、`FINORCH_LLM_DATA_EGRESS_ENABLED=true`、`FINORCH_LLM_BASE_URL` 和模型名，再设置 `FINORCH_EVAL_BASE_URL=http://127.0.0.1:8123`、`FINORCH_EVAL_RESET_SYNTHETIC=1` 及所选 `FINORCH_EVAL_CASES`。开始评测前确认该端口未被占用，并核验本地 API 返回 `agent_provider=openai-compatible`；API 与评测脚本必须使用同一临时数据库 URL，禁止指向已有服务或默认 Demo 数据库。本地 `.env` 或进程环境必须已安全提供 `FINORCH_LLM_API_KEY`。默认数据集是 15 个 `cross_` 开发案例；报告输出路径可由 `FINORCH_EVAL_REPORT` 指定。随后运行：
 
 ```powershell
 uv run --project apps/api python apps/api/scripts/deepseek_eval.py

@@ -4,7 +4,7 @@
 
 ## 权限与风险
 
-- 当前 API 的 actor 由服务端 `FINORCH_DEMO_USER_ID` 配置提供，只在 `development`/`test` 环境启用；生产环境不可用。客户端的 `user_id` 和角色字段不可信，也不作为身份来源。这个本机 Demo 身份不适用于远程共享或真实用户场景。
+- 当前 API 的 actor 由服务端 `FINORCH_DEMO_USER_ID` 配置提供，只在 `development`/`test` 环境启用；生产环境不可用。客户端的 `user_id` 和角色字段不可信，也不作为身份来源。Settings 强制 API 仅绑定 `localhost` 或 loopback IP；不能用局域网监听来共享这个本机演示身份。
 - 卡片读取在 SQL 查询中按 actor 所属用户范围过滤；不属于 actor 的卡片与不存在卡片统一返回 404。未来 API 在应用边界验证真实身份并做资源级授权；只在后端授予最小权限。
 - 交易、月度汇总和订阅读取同样按 actor 所属账户过滤。Agent 工具和 HTTP 只读 API 使用相同 Application 查询边界；账单汇总来自合成流水的服务端确定性计算。
 - 工具权限保留 `read_only`、`reversible_write`、`high_risk_write` 元数据；服务端确认时以 `risk-v1` 策略重新计算 green / yellow / red，不信任模型或前端传入的等级。已授权的只读操作不生成确认；普通写操作需要用户显式确认。
@@ -24,9 +24,9 @@
 - 用户文本、交易描述、检索文档、网页、OCR 和工具返回都视为非可信内容；其中嵌入的指令不可提升权限或更改系统策略。
 - Agent 只能使用当前用户允许且服务端注册的工具；每次调用重新执行 schema、权限和风险校验。
 - 写工具提案还须与用户原始请求中的明确操作意图一致；交易商户、备注等工具结果中的自由文本不能代替用户授权。涉及向所谓“安全账户”转款等胁迫或诈骗线索的资金写入会被拒绝，且不生成确认挑战。
-- 代码层只接受 `ToolRegistry` 中的工具名，Pydantic 校验 Input/Output；Fake Provider 和 OpenAI-compatible Adapter 都不能自行增删可用工具。OpenAI-compatible 模式把有限用户文本、可信的合成上下文和工具定义发送到配置的模型服务，因此只应与合成数据和管理员信任的 endpoint 一起使用。
+- 代码层只接受 `ToolRegistry` 中的工具名，Pydantic 校验 Input/Output；Fake Provider 和 OpenAI-compatible Adapter 都不能自行增删可用工具。外部模型请求默认关闭；显式设置 `FINORCH_LLM_DATA_EGRESS_ENABLED=true` 后，OpenAI-compatible 模式才会发送用户文本、合成上下文、工具定义和工具结果。远端 endpoint 必须使用 HTTPS，配置 URL 不得携带凭据、查询参数或片段，HTTP 重定向不会跟随。启用前仍须确认只使用合成数据且 endpoint 可信。
 - DeepSeek 已用于跨场景合成业务流程评测；这只验证所列用例中的工具序列与最终模拟状态，不代表 Prompt Injection 抵抗、外部数据处理或模型整体安全已通过验证。
-- 任务恢复接口始终按服务端 actor 过滤；最近任务查询同时要求会话关联 ID，幂等结果查询还绑定 operation 与非创建任务 ID。浏览器保存的会话 ID 和 pending-write 数据仅用于关联/同键重试，不是身份、授权或确认凭证；所有执行仍由服务端校验。
+- 任务恢复接口始终按服务端 actor 过滤；最近任务查询同时要求会话关联 ID，幂等结果查询还绑定 operation 与非创建任务 ID。浏览器仅在 `sessionStorage` 保存随机会话关联 ID，不保存用户原文、金融参数或 OTP；刷新后从服务端恢复任务。会话 ID 不是身份、授权或确认凭证；所有执行仍由服务端校验。
 - 不把密钥或系统提示词放入用户可见上下文；工具返回经过长度、格式和敏感数据控制。
 - 对越权工具请求、间接提示注入、恶意字段和模型拒绝/幻觉建立对抗测试集。
 - 检索到的内容只能作为事实候选并带来源，不能被当作授权或业务规则。
@@ -34,8 +34,8 @@
 ## 审计与隐私
 
 - `audit_events` 为追加式通用事件结构，记录 actor、event type、resource、request/task/tool execution ID、执行 outcome、可选前后状态摘要及 UTC 时间。卡片状态改变时保留 `previous_status`、`new_status`、`resource_version` 等旧卡片字段语义；task/tool/confirmation 事件与业务写入按对应事务追加。
-- 审计不保存 API Key、原始敏感 payload 或完整拼装 Prompt。Agent Task 为恢复和展示流程会受限保存用户请求文本；只允许合成演示请求，不要在本地输入真实个人或金融信息。Fake Provider 不发外部网络请求。
-- 浏览器 `sessionStorage` 可能短暂保存待核实请求的文本、操作参数和幂等键，以便先查询结果或用同键安全重试；它不是可信存储，数据可被本机用户或页面脚本读取。真实个人/金融信息仍禁止输入。
+- 审计不保存 API Key、原始敏感 payload 或完整拼装 Prompt。Agent Task 为恢复和展示流程会在本地数据库受限保存用户请求文本；只允许合成演示请求，不要输入真实个人或金融信息。Fake Provider 不发外部网络请求。
+- API 响应使用 `Cache-Control: no-store`，避免浏览器或中间缓存保存账户、交易和任务响应。
 - 审计日志采用追加式记录；正常业务路径不覆盖历史。仅受限 development/test 的显式 Demo Reset 会清空合成审计数据并重置数据库。保留期限、访问权限和删除义务需在真实业务范围确定后审议。
 - 日志和错误响应按最小需要记录；遮蔽账户标识和手机号，永不记录完整卡号、认证材料、访问令牌、API Key 或不必要的 prompt/正文。
 - 全部开发、测试、演示金融记录均为合成数据；当前 seed 使用固定 ID 和 `phase3-v1` 数据集版本，可重复执行。异常提示包括“非住房单笔支出达到 ¥1,000”及“同一账户、商户、金额和币种在同一 UTC 日内重复收费”的确定性规则，不是欺诈检测。显式 reset 的路径白名单见[数据契约](data-contract.md)。

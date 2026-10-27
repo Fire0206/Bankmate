@@ -26,6 +26,7 @@ export const demoSession: DemoSessionResponse = {
   environment: "development",
   dataset_version: "phase1e-v1",
   agent_provider: "fake",
+  external_model_egress_enabled: false,
 };
 
 export const demoAccounts: AccountBalanceListResponse = {

@@ -86,7 +86,7 @@ Windows 可使用仓库脚本固定 Demo 数据库和启动参数。脚本只操
 .\scripts\demo.ps1 -Mode web
 ```
 
-如需演示 DeepSeek，在本地忽略文件 `.env` 配置兼容服务地址、模型和 API Key，然后以 `-Provider openai-compatible` 启动 API。不要在网页端配置密钥。
+如需演示 DeepSeek，在本地忽略文件 `.env` 配置兼容服务地址、模型和 API Key，并显式设置 `FINORCH_LLM_DATA_EGRESS_ENABLED=true`。只用合成数据，不要在网页端配置密钥。
 
 终端一，启动 API：
 
@@ -104,7 +104,7 @@ pnpm --filter @finorch/web dev
 
 转账单笔或当日累计超过 ¥1,000，以及 R4/R5 模拟产品申购，还需本地模拟二次验证。在独立终端运行 `uv run --project apps/api python -m finorch_api.demo_verification --latest` 获取一次性六位码，再在确认卡输入。验证码只用于本地演示，不是生产级身份验证；完整约束见[开发指南](docs/development.md)。
 
-可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。`FINORCH_LLM_TEMPERATURE` 默认 `0.2`，降低工具选择的随机性。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金、适当性和权限校验及确认均由服务端执行。
+可选 DeepSeek 模式可在本地忽略文件 `.env` 设置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_DATA_EGRESS_ENABLED=true`、`FINORCH_LLM_BASE_URL=https://api.deepseek.com`、`FINORCH_LLM_API_KEY` 和 `FINORCH_LLM_MODEL=deepseek-flash`。`FINORCH_LLM_DATA_EGRESS_ENABLED` 默认关闭，远端模型 endpoint 只接受 HTTPS；`FINORCH_LLM_TEMPERATURE` 默认 `0.2`，降低工具选择的随机性。密钥只由服务端读取，不要写入浏览器环境或提交到仓库。模型输出仅是工具调用提议，资金、适当性和权限校验及确认均由服务端执行。
 
 ## 测试与检查
 

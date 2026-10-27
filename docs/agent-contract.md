@@ -13,7 +13,7 @@
 ## 当前 Provider 和运行时
 
 - `FakeProvider` 是明确标注的确定性本地演示实现：它按小范围请求文本和可信会话上下文产生预设工具调用，不做模型推理、不访问网络。它不是“假装的 LLM”。
-- `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、Base URL、API Key 和模型名后才启用。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
+- `OpenAICompatibleProvider` 实现 Chat Completions Tool Calling Adapter。只有显式配置 `FINORCH_AGENT_PROVIDER=openai-compatible`、`FINORCH_LLM_DATA_EGRESS_ENABLED=true`、HTTPS Base URL、API Key 和模型名后才启用；本地 loopback HTTP 仅供本地开发。默认不向外部模型发送数据，且不跟随 HTTP 重定向。凭据仅由服务端配置读取；错误消息不回显凭据或模型响应正文。
 - Provider 接口只接收受控消息与注册工具定义，并返回文本/工具调用提议；Provider 不接收 ORM Session，不决定 actor、权限、风险等级或确认结果。
 - Agent Loop 每次规划最多执行 8 次工具调用；确认后在同一持久化 Task 中继续规划，最多追加 6 个续跑阶段。若完成态门禁发现明确请求仍缺少成功的写工具记录，服务端最多再请求两次有界重规划，并把缺失工具放入可信上下文；仍未完成则以失败状态返回。同一轮可有多个 `tool_calls`，每个工具结果都按原 `tool_call_id` 回送。已成功的写操作不会重放；未知工具、非法 JSON/Schema、无效/重复调用 ID、Provider 错误和步数上限都不会执行未验证的业务操作。
 - 模型仅返回文本而没有提出已注册工具调用时，服务端不会把文本作为执行结果；会返回未执行操作/等待补充信息状态。只读结果和写入结果摘要均基于服务端工具数据生成，不将模型文本当作业务执行事实。
