@@ -118,6 +118,10 @@ async def attach_request_id(request: Request, call_next: RequestResponseEndpoint
     )
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Content-Type-Options"] = "nosniff"
     if settings.environment == "test" and settings.eval_instance_id:
         response.headers["X-FinOrch-Eval-Instance"] = settings.eval_instance_id
         response.headers["X-FinOrch-Eval-Database"] = hashlib.sha256(
