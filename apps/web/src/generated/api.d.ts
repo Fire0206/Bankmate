@@ -1226,6 +1226,8 @@ export interface components {
              * @enum {string}
              */
             agent_provider: "fake" | "openai-compatible";
+            /** External Model Egress Enabled */
+            external_model_egress_enabled: boolean;
         };
         /** ErrorDetail */
         ErrorDetail: {
