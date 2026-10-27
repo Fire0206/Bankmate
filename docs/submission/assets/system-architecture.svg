@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1080" viewBox="0 0 1800 1080" role="img" aria-labelledby="title description">
+  <title id="title">BankMate 系统架构图</title>
+  <desc id="description">展示用户、Web、API、Agent、受控工具、服务端安全控制、业务应用、数据库、工作流和审计之间的关系，以及绿黄红三类权限操作。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto">
+      <path d="M1,1 L10,6 L1,11 Z" fill="#555555" />
+    </marker>
+    <style>
+      text { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; fill: #111111; }
+      .title { font-size: 48px; font-weight: 700; }
+      .subtitle { font-size: 24px; fill: #666666; }
+      .box { fill: #ffffff; stroke: #d6d6d6; stroke-width: 2; }
+      .head { font-size: 29px; font-weight: 700; }
+      .body { font-size: 21px; fill: #555555; }
+      .arrow { fill: none; stroke: #555555; stroke-width: 3; marker-end: url(#arrow); }
+      .security { fill: #f7f7f7; stroke: #d6d6d6; stroke-width: 2; }
+      .green-bg { fill: #e8f5ec; stroke: #92c9a2; stroke-width: 2; }
+      .yellow-bg { fill: #fff5dc; stroke: #e1bf65; stroke-width: 2; }
+      .red-bg { fill: #fdeceb; stroke: #e0a19e; stroke-width: 2; }
+      .green { fill: #16733b; }
+      .yellow { fill: #8b6500; }
+      .red { fill: #b42318; }
+      .legend-title { font-size: 25px; font-weight: 700; }
+      .legend-body { font-size: 20px; fill: #444444; }
+    </style>
+  </defs>
+  <rect width="1800" height="1080" fill="#ffffff" />
+  <text class="title" x="90" y="92">BankMate 系统架构图</text>
+  <text class="subtitle" x="90" y="137">用户提出需求，Agent 调用受控工具，服务端完成校验并返回真实业务结果</text>
+
+  <rect class="box" x="80" y="220" width="250" height="170" rx="16" />
+  <text class="head" x="110" y="278">用户</text>
+  <text class="body" x="110" y="325">自然语言提出需求</text>
+  <text class="body" x="110" y="357">查看结果并确认操作</text>
+
+  <rect class="box" x="400" y="220" width="300" height="170" rx="16" />
+  <text class="head" x="430" y="278">Web 前端</text>
+  <text class="body" x="430" y="325">React · TypeScript</text>
+  <text class="body" x="430" y="357">对话、业务页面和任务进度</text>
+
+  <rect class="box" x="770" y="220" width="280" height="170" rx="16" />
+  <text class="head" x="800" y="278">API 服务</text>
+  <text class="body" x="800" y="325">FastAPI · OpenAPI</text>
+  <text class="body" x="800" y="357">请求校验与身份范围</text>
+
+  <rect class="box" x="1120" y="220" width="300" height="170" rx="16" />
+  <text class="head" x="1150" y="278">Agent Runtime</text>
+  <text class="body" x="1150" y="325">识别意图、规划步骤</text>
+  <text class="body" x="1150" y="357">使用模型或规则 Provider</text>
+
+  <rect class="box" x="1490" y="220" width="250" height="170" rx="16" />
+  <text class="head" x="1520" y="278">受控工具</text>
+  <text class="body" x="1520" y="325">注册工具与 Schema</text>
+  <text class="body" x="1520" y="357">只调用允许的业务能力</text>
+
+  <path class="arrow" d="M330 305 H392" />
+  <path class="arrow" d="M700 305 H762" />
+  <path class="arrow" d="M1050 305 H1112" />
+  <path class="arrow" d="M1420 305 H1482" />
+
+  <rect class="security" x="400" y="470" width="1340" height="125" rx="18" />
+  <text class="head" x="440" y="520">服务端安全控制</text>
+  <text class="body" x="440" y="560">资源归属 · 风险判断 · 操作确认 · 强验证 · 幂等校验</text>
+  <path class="arrow" d="M1615 390 V462" />
+  <path class="arrow" d="M1060 595 V660" />
+
+  <rect class="box" x="1030" y="670" width="420" height="150" rx="16" />
+  <text class="head" x="1065" y="725">Application / Domain</text>
+  <text class="body" x="1065" y="770">执行银行业务规则和状态变更</text>
+  <text class="body" x="1065" y="802">事务失败时回滚，成功返回结果</text>
+
+  <rect class="box" x="540" y="670" width="390" height="150" rx="16" />
+  <text class="head" x="575" y="725">数据库与工作流</text>
+  <text class="body" x="575" y="770">SQLite · SQLAlchemy · Alembic</text>
+  <text class="body" x="575" y="802">保存业务状态、任务和步骤</text>
+
+  <rect class="box" x="80" y="670" width="370" height="150" rx="16" />
+  <text class="head" x="115" y="725">审计记录</text>
+  <text class="body" x="115" y="770">记录操作对象、结果和时间</text>
+  <text class="body" x="115" y="802">与业务写入保持事务一致</text>
+
+  <path class="arrow" d="M1030 745 H938" />
+  <path class="arrow" d="M540 745 H458" />
+
+  <text class="legend-title" x="80" y="905">权限与操作方式</text>
+  <rect class="green-bg" x="80" y="930" width="500" height="100" rx="14" />
+  <text class="legend-title green" x="110" y="971">绿色 · 只读查询</text>
+  <text class="legend-body" x="110" y="1007">校验身份和资源归属后读取</text>
+
+  <rect class="yellow-bg" x="650" y="930" width="500" height="100" rx="14" />
+  <text class="legend-title yellow" x="680" y="971">黄色 · 用户确认</text>
+  <text class="legend-body" x="680" y="1007">查看影响后确认，再执行写操作</text>
+
+  <rect class="red-bg" x="1220" y="930" width="500" height="100" rx="14" />
+  <text class="legend-title red" x="1250" y="971">红色 · 强验证</text>
+  <text class="legend-body" x="1250" y="1007">高风险操作确认并通过额外验证</text>
+</svg>

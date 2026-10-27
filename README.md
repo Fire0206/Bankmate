@@ -148,10 +148,10 @@ Phase 1E 历史基线与 Phase 2E 最新 DeepSeek 可靠性评测见[开发指�
 - [2026 深圳国际金融科技大赛官网](https://fintechathon.g-ican.com/)
 - [人工智能赛道报名工作台](https://apply.g-ican.com/)
 
-赛事要求及未确认事项按官方公开内容记录在[赛事核对文档](docs/competition-requirements.md)，并以文档内最近一次核对日期和官方通知为准。
+赛事相关说明见[赛事要求](docs/competition-requirements.md)。
 
 ## 比赛提交资料
 
 - [作品简介](docs/submission/作品简介.md)
-- 技术文档：[系统架构图与说明](docs/submission/系统架构图与说明.md)、[核心算法说明](docs/submission/核心算法说明.md)、[安全设计文档](docs/submission/安全设计文档.md)
+- 技术文档：[系统架构图](docs/submission/系统架构图.md)、[核心算法说明](docs/submission/核心算法说明.md)、[安全设计文档](docs/submission/安全设计文档.md)
 - [安全自评报告](docs/submission/安全自评报告.md)
