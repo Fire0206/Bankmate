@@ -1,10 +1,11 @@
 from datetime import datetime
 from functools import lru_cache
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     subscription_reminder_scheduler_enabled: bool = False
     subscription_reminder_scheduler_interval_seconds: int = Field(default=60, ge=10, le=3600)
     agent_provider: Literal["fake", "openai-compatible"] = "fake"
+    llm_data_egress_enabled: bool = False
     llm_base_url: str | None = None
     llm_api_key: SecretStr | None = None
     llm_model: str | None = None
@@ -38,6 +40,20 @@ class Settings(BaseSettings):
     eval_max_completion_tokens: int | None = Field(default=None, gt=0, le=8192)
     eval_hard_budget_cny: float | None = Field(default=None, gt=0, le=120)
     eval_initial_cost_cny: float = Field(default=0, ge=0, le=120)
+
+    @field_validator("api_host")
+    @classmethod
+    def require_loopback_api_host(cls, value: str) -> str:
+        host = value.strip().strip("[]").rstrip(".").lower()
+        if host == "localhost":
+            return host
+        try:
+            address = ip_address(host)
+        except ValueError as exc:
+            raise ValueError("The local demo API must bind to a loopback address.") from exc
+        if not address.is_loopback:
+            raise ValueError("The local demo API must bind to a loopback address.")
+        return host
 
 
 @lru_cache
