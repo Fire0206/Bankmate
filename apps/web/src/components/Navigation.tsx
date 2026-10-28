@@ -1,15 +1,12 @@
-import { pages, type PageKey } from "../pageConfig";
 import { brand } from "../brand";
+import { pages, type PageKey } from "../pageConfig";
+import { AppIcon } from "./AppIcon";
 
-const navigationLabels: Record<PageKey, string> = {
-  overview: "账户总览",
-  assistant: "助手",
-  bills: "账单",
-  cards: "银行卡",
-  transfers: "转账",
-  subscriptions: "自动扣费",
-  investments: "理财",
-};
+const navigationGroups: Array<{ label: string; keys: PageKey[] }> = [
+  { label: "工作台", keys: ["overview", "assistant"] },
+  { label: "账户与资金", keys: ["bills", "cards", "transfers"] },
+  { label: "财务规划", keys: ["subscriptions", "investments"] },
+];
 
 export function Navigation({
   activePage,
@@ -54,26 +51,38 @@ export function Navigation({
           </span>
           <span className="brand-copy">
             <strong className="brand-name">{brand.name}</strong>
+            <small>DIGITAL BANKING</small>
           </span>
         </a>
 
         <nav aria-label="工作区导航" className="nav-list">
-          {pages.map((page) => (
-            <a
-              aria-current={activePage === page.key ? "page" : undefined}
-              className={
-                "nav-link" + (activePage === page.key ? " nav-link-active" : "")
-              }
-              href={"#/" + page.key}
-              key={page.key}
-              onClick={(event) => {
-                event.preventDefault();
-                onNavigate(page.key);
-                onClose();
-              }}
-            >
-              <span>{navigationLabels[page.key]}</span>
-            </a>
+          {navigationGroups.map((group) => (
+            <section className="nav-group" key={group.label}>
+              <p className="nav-section-label">{group.label}</p>
+              {group.keys.map((key) => {
+                const page = pages.find((item) => item.key === key);
+                if (!page) return null;
+                return (
+                  <a
+                    aria-current={activePage === key ? "page" : undefined}
+                    className={
+                      "nav-link" +
+                      (activePage === key ? " nav-link-active" : "")
+                    }
+                    href={"#/" + key}
+                    key={key}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      onNavigate(key);
+                      onClose();
+                    }}
+                  >
+                    <AppIcon name={page.icon} size={17} />
+                    <span>{page.label}</span>
+                  </a>
+                );
+              })}
+            </section>
           ))}
         </nav>
 
@@ -83,7 +92,10 @@ export function Navigation({
           </span>
           <span className="sidebar-profile-copy">
             <strong>{displayName}</strong>
-            <small>个人账户</small>
+            <small>
+              <i aria-hidden="true" />
+              虚拟账户 · 本地数据
+            </small>
           </span>
         </div>
       </aside>

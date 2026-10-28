@@ -70,8 +70,6 @@ export function InvestmentsPage({
       <PageHeader
         actionLabel="分析理财配置"
         busy={busy}
-        description="查看产品与持仓；申购、赎回需通过风险适配并由本人确认。"
-        eyebrow="理财"
         onAction={() =>
           onPrompt("分析我的理财持仓，并给出符合我风险等级的配置建议")
         }
@@ -80,7 +78,7 @@ export function InvestmentsPage({
 
       <div className="portfolio-hero">
         <div>
-          <p className="eyebrow">总资产</p>
+          <p className="portfolio-total-label">总资产</p>
           <h2>
             {loading ? (
               <SkeletonLine width="180px" />
@@ -150,11 +148,7 @@ export function InvestmentsPage({
 
       <section className="data-panel">
         <header>
-          <div>
-            <p className="eyebrow">产品</p>
-            <h2>适合的产品</h2>
-          </div>
-          <span>{data?.products.items.length ?? 0} 个</span>
+          <h2>适合的产品</h2>
         </header>
         {loading ? (
           <div className="product-grid">
@@ -214,10 +208,7 @@ export function InvestmentsPage({
       <div className="transfer-columns">
         <section className="data-panel">
           <header>
-            <div>
-              <p className="eyebrow">持仓</p>
-              <h2>当前持仓</h2>
-            </div>
+            <h2>当前持仓</h2>
           </header>
           {loading ? (
             <SkeletonRows count={3} />
@@ -254,10 +245,7 @@ export function InvestmentsPage({
 
         <section className="data-panel">
           <header>
-            <div>
-              <p className="eyebrow">交易记录</p>
-              <h2>理财记录</h2>
-            </div>
+            <h2>理财记录</h2>
           </header>
           {loading ? (
             <SkeletonRows count={3} />
@@ -282,11 +270,6 @@ export function InvestmentsPage({
             <p className="page-empty">暂无理财操作记录。</p>
           )}
         </section>
-      </div>
-
-      <div className="page-alert">
-        <AppIcon name="info" size={17} />
-        产品、净值和收益为虚拟信息，不构成投资建议。风险等级和执行结果由服务端复核。
       </div>
 
       <RiskAssessmentForm />

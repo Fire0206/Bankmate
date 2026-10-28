@@ -6,7 +6,6 @@ import type {
   SubscriptionReminderListResponse,
   SubscriptionResponse,
 } from "../api/client";
-import { AppIcon } from "../components/AppIcon";
 import { PageHeader } from "../components/PageHeader";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
 
@@ -117,16 +116,13 @@ export function SubscriptionsPage({
       <PageHeader
         actionLabel="检查不必要订阅"
         busy={busy}
-        description="识别周期扣费、查看下一次扣款，并在明确确认后暂停或取消。"
-        eyebrow="订阅管理"
         onAction={() => onPrompt("看看我有哪些自动扣费，哪些可能不再需要")}
         title="订阅与代扣"
       />
 
       <div className="reminder-banner">
         <span>
-          <strong>{reminders?.items.length ?? 0} 项</strong>{" "}
-          订阅已进入续费提醒窗口。提醒只生成本地应用内记录，不会联系商户。
+          <strong>{reminders?.items.length ?? 0} 项</strong> 即将续费
         </span>
         <button
           disabled={reminderBusy}
@@ -193,11 +189,7 @@ export function SubscriptionsPage({
 
       <section className="subscriptions-card">
         <header>
-          <div>
-            <p className="eyebrow">自动扣费</p>
-            <h2>周期扣费清单</h2>
-          </div>
-          <span>{data?.items.length ?? 0} 项</span>
+          <h2>周期扣费清单</h2>
         </header>
         {loading ? (
           <SkeletonRows count={5} />
@@ -220,17 +212,6 @@ export function SubscriptionsPage({
                         ? "已暂停续费"
                         : "已取消"}
                   </small>
-                </span>
-                <span
-                  className={
-                    "subscription-status status-" + subscription.status
-                  }
-                >
-                  {subscription.status === "active"
-                    ? "生效中"
-                    : subscription.status === "paused"
-                      ? "已暂停"
-                      : "已取消"}
                 </span>
                 <div className="subscription-actions">
                   {subscription.status === "active" ? (
@@ -295,10 +276,6 @@ export function SubscriptionsPage({
         ) : (
           <p className="page-empty">暂时没有识别到周期扣费。</p>
         )}
-        <div className="page-alert">
-          <AppIcon name="info" size={17} />
-          订阅根据周期流水识别，结果可能有误。状态变更只记录在当前账户，不连接商户。
-        </div>
       </section>
     </div>
   );

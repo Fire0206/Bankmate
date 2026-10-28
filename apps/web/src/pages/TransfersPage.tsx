@@ -86,15 +86,13 @@ export function TransfersPage({
       <PageHeader
         actionLabel="发起转账"
         busy={busy}
-        description="查看余额与收款人，所有资金变化在明确确认后由服务端执行。"
-        eyebrow="账户资金"
         onAction={() => onPrompt("我要发起一笔转账，请先询问收款人和金额")}
         title="转账与分账"
       />
 
       <div className="transfer-hero">
         <div>
-          <p className="eyebrow">账户余额</p>
+          <p className="transfer-balance-label">可用余额</p>
           <h2>
             {loading ? (
               <SkeletonLine width="180px" />
@@ -102,13 +100,6 @@ export function TransfersPage({
               money(totalBalance, currency)
             )}
           </h2>
-          <span>
-            {loading ? (
-              <SkeletonLine width="72px" />
-            ) : (
-              `${data?.accounts.items.length ?? 0} 个账户`
-            )}
-          </span>
         </div>
         <div className="transfer-hero-actions">
           <button
@@ -148,10 +139,7 @@ export function TransfersPage({
       <div className="transfer-columns">
         <section className="data-panel">
           <header>
-            <div>
-              <p className="eyebrow">账户</p>
-              <h2>账户余额</h2>
-            </div>
+            <h2>账户余额</h2>
           </header>
           {loading ? (
             <SkeletonRows count={2} />
@@ -164,7 +152,6 @@ export function TransfersPage({
                   </span>
                   <span className="data-row-main">
                     <strong>{customerText(account.label)}</strong>
-                    <small>个人账户</small>
                   </span>
                   <strong>
                     {money(account.balance_minor, account.currency)}
@@ -177,11 +164,7 @@ export function TransfersPage({
 
         <section className="data-panel">
           <header>
-            <div>
-              <p className="eyebrow">收款人</p>
-              <h2>最近收款人</h2>
-            </div>
-            <span>{data?.payees.items.length ?? 0} 人</span>
+            <h2>最近收款人</h2>
           </header>
           {loading ? (
             <SkeletonRows count={2} />
@@ -211,11 +194,7 @@ export function TransfersPage({
 
       <section className="data-panel">
         <header>
-          <div>
-            <p className="eyebrow">转账记录</p>
-            <h2>转账记录</h2>
-          </div>
-          <span>{data?.transfers.items.length ?? 0} 笔</span>
+          <h2>转账记录</h2>
         </header>
         {loading ? (
           <SkeletonRows count={4} />
@@ -231,17 +210,16 @@ export function TransfersPage({
                   <small>
                     {customerText(transfer.source_account_label)} ·{" "}
                     {dateLabel(transfer.scheduled_at ?? transfer.executed_at)}
+                    {" · "}
+                    {transfer.status === "executed"
+                      ? "已完成"
+                      : transfer.status === "scheduled"
+                        ? "待执行"
+                        : transfer.status === "cancelled"
+                          ? "已取消"
+                          : "等待确认"}
                     {transfer.remark ? ` · 备注：${transfer.remark}` : ""}
                   </small>
-                </span>
-                <span className={"order-status status-" + transfer.status}>
-                  {transfer.status === "executed"
-                    ? "已完成"
-                    : transfer.status === "scheduled"
-                      ? "待执行"
-                      : transfer.status === "cancelled"
-                        ? "已取消"
-                        : "等待确认"}
                 </span>
                 <strong>
                   {money(transfer.amount_minor, transfer.currency)}
@@ -256,11 +234,7 @@ export function TransfersPage({
 
       <section className="data-panel">
         <header>
-          <div>
-            <p className="eyebrow">AA 分账</p>
-            <h2>AA 分账</h2>
-          </div>
-          <span>{data?.splits.items.length ?? 0} 笔</span>
+          <h2>AA 分账</h2>
         </header>
         {loading ? (
           <SkeletonRows count={3} />
@@ -273,16 +247,16 @@ export function TransfersPage({
                 </span>
                 <span className="data-row-main">
                   <strong>{split.title}</strong>
-                  <small>{split.participant_count} 人参与</small>
-                </span>
-                <span className={"order-status status-" + split.status}>
-                  {split.status === "open"
-                    ? "待收款"
-                    : split.status === "settled"
-                      ? "已结清"
-                      : split.status === "cancelled"
-                        ? "已取消"
-                        : "等待确认"}
+                  <small>
+                    {split.participant_count} 人参与 ·{" "}
+                    {split.status === "open"
+                      ? "待收款"
+                      : split.status === "settled"
+                        ? "已结清"
+                        : split.status === "cancelled"
+                          ? "已取消"
+                          : "等待确认"}
+                  </small>
                 </span>
                 <strong>
                   {money(split.total_amount_minor, split.currency)}

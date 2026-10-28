@@ -363,6 +363,7 @@ export default function App() {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const conversationRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const activeTaskId = activeTask?.id;
   const activeTaskStatus = activeTask?.status;
   const activeTaskVersion = activeTask?.version;
@@ -418,6 +419,9 @@ export default function App() {
       setMobileNavOpen(false);
       window.history.pushState(null, "", "#/" + page);
       window.scrollTo({ top: 0, behavior: "smooth" });
+      window.requestAnimationFrame(() => {
+        mainRef.current?.focus({ preventScroll: true });
+      });
     });
   }, []);
 
@@ -487,6 +491,9 @@ export default function App() {
       withViewTransition(() => {
         setActivePage(pageFromHash());
         setMobileNavOpen(false);
+        window.requestAnimationFrame(() => {
+          mainRef.current?.focus({ preventScroll: true });
+        });
       });
     }
     if (!window.location.hash) {
@@ -846,6 +853,9 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <a className="skip-to-content" href="#main-content">
+        跳到主要内容
+      </a>
       <Navigation
         activePage={activePage}
         displayName={displayName}
@@ -906,7 +916,12 @@ export default function App() {
           </div>
         </header>
 
-        <main className="page-content">
+        <main
+          className="page-content"
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+        >
           {activePage === "overview" ? (
             <FocusedOverview
               activeTask={activeTask}
@@ -1266,10 +1281,6 @@ export default function App() {
         >
           <AppIcon name="cards" size={19} />
           <span>卡片</span>
-        </button>
-        <button onClick={() => setMobileNavOpen(true)} type="button">
-          <AppIcon name="menu" size={19} />
-          <span>更多</span>
         </button>
       </nav>
 

@@ -5,6 +5,7 @@ import App from "./App";
 import "./index.css";
 import "./figma-theme.css";
 import "./phase3-compat.css";
+import "./finance-authority.css";
 
 const showcaseRoute = lazy(() => import("./showcase/Showcase"));
 const currentPath = window.location.pathname.replace(/\/+$/, "") || "/";

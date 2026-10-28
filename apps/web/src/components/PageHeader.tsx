@@ -1,26 +1,28 @@
-import { AppIcon } from "./AppIcon";
+import { AppIcon, type IconName } from "./AppIcon";
 
 export function PageHeader({
   eyebrow,
   title,
   description,
   actionLabel,
+  actionIcon = "assistant",
   onAction,
   busy = false,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
-  description: string;
+  description?: string;
   actionLabel?: string;
+  actionIcon?: IconName;
   onAction?: () => void;
   busy?: boolean;
 }) {
   return (
     <header className="page-heading">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description ? <p>{description}</p> : null}
       </div>
       {actionLabel && onAction ? (
         <button
@@ -29,7 +31,7 @@ export function PageHeader({
           onClick={onAction}
           type="button"
         >
-          <AppIcon name="assistant" size={17} />
+          <AppIcon name={actionIcon} size={17} />
           {actionLabel}
         </button>
       ) : null}
