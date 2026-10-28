@@ -270,7 +270,7 @@ function TransactionDrawer({
               onClose();
               onPrompt(
                 transaction.anomaly_reason
-                  ? `处理异常扣款：${transaction.merchant}，卡片尾号 ${transaction.source_card_suffix ?? "1042"}`
+                  ? `核对${transaction.merchant}的账单提示${transaction.source_card_suffix ? `，银行卡尾号 ${transaction.source_card_suffix}` : ""}`
                   : `帮我查看 ${transaction.merchant} 这笔交易并说明影响`,
               );
             }}
@@ -444,8 +444,7 @@ export function BillsPage({
               </div>
             ) : summary?.trends.length ? (
               <CashflowChart
-                expenseMinor={summary.expense_minor}
-                incomeMinor={summary.income_minor}
+                currencyCode={summary.currency}
                 trends={summary.trends}
               />
             ) : (

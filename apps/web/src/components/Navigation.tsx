@@ -51,7 +51,6 @@ export function Navigation({
           </span>
           <span className="brand-copy">
             <strong className="brand-name">{brand.name}</strong>
-            <small>DIGITAL BANKING</small>
           </span>
         </a>
 
@@ -92,10 +91,7 @@ export function Navigation({
           </span>
           <span className="sidebar-profile-copy">
             <strong>{displayName}</strong>
-            <small>
-              <i aria-hidden="true" />
-              虚拟账户 · 本地数据
-            </small>
+            <small>个人账户</small>
           </span>
         </div>
       </aside>
