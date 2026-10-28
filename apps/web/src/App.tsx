@@ -157,10 +157,6 @@ function userName(session: DemoSessionResponse | null): string {
   return customerName(session.display_name);
 }
 
-function initialContextOpen(): boolean {
-  return typeof window !== "undefined" && window.innerWidth >= 1100;
-}
-
 function ErrorBanner({
   error,
   onRetry,
@@ -357,7 +353,7 @@ export default function App() {
   const [requestError, setRequestError] = useState<UiError | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activePage, setActivePage] = useState<PageKey>(pageFromHash);
-  const [contextOpen, setContextOpen] = useState(initialContextOpen);
+  const [contextOpen, setContextOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
   const [confirmationOpen, setConfirmationOpen] = useState(false);
@@ -504,24 +500,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const desktopContext = window.matchMedia("(min-width: 1100px)");
     const desktopNavigation = window.matchMedia("(min-width: 960px)");
     const updateLayout = () => {
-      setContextOpen(desktopContext.matches);
       if (desktopNavigation.matches) setMobileNavOpen(false);
     };
-    desktopContext.addEventListener("change", updateLayout);
     desktopNavigation.addEventListener("change", updateLayout);
     updateLayout();
     return () => {
-      desktopContext.removeEventListener("change", updateLayout);
       desktopNavigation.removeEventListener("change", updateLayout);
     };
   }, []);
 
   useEffect(() => {
     const container = conversationRef.current;
-    if (container) container.scrollTop = container.scrollHeight;
+    if (container && messages.length > 0) {
+      container.lastElementChild?.scrollIntoView({ block: "end" });
+    }
   }, [messages.length, busy]);
 
   useEffect(() => {
@@ -879,8 +873,6 @@ export default function App() {
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
               <div className="topbar-path">
-                <span>{brand.name}</span>
-                <i aria-hidden="true">/</i>
                 <strong>{pageMeta(activePage).label}</strong>
               </div>
             </div>
@@ -925,9 +917,8 @@ export default function App() {
           {activePage === "overview" ? (
             <FocusedOverview
               activeTask={activeTask}
-              audit={audit}
               busy={busy}
-              cards={cards}
+              onOpenAssistant={() => navigate("assistant")}
               onPrompt={askAssistant}
               refreshKey={overviewRefreshKey}
             />
@@ -972,13 +963,6 @@ export default function App() {
 
           {activePage === "assistant" ? (
             <>
-              <div className="workspace-stage-heading">
-                <div>
-                  <h2>助手</h2>
-                </div>
-                <span>资金操作需本人确认</span>
-              </div>
-
               <div className="workbench-grid">
                 <section
                   aria-labelledby="assistant-title"
@@ -987,8 +971,7 @@ export default function App() {
                 >
                   <div className="assistant-header">
                     <div>
-                      <h2 id="assistant-title">对话</h2>
-                      <p>银行卡、账单、订阅、转账与理财</p>
+                      <h1 id="assistant-title">智能助手</h1>
                     </div>
                   </div>
 
@@ -1000,18 +983,14 @@ export default function App() {
                   >
                     {messages.length === 0 ? (
                       <div className="welcome-state">
-                        <span aria-hidden="true" className="welcome-mark">
-                          {brand.mark}
-                        </span>
-                        <h3>你好，{userName(session)}</h3>
+                        <h2>今天想处理什么？</h2>
                         <p>
                           {loading
                             ? "正在读取账户…"
-                            : "查看账单、管理银行卡与订阅，或安排转账和理财。资金操作会先展示详情，请你确认后再继续。"}
+                            : "查询收支、管理银行卡，或安排一项资金操作。"}
                         </p>
                         {!loading ? (
                           <div className="suggestion-group">
-                            <span className="suggestion-label">常用操作</span>
                             <div className="suggestions">
                               {promptSuggestions(cards).map((prompt) => (
                                 <button
@@ -1140,10 +1119,6 @@ export default function App() {
                       >
                         <AppIcon name="send" size={19} />
                       </button>
-                    </div>
-                    <div className="composer-foot">
-                      <span>Enter 发送，Shift + Enter 换行</span>
-                      <span>资金操作需确认</span>
                     </div>
                   </form>
                 </section>
@@ -1302,8 +1277,8 @@ export default function App() {
       {detailsDrawerOpen ? (
         <SideDrawer
           onClose={closeDetailsDrawer}
-          subtitle="Task evidence and audit"
-          title="执行记录"
+          subtitle="办理进度"
+          title="任务详情"
         >
           <TaskOverview
             busy={busy}
