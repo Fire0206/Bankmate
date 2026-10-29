@@ -1191,6 +1191,7 @@ export default function App() {
             <CardsPage
               busy={busy || Boolean(pendingWrite)}
               cards={cards}
+              holderName={displayName}
               loading={loading}
               onManage={(card) =>
                 askAssistant(

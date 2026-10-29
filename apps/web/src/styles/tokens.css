@@ -48,6 +48,7 @@
     --radius-small: 6px;
     --radius-panel: 14px;
     --radius-dialog: 18px;
+    --radius-card-face: 22px;
     --sidebar-width: 224px;
     --content-max: 1440px;
     --focus-ring: 2px solid var(--ink);

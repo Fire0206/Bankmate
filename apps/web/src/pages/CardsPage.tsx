@@ -19,56 +19,76 @@ function yuan(minor: number | null | undefined): string {
 
 function statusLabel(status: CardItem["status"]): string {
   return {
-    active: "正常",
+    active: "正常使用",
     frozen: "已冻结",
     lost: "已挂失",
     replaced: "已停用",
   }[status];
 }
 
-function CardFace({ card }: { card: CardItem }) {
+function CardFace({
+  card,
+  holderName,
+}: {
+  card: CardItem;
+  holderName: string;
+}) {
   const inactive = card.status !== "active";
   return (
     <article
-      className={
-        "card-face card-face-main" + (inactive ? " card-face-inactive" : "")
-      }
+      aria-label={`${customerText(cardLabel(card.label))}，尾号 ${card.card_suffix}，${statusLabel(card.status)}`}
+      className={"card-face" + (inactive ? " card-face-inactive" : "")}
     >
-      <div className="card-face-top">
+      <header className="card-face-top">
         <span className="card-face-brand">
           <span aria-hidden="true" className="card-face-mark">
             {brand.mark}
           </span>
-          {brand.name}
+          <strong>{brand.name}</strong>
         </span>
-        <span className="card-face-type">借记卡</span>
+        <span className="card-face-kind">借记卡</span>
+      </header>
+
+      <div className="card-face-chip-row">
+        <svg
+          aria-hidden="true"
+          className="card-face-chip"
+          fill="none"
+          viewBox="0 0 44 34"
+        >
+          <rect height="32" rx="6" width="42" x="1" y="1" />
+          <path d="M15 1v32M29 1v32M1 12h42M1 23h42M15 12v11M29 12v11" />
+        </svg>
+        <svg
+          aria-hidden="true"
+          className="card-face-contactless"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <path d="M7.5 8a6 6 0 0 0 0 8M11 5a10 10 0 0 0 0 14M14.5 2.5a13.5 13.5 0 0 0 0 19" />
+        </svg>
       </div>
-      <div className="card-face-middle">
-        <span aria-hidden="true" className="card-face-chip">
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="card-face-contactless" aria-hidden="true">
-          )))
-        </span>
-      </div>
-      <p className="card-face-number">
-        <span>••••</span>
-        <span>••••</span>
-        <span>••••</span>
+
+      <p
+        className="card-face-number"
+        aria-label={`卡号尾号 ${card.card_suffix}`}
+      >
+        <span aria-hidden="true">••••</span>
+        <span aria-hidden="true">••••</span>
+        <span aria-hidden="true">••••</span>
         <strong>{card.card_suffix}</strong>
       </p>
-      <div className="card-face-bottom">
+
+      <footer className="card-face-bottom">
         <span>
-          <small>账户持有人</small>
-          <strong>个人账户</strong>
+          <small>持卡人</small>
+          <strong>{holderName}</strong>
         </span>
-        <span>
-          <small>状态</small>
+        <span className={`card-face-state card-state-${card.status}`}>
+          <i aria-hidden="true">{card.status === "active" ? "✓" : "Ⅱ"}</i>
           <strong>{statusLabel(card.status)}</strong>
         </span>
-      </div>
+      </footer>
     </article>
   );
 }
@@ -78,6 +98,7 @@ export function CardsPage({
   loading,
   refreshing,
   busy,
+  holderName,
   onRefresh,
   onManage,
   onPrompt,
@@ -86,6 +107,7 @@ export function CardsPage({
   loading: boolean;
   refreshing: boolean;
   busy: boolean;
+  holderName: string;
   onRefresh: () => void;
   onManage: (card: CardItem) => void;
   onPrompt: (prompt: string) => void;
@@ -97,11 +119,15 @@ export function CardsPage({
     cards.find((card) => card.status === "active") ??
     cards[0] ??
     null;
-  const toggleLabel =
+  const otherCards = cards.filter((card) => card.id !== selectedCard?.id);
+  const canManageCardControls =
+    selectedCard?.status === "active" || selectedCard?.status === "frozen";
+
+  const primaryAction =
     selectedCard?.status === "active"
-      ? "冻结此卡"
+      ? "冻结银行卡"
       : selectedCard?.status === "frozen"
-        ? "解冻此卡"
+        ? "解冻银行卡"
         : selectedCard?.status === "lost"
           ? "申请补卡"
           : "申请新卡";
@@ -122,7 +148,7 @@ export function CardsPage({
     <div className="page-stack cards-page">
       <PageHeader
         actionIcon="cards"
-        actionLabel="申请卡片"
+        actionLabel="申请银行卡"
         busy={busy}
         onAction={() => onPrompt("为我的日常账户申请一张借记卡")}
         title="银行卡"
@@ -133,108 +159,115 @@ export function CardsPage({
           <SkeletonRows count={4} />
         </section>
       ) : selectedCard ? (
-        <section className="card-workspace">
-          <header className="card-workspace-header">
-            <h2>{customerText(cardLabel(selectedCard.label))}</h2>
-          </header>
-
-          <div className="card-workspace-grid">
+        <section aria-label="银行卡详情" className="card-workspace">
+          <div className="card-spotlight">
             <div className="card-face-stage">
-              <CardFace card={selectedCard} />
+              <CardFace card={selectedCard} holderName={holderName} />
             </div>
 
-            <aside className="card-control-panel">
-              <header>
+            <section
+              aria-labelledby="card-control-title"
+              className="card-control-panel"
+            >
+              <header className="card-control-heading">
                 <div>
-                  <h3>卡片控制</h3>
+                  <h2 id="card-control-title">
+                    {customerText(cardLabel(selectedCard.label))}
+                  </h2>
                 </div>
               </header>
 
-              <dl className="card-control-facts">
-                <div>
-                  <dt>线上支付</dt>
-                  <dd
-                    className={
-                      selectedCard.online_enabled ? "is-enabled" : "is-disabled"
-                    }
-                  >
-                    {selectedCard.online_enabled ? "已开启" : "已关闭"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>单笔限额</dt>
-                  <dd>{yuan(selectedCard.single_limit_minor)}</dd>
-                </div>
-                <div>
-                  <dt>每日限额</dt>
-                  <dd>{yuan(selectedCard.daily_limit_minor)}</dd>
-                </div>
-                <div>
-                  <dt>卡片尾号</dt>
-                  <dd>•••• {selectedCard.card_suffix}</dd>
-                </div>
-              </dl>
+              <button
+                className="card-primary-action"
+                disabled={busy}
+                onClick={() => runPrimaryAction(selectedCard)}
+                type="button"
+              >
+                {primaryAction}
+                <AppIcon name="arrow-right" size={17} />
+              </button>
 
-              <div className="card-control-actions">
+              {canManageCardControls ? (
+                <div className="card-settings-list">
+                  <button
+                    className="card-setting-row"
+                    disabled={busy}
+                    onClick={() =>
+                      onPrompt(
+                        `调整尾号 ${selectedCard.card_suffix} 的银行卡交易限额`,
+                      )
+                    }
+                    type="button"
+                  >
+                    <span>
+                      <strong>交易限额</strong>
+                      <small>
+                        单笔 {yuan(selectedCard.single_limit_minor)} · 每日{" "}
+                        {yuan(selectedCard.daily_limit_minor)}
+                      </small>
+                    </span>
+                    <span className="card-setting-action">调整</span>
+                    <AppIcon name="arrow-right" size={16} />
+                  </button>
+                  <button
+                    className="card-setting-row"
+                    disabled={busy}
+                    onClick={() =>
+                      onPrompt(
+                        `${selectedCard.online_enabled ? "关闭" : "开启"}尾号 ${selectedCard.card_suffix} 的线上支付`,
+                      )
+                    }
+                    type="button"
+                  >
+                    <span>
+                      <strong>线上支付</strong>
+                      <small>
+                        {selectedCard.online_enabled ? "已开启" : "已关闭"}
+                      </small>
+                    </span>
+                    <span className="card-setting-action">
+                      {selectedCard.online_enabled ? "关闭" : "开启"}
+                    </span>
+                    <AppIcon name="arrow-right" size={16} />
+                  </button>
+                </div>
+              ) : null}
+
+              {selectedCard.status === "active" ||
+              selectedCard.status === "frozen" ? (
                 <button
-                  className="card-primary-action"
+                  className="card-lost-action"
                   disabled={busy}
-                  onClick={() => runPrimaryAction(selectedCard)}
+                  onClick={() =>
+                    onPrompt(`挂失尾号 ${selectedCard.card_suffix} 的银行卡`)
+                  }
                   type="button"
                 >
-                  {toggleLabel}
+                  挂失银行卡
+                  <AppIcon name="arrow-right" size={15} />
                 </button>
-                {selectedCard.status === "active" ||
-                selectedCard.status === "frozen" ? (
-                  <>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        onPrompt(
-                          `${selectedCard.online_enabled ? "关闭" : "开启"}尾号 ${selectedCard.card_suffix} 的线上支付`,
-                        )
-                      }
-                      type="button"
-                    >
-                      {selectedCard.online_enabled
-                        ? "关闭线上支付"
-                        : "开启线上支付"}
-                    </button>
-                    <button
-                      className="card-danger-action"
-                      disabled={busy}
-                      onClick={() =>
-                        onPrompt(
-                          `挂失尾号 ${selectedCard.card_suffix} 的银行卡`,
-                        )
-                      }
-                      type="button"
-                    >
-                      挂失此卡
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </aside>
+              ) : null}
+            </section>
           </div>
 
           <section className="card-inventory">
             <header>
-              <h2>全部卡片</h2>
+              <h2>其他银行卡</h2>
               <div className="card-inventory-tools">
                 <button
-                  aria-label="同步银行卡状态"
+                  aria-label="刷新银行卡"
                   className="card-sync-action"
                   disabled={refreshing}
                   onClick={onRefresh}
-                  title="同步银行卡状态"
+                  title="刷新银行卡"
                   type="button"
                 >
                   <AppIcon
                     className={refreshing ? "icon-spinning" : ""}
                     name="refresh"
-                    size={15}
+                    size={16}
                   />
+                  <span>刷新</span>
                 </button>
                 <button
                   disabled={busy}
@@ -242,40 +275,35 @@ export function CardsPage({
                   type="button"
                 >
                   申请进度
-                  <AppIcon name="arrow-right" size={14} />
+                  <AppIcon name="arrow-right" size={15} />
                 </button>
               </div>
             </header>
 
-            <div className="card-inventory-list">
-              {cards.map((card) => {
-                const selected = card.id === selectedCard?.id;
-                return (
+            {otherCards.length ? (
+              <div className="card-inventory-list">
+                {otherCards.map((card) => (
                   <button
-                    aria-pressed={selected}
-                    className={
-                      "card-inventory-item" + (selected ? " is-selected" : "")
-                    }
+                    aria-label={`${customerText(cardLabel(card.label))}，尾号 ${card.card_suffix}，${statusLabel(card.status)}，切换银行卡`}
+                    className="card-inventory-item"
                     key={card.id}
                     onClick={() => setSelectedId(card.id)}
                     type="button"
                   >
-                    <span className="card-inventory-mark">
-                      {customerText(cardLabel(card.label)).slice(0, 1)}
-                    </span>
                     <span className="card-inventory-main">
                       <strong>{customerText(cardLabel(card.label))}</strong>
                       <small>
-                        尾号 {card.card_suffix} ·{" "}
-                        {card.online_enabled ? "线上支付" : "线上关闭"} ·{" "}
+                        尾号 {card.card_suffix} <i aria-hidden="true">·</i>{" "}
                         {statusLabel(card.status)}
                       </small>
                     </span>
-                    <AppIcon name="arrow-right" size={15} />
+                    <AppIcon name="arrow-right" size={16} />
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="card-inventory-empty">目前只有这一张银行卡。</p>
+            )}
           </section>
         </section>
       ) : (
