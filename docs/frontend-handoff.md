@@ -85,6 +85,7 @@
 | ------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `GET /api/v1/accounts`                | 无参数                                                        | `{items:[{id,label,currency,balance_minor}]}`；仅当前 actor 自己的账户和余额。            |
 | `GET /api/v1/payees`                  | 无参数                                                        | `{items:[{id,display_name,destination_account_id,destination_account_label,currency}]}`。 |
+| `GET /api/v1/transfer-destinations`   | 无参数                                                        | `{items:[{id,label,currency}]}`；只返回合成目标账户，不含账户持有人或余额。               |
 | `POST /api/v1/payees`                 | JSON `{display_name, destination_account_id}`；名称 1–80 字符 | 创建模拟收款人，返回 PayeeResponse，HTTP 201。                                            |
 | `DELETE /api/v1/payees/{payee_id}`    | UUID 路径参数                                                 | 删除未被转账引用的当前 actor 收款人，HTTP 204。                                           |
 | `GET /api/v1/transfers?limit=50`      | `limit` 1–100                                                 | `{items: TransferResponse[]}`。                                                           |
@@ -129,6 +130,7 @@
 | `POST /api/v1/agent/tasks`                                                                                                  | JSON `{request_text, conversation_id?}`；必需 Header `Idempotency-Key` | 创建任务并同步运行有界 Agent/工具循环。客户端应生成并保存 `conversation_id`，以便响应丢失后查询。         |
 | `GET /api/v1/agent/tasks/{task_id}`                                                                                         | Task UUID                                                              | 读取任务快照、步骤、工具结果和当前待确认项。读取时服务端会结算已过期挑战。                                |
 | `GET /api/v1/agent/tasks/recent?conversation_id=...`                                                                        | 必需会话 UUID                                                          | 优先返回该会话最近的活动任务，没有活动任务时返回最近终态任务；没有记录返回 `null`。actor 仍由服务端决定。 |
+| `GET /api/v1/agent/tasks/history?limit=20`                                                                                  | `limit` 1–50；`conversation_id` 可选                                   | 返回当前 actor 最近 Task 的输入、状态、说明和时间；点击后再读取完整 Task 快照。会话 ID 不是授权凭证。     |
 | `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=create\|input\|confirm\|cancel&task_id=...` | `task_id` 对非 create 操作必需                                         | 响应丢失后的按操作查找；未找到返回 `null`。                                                               |
 | `POST /api/v1/agent/tasks/{task_id}/input`                                                                                  | JSON `{request_text}`；必需 `Idempotency-Key`                          | 补充 `awaiting_input`，或对部分失败任务继续输入；修改待确认请求会使旧 challenge 失效。                    |
 | `POST /api/v1/agent/tasks/{task_id}/confirm`                                                                                | JSON `{challenge_id, parameters_hash}`；必需 `Idempotency-Key`         | Header 必须使用 Challenge 返回的同一 `idempotency_key`；只确认所显示的已绑定参数。                        |
@@ -186,7 +188,7 @@
 
 Audit Event 字段：`id`、`event_type`、`resource_type`、`resource_id`、可空 `tool_execution_id`、`outcome`、可空 `before_state` / `after_state`、`occurred_at`。`AgentAuditResponse` 为 `{task_id,events[]}`。这是任务范围摘要，不是全部账户历史审计查询 API。
 
-任务执行期间可能出现多个确认节点。部分成功时，已提交步骤和审计保留，后续步骤可以失败或等待补充信息；取消只阻止尚未执行的步骤。`failed` 任务在已有至少一个成功工具执行时可通过 `/input` 带用户补充继续；否则应创建新任务。刷新后只能恢复服务器记录的 Task、步骤和当前 Challenge，不存在可恢复的完整聊天记录。
+任务执行期间可能出现多个确认节点。部分成功时，已提交步骤和审计保留，后续步骤可以失败或等待补充信息；取消只阻止尚未执行的步骤。`failed` 任务在已有至少一个成功工具执行时可通过 `/input` 带用户补充继续；否则应创建新任务。刷新后，前端可通过 `/recent` 恢复当前会话任务，也可通过 `/history` 读取最近任务；选中记录后必须重新请求 Task 详情，并以服务端当前状态和 Challenge 为准。后端保存任务输入、步骤及结果，不保存完整聊天气泡历史。
 
 ### 推荐交互和重试顺序
 

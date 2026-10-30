@@ -50,6 +50,13 @@ class PayeeView:
 
 
 @dataclass(frozen=True)
+class TransferDestinationView:
+    id: UUID
+    label: str
+    currency: str
+
+
+@dataclass(frozen=True)
 class TransferView:
     id: UUID
     source_account_id: UUID
@@ -141,6 +148,23 @@ def list_payees(session: Session, *, actor_id: UUID) -> tuple[PayeeView, ...]:
             _mask_phone(payee.phone_number),
         )
         for payee, account in rows
+    )
+
+
+def list_transfer_destinations(
+    session: Session, *, actor_id: UUID
+) -> tuple[TransferDestinationView, ...]:
+    """List synthetic destination accounts without exposing their owners or balances."""
+    rows = session.scalars(
+        select(Account).where(Account.demo_user_id != actor_id).order_by(Account.label, Account.id)
+    )
+    return tuple(
+        TransferDestinationView(
+            row.id,
+            f"收款账户 · {row.label}",
+            row.currency,
+        )
+        for row in rows
     )
 
 

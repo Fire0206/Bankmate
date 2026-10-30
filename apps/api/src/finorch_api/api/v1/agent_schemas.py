@@ -135,6 +135,34 @@ class AgentTaskResponse(BaseModel):
     workflow_plan: WorkflowPlanResponse | None
 
 
+class AgentTaskHistoryItemResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    conversation_id: UUID
+    request_text: str
+    status: Literal[
+        "pending",
+        "planning",
+        "awaiting_input",
+        "awaiting_confirmation",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+    ]
+    message: str
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentTaskHistoryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AgentTaskHistoryItemResponse]
+
+
 class AgentAuditEventResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

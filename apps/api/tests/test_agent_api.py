@@ -822,6 +822,32 @@ def test_recent_task_restores_latest_actor_owned_task_including_completed(api_co
     assert completed_response.json()["status"] == "completed"
 
 
+def test_task_history_lists_actor_owned_records_and_respects_limit(api_context) -> None:
+    client, actor, _database = api_context
+    older = submit(client, "查看我的银行卡", key="history-older")
+    newer = submit(client, "查看我的账户余额", key="history-newer")
+
+    full_history = client.get("/api/v1/agent/tasks/history", params={"limit": 20})
+    assert full_history.status_code == 200
+    assert {item["id"] for item in full_history.json()["items"]} == {
+        older["id"],
+        newer["id"],
+    }
+
+    response = client.get("/api/v1/agent/tasks/history", params={"limit": 1})
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        full_history.json()["items"][0]["id"]
+    ]
+
+    actor[0] = DEMO_USER_TWO_ID
+    foreign_history = client.get("/api/v1/agent/tasks/history")
+    assert foreign_history.status_code == 200
+    assert foreign_history.json()["items"] == []
+    assert older["id"] != newer["id"]
+
+
 def test_recent_and_idempotency_lookups_do_not_disclose_other_actors_tasks(api_context) -> None:
     client, actor, _database = api_context
     task = submit(client, "查看我的银行卡", key="private-lookup")

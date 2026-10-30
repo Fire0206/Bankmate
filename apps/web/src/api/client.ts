@@ -39,6 +39,12 @@ type SubscriptionResponse = components["schemas"]["SubscriptionResponse"];
 type TransferListResponse = components["schemas"]["TransferListResponse"];
 type SplitBillListResponse = components["schemas"]["SplitBillListResponse"];
 type PayeeListResponse = components["schemas"]["PayeeListResponse"];
+type PayeeCreateRequest = components["schemas"]["PayeeCreateRequest"];
+type PayeeResponse = components["schemas"]["PayeeResponse"];
+type TransferDestinationListResponse =
+  components["schemas"]["TransferDestinationListResponse"];
+type AgentTaskHistoryResponse =
+  components["schemas"]["AgentTaskHistoryResponse"];
 type RiskProfileResponse = components["schemas"]["RiskProfileResponse"];
 type RiskQuestionnaireResponse =
   components["schemas"]["RiskQuestionnaireResponse"];
@@ -268,6 +274,19 @@ export const apiClient = {
     staticPreviewMode
       ? preview(demoPayees)
       : request<PayeeListResponse>("/api/v1/payees"),
+  readTransferDestinations: () =>
+    staticPreviewMode
+      ? preview<TransferDestinationListResponse>({ items: [] })
+      : request<TransferDestinationListResponse>(
+          "/api/v1/transfer-destinations",
+        ),
+  createPayee: (body: PayeeCreateRequest) =>
+    staticPreviewMode
+      ? previewWrite()
+      : request<PayeeResponse>("/api/v1/payees", {
+          method: "POST",
+          body: JSON.stringify(body),
+        }),
   readTransfers: (limit = 50) =>
     staticPreviewMode
       ? preview(demoTransfers)
@@ -395,6 +414,12 @@ export const apiClient = {
           "/api/v1/agent/tasks/recent?conversation_id=" +
             encodeURIComponent(conversationId),
         ),
+  readTaskHistory: (limit = 20) =>
+    staticPreviewMode
+      ? preview<AgentTaskHistoryResponse>({ items: [] })
+      : request<AgentTaskHistoryResponse>(
+          "/api/v1/agent/tasks/history?limit=" + String(limit),
+        ),
   readTaskByIdempotencyKey: (
     key: string,
     conversationId: string,
@@ -481,6 +506,7 @@ export type {
   AccountBalanceListResponse,
   AccountListResponse,
   AgentTaskResponse,
+  AgentTaskHistoryResponse,
   AuditResponse,
   BillSummaryResponse,
   CardListResponse,
@@ -492,6 +518,7 @@ export type {
   InvestmentProductListResponse,
   OrderListResponse,
   PayeeListResponse,
+  PayeeCreateRequest,
   PaydayPlanPreviewRequest,
   PaydayPlanPreviewResponse,
   PortfolioResponse,
@@ -511,4 +538,5 @@ export type {
   TransactionPageResponse,
   TransactionsResponse,
   TransferListResponse,
+  TransferDestinationListResponse,
 };
