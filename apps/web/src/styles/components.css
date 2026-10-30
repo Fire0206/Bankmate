@@ -436,10 +436,26 @@
     stroke-width: 1.8;
   }
 
+  .merchant-mark--wordmark {
+    font-family: var(--font-sans);
+  }
+
+  .merchant-wordmark {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.06em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
   .data-row-main {
     display: grid;
+    align-content: center;
     min-width: 0;
     gap: 2px;
+    line-height: 1.35;
   }
 
   .data-row-main strong,
@@ -447,12 +463,14 @@
     color: var(--ink);
     font-size: var(--text-sm);
     font-weight: 550;
+    line-height: 1.35;
   }
 
   .data-row-main small {
     overflow: hidden;
     color: var(--muted);
     font-size: var(--text-xs);
+    line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1758,7 +1776,7 @@
     }
 
     .data-row {
-      grid-template-columns: 24px minmax(0, 1fr) auto;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
       gap: 8px;
     }
 

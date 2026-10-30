@@ -375,14 +375,17 @@
 
   .overview-transaction-copy {
     display: grid;
+    align-content: center;
     min-width: 0;
     gap: 3px;
+    line-height: 1.35;
   }
 
   .overview-transaction-copy > strong {
     overflow: hidden;
     font-size: 16px;
     font-weight: 580;
+    line-height: 1.35;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -391,6 +394,7 @@
     overflow: hidden;
     color: var(--muted);
     font-size: 14px;
+    line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -773,6 +777,7 @@
   .transaction-table .transaction-data-row > strong {
     grid-column: 4;
     font-variant-numeric: tabular-nums;
+    line-height: 1.35;
     white-space: nowrap;
   }
 
