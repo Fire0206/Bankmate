@@ -32,8 +32,8 @@
     align-items: center;
     gap: 44px;
     border-radius: 20px;
-    background: #171717;
-    color: #ffffff;
+    background: var(--balance-surface);
+    color: var(--balance-ink);
     padding: 30px 36px;
   }
 
@@ -52,20 +52,20 @@
 
   .overview-balance-label {
     margin: 0;
-    color: rgb(255 255 255 / 74%);
+    color: var(--balance-muted);
     font-size: 15px;
   }
 
   .overview-balance-heading > span {
-    border-left: 1px solid rgb(255 255 255 / 30%);
-    color: rgb(255 255 255 / 70%);
+    border-left: 1px solid var(--balance-divider);
+    color: var(--balance-muted);
     padding-left: 16px;
     font-size: 14px;
   }
 
   .overview-balance-value {
     margin: 0;
-    color: #ffffff;
+    color: var(--balance-ink);
     font-family: var(--font-numeric);
     font-size: clamp(44px, 5vw, 62px);
     font-variant-numeric: tabular-nums;
@@ -80,12 +80,12 @@
     align-items: center;
     gap: 12px;
     margin-top: 8px;
-    color: rgb(255 255 255 / 72%);
+    color: var(--balance-muted);
     font-size: 14px;
   }
 
   .overview-balance-meta strong {
-    color: #ffffff;
+    color: var(--balance-ink);
     font-size: 16px;
     font-weight: 560;
     font-variant-numeric: tabular-nums;
@@ -94,7 +94,7 @@
   .overview-monthly-summary {
     display: grid;
     gap: 0;
-    border-left: 1px solid rgb(255 255 255 / 20%);
+    border-left: 1px solid var(--balance-divider);
     padding-left: 30px;
   }
 
@@ -104,7 +104,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    border-bottom: 1px solid rgb(255 255 255 / 18%);
+    border-bottom: 1px solid var(--balance-divider);
   }
 
   .overview-monthly-summary > div:last-child {
@@ -112,12 +112,12 @@
   }
 
   .overview-monthly-summary span {
-    color: rgb(255 255 255 / 72%);
+    color: var(--balance-muted);
     font-size: 15px;
   }
 
   .overview-monthly-summary strong {
-    color: #ffffff;
+    color: var(--balance-ink);
     font-size: 20px;
     font-weight: 560;
     font-variant-numeric: tabular-nums;
@@ -665,16 +665,16 @@
     flex-direction: column;
     justify-content: space-between;
     overflow: hidden;
-    border: 1px solid #292929;
+    border: 1px solid var(--card-face-edge);
     border-radius: var(--radius-card-face);
-    background: #171717;
+    background: var(--card-face);
     color: #ffffff;
     padding: clamp(22px, 3vw, 34px);
   }
 
   .card-face-inactive {
-    border-color: #393939;
-    background: #303030;
+    border-color: var(--card-face-edge);
+    background: var(--card-face-inactive);
   }
 
   .card-face-top,
@@ -704,8 +704,8 @@
     height: 34px;
     place-items: center;
     border-radius: 9px;
-    background: #ffffff;
-    color: #171717;
+    background: var(--brand-mark-bg);
+    color: var(--brand-mark-ink);
     font-size: 17px;
     font-weight: 700;
   }
@@ -723,7 +723,7 @@
   .card-face-chip {
     width: 44px;
     height: 34px;
-    color: #c8c8c8;
+    color: var(--card-detail);
   }
 
   .card-face-chip rect,
@@ -735,7 +735,7 @@
   .card-face-contactless {
     width: 23px;
     height: 23px;
-    color: #d9d9d9;
+    color: var(--card-detail);
     transform: rotate(90deg);
   }
 

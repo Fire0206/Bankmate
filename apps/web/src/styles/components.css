@@ -1,4 +1,14 @@
 @layer components {
+  .icon-button.mobile-menu-button {
+    display: none;
+  }
+
+  @media (max-width: 760px) {
+    .icon-button.mobile-menu-button {
+      display: grid;
+    }
+  }
+
   .icon-button,
   .quiet-button,
   .text-button,
@@ -68,8 +78,8 @@
   .confirmation-actions .button-primary,
   .task-confirm-button,
   .send-button {
-    border-color: var(--ink);
-    background: var(--ink);
+    border-color: var(--accent);
+    background: var(--accent);
     color: var(--accent-ink);
   }
 
@@ -80,7 +90,7 @@
   .confirmation-actions .button-primary:hover:not(:disabled),
   .task-confirm-button:hover:not(:disabled),
   .send-button:hover:not(:disabled) {
-    background: var(--ink-hover);
+    background: var(--accent-hover);
   }
 
   .button-secondary,
