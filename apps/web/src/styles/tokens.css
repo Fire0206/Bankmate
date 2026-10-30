@@ -45,9 +45,9 @@
     --overlay: rgb(0 0 0 / 28%);
     --overlay-strong: rgb(0 0 0 / 32%);
     --font-sans:
-      -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
-      "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Segoe UI",
-      sans-serif;
+      "HarmonyOS Sans SC", "Noto Sans SC", "MiSans", -apple-system,
+      BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI",
+      "Microsoft YaHei", "Segoe UI", sans-serif;
     --font-numeric: var(--font-sans);
     --text-xs: 13px;
     --text-sm: 15px;
