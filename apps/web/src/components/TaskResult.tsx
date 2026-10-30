@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { components } from "../generated/api";
 import { apiClient } from "../api/client";
 import { AppIcon } from "./AppIcon";
-import { MerchantMark } from "./MerchantMark";
 import { cardLabel } from "./cardFormat";
 import { RiskAssessmentForm } from "./RiskAssessmentForm";
 import { customerText } from "../userFacing";
@@ -229,10 +228,6 @@ function TransactionList({
               className="task-result-row transaction-result-row"
               key={stringValue(item.id)}
             >
-              <MerchantMark
-                category={stringValue(item.category)}
-                merchant={stringValue(item.merchant)}
-              />
               <div>
                 <strong>{stringValue(item.merchant)}</strong>
                 <small>

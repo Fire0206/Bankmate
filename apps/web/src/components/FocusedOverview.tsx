@@ -20,7 +20,7 @@ import {
   type TransactionPageResponse,
 } from "../api/client";
 import { AppIcon } from "./AppIcon";
-import { MerchantMark } from "./MerchantMark";
+import { CashflowChart } from "./CashflowChart";
 import { SkeletonLine } from "./Skeleton";
 import { statusLabel } from "./taskFormat";
 import { customerText } from "../userFacing";
@@ -32,7 +32,7 @@ type OverviewData = {
   transactions: TransactionPageResponse;
 };
 
-type OverviewDialog = "transactions" | "transaction" | "risk" | "audit" | null;
+type OverviewDialog = "transactions" | "risk" | "audit" | null;
 type Transaction = TransactionPageResponse["items"][number];
 type AuditEvent = AuditResponse["events"][number];
 type TransactionFilter = "all" | "income" | "expense" | "attention";
@@ -191,53 +191,13 @@ function OverviewDialog({
 }
 
 function TransactionRow({
-  compact = false,
   onSelect,
   transaction,
 }: {
-  compact?: boolean;
   onSelect: () => void;
   transaction: Transaction;
 }) {
   const attention = Boolean(transaction.anomaly_reason);
-  const amount = `${transaction.direction === "income" ? "+" : "−"}${money(transaction.amount_minor, transaction.currency)}`;
-
-  if (compact) {
-    return (
-      <button
-        aria-label={`${transaction.merchant}，${transaction.category}，${amount}，${transactionDate(transaction.occurred_at)}${attention ? "，需要核对" : ""}`}
-        className="overview-transaction-row overview-transaction-row-compact"
-        onClick={onSelect}
-        type="button"
-      >
-        <MerchantMark
-          category={transaction.category}
-          className="overview-merchant-mark"
-          merchant={transaction.merchant}
-        />
-        <span className="overview-transaction-copy">
-          <strong>{transaction.merchant}</strong>
-          <span>
-            {transaction.category} <i aria-hidden="true">·</i>{" "}
-            {transactionDate(transaction.occurred_at)}
-          </span>
-        </span>
-        <span className="overview-transaction-trailing">
-          <strong
-            className={
-              transaction.direction === "income"
-                ? "overview-transaction-amount is-income"
-                : "overview-transaction-amount"
-            }
-          >
-            {amount}
-          </strong>
-          {attention ? <small>需核对</small> : null}
-        </span>
-      </button>
-    );
-  }
-
   return (
     <button
       className="overview-transaction-row"
@@ -249,7 +209,16 @@ function TransactionRow({
       </span>
       <strong>{transaction.merchant}</strong>
       <span>{transaction.category}</span>
-      <span className="overview-transaction-amount">{amount}</span>
+      <span
+        className={
+          transaction.direction === "income"
+            ? "overview-transaction-amount is-income"
+            : "overview-transaction-amount"
+        }
+      >
+        {transaction.direction === "income" ? "+" : "−"}
+        {money(transaction.amount_minor, transaction.currency)}
+      </span>
       {attention ? (
         <span className="overview-transaction-status is-attention">需核对</span>
       ) : null}
@@ -284,8 +253,6 @@ export function FocusedOverview({
   });
   const [transactionFilter, setTransactionFilter] =
     useState<TransactionFilter>("all");
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
   const [auditModal, setAuditModal] = useState<{
     taskId: string;
     events: AuditEvent[];
@@ -360,13 +327,10 @@ export function FocusedOverview({
   const billCurrencyCode = data?.bills.currency ?? currencyCode;
   const totalBalance =
     data?.accounts.items.reduce(
-      (total, account) => total + account.available_balance_minor,
+      (total, account) => total + account.balance_minor,
       0,
     ) ?? null;
   const leadingAnomaly = data?.bills.anomalies[0] ?? null;
-  const riskTransaction = selectedTransaction?.anomaly_reason
-    ? selectedTransaction
-    : leadingAnomaly;
   const showTaskAttention = Boolean(
     activeTask &&
     [
@@ -385,8 +349,8 @@ export function FocusedOverview({
     day: "numeric",
     weekday: "short",
   }).format(new Date());
-  const anomalyPrompt = riskTransaction
-    ? `核对${riskTransaction.merchant}的这笔交易，金额 ${money(riskTransaction.amount_minor, riskTransaction.currency)}${riskTransaction.source_card_suffix ? `，银行卡尾号 ${riskTransaction.source_card_suffix}` : ""}。请先说明账单提示依据，再给出处理建议。`
+  const anomalyPrompt = leadingAnomaly
+    ? `核对${leadingAnomaly.merchant}的这笔交易，金额 ${money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}${leadingAnomaly.source_card_suffix ? `，银行卡尾号 ${leadingAnomaly.source_card_suffix}` : ""}。请先说明账单提示依据，再给出处理建议。`
     : "检查本月异常消费，并先展示判断证据";
 
   const filteredTransactions = useMemo(() => {
@@ -405,6 +369,10 @@ export function FocusedOverview({
 
   const visibleTransactions = filteredTransactions.slice(0, 8);
   const recentTransactions = data?.transactions.items.slice(0, 5) ?? [];
+  const hasUsefulTrend =
+    (data?.bills.trends.filter(
+      (item) => item.income_minor > 0 || item.expense_minor > 0,
+    ).length ?? 0) >= 3;
   const matchingAuditModal =
     activeTask && auditModal?.taskId === activeTask.id ? auditModal : null;
   const auditLoading =
@@ -455,11 +423,8 @@ export function FocusedOverview({
       </header>
 
       <section aria-label="账户资金" className="overview-funds">
-        <div className="overview-balance-block">
-          <div className="overview-balance-heading">
-            <p className="overview-balance-label">可用余额</p>
-            <span>{data?.accounts.items.length ?? 0} 个账户</span>
-          </div>
+        <div>
+          <p className="overview-balance-label">可用余额</p>
           <p className="overview-balance-value">
             {loading ? (
               <SkeletonLine
@@ -471,16 +436,14 @@ export function FocusedOverview({
             )}
           </p>
           <div className="overview-balance-meta">
-            <span>
-              {data?.bills.net_minor !== undefined && data.bills.net_minor < 0
-                ? "本月净流出"
-                : "本月净流入"}
-            </span>
             <strong>
               {loading
                 ? "读取中"
-                : money(data?.bills.net_minor, billCurrencyCode)}
+                : `${data?.bills.net_minor && data.bills.net_minor > 0 ? "+" : ""}${money(data?.bills.net_minor, billCurrencyCode)}`}
             </strong>
+            <span>本月净收支</span>
+            <i aria-hidden="true" />
+            <span>{data?.accounts.items.length ?? 0} 个账户</span>
           </div>
         </div>
 
@@ -490,7 +453,7 @@ export function FocusedOverview({
             <strong>
               {loading
                 ? "—"
-                : money(data?.bills.income_minor, billCurrencyCode)}
+                : money(data?.bills.income_minor, billCurrencyCode, 0)}
             </strong>
           </div>
           <div>
@@ -498,11 +461,67 @@ export function FocusedOverview({
             <strong>
               {loading
                 ? "—"
-                : money(data?.bills.expense_minor, billCurrencyCode)}
+                : money(data?.bills.expense_minor, billCurrencyCode, 0)}
+            </strong>
+          </div>
+          <div>
+            <span>自动扣费</span>
+            <strong>
+              {loading
+                ? "—"
+                : money(
+                    data?.subscriptions.monthly_total_minor,
+                    data?.subscriptions.currency ?? currencyCode,
+                    0,
+                  )}
             </strong>
           </div>
         </div>
       </section>
+
+      {showTaskAttention && activeTask ? (
+        <button
+          className="overview-attention overview-task-attention"
+          onClick={onOpenAssistant}
+          type="button"
+        >
+          <AppIcon
+            name={activeTask.status === "failed" ? "info" : "clock"}
+            size={17}
+          />
+          <span>
+            <strong>
+              {activeTask.status === "awaiting_confirmation"
+                ? "有一项操作等待确认"
+                : activeTask.status === "awaiting_input"
+                  ? "任务需要补充信息"
+                  : activeTask.status === "failed"
+                    ? "任务未能继续"
+                    : "任务正在处理"}
+            </strong>
+            {activeTask.message ? ` · ${activeTask.message}` : null}
+          </span>
+          <span className="overview-attention-action">查看</span>
+          <AppIcon name="arrow-right" size={16} />
+        </button>
+      ) : leadingAnomaly ? (
+        <button
+          className="overview-attention"
+          disabled={busy}
+          onClick={() => setDialog("risk")}
+          type="button"
+        >
+          <AppIcon name="info" size={17} />
+          <span>
+            <strong>{data?.bills.anomalies.length ?? 0} 笔交易需要复核</strong>
+            {` · ${leadingAnomaly.merchant}`}
+          </span>
+          <strong>
+            {money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}
+          </strong>
+          <AppIcon name="arrow-right" size={16} />
+        </button>
+      ) : null}
 
       <div className="overview-main-grid">
         <section
@@ -536,12 +555,12 @@ export function FocusedOverview({
             <div className="overview-transaction-list">
               {recentTransactions.map((transaction) => (
                 <TransactionRow
-                  compact
                   key={transaction.id}
-                  onSelect={() => {
-                    setSelectedTransaction(transaction);
-                    setDialog("transaction");
-                  }}
+                  onSelect={() =>
+                    setDialog(
+                      transaction.anomaly_reason ? "risk" : "transactions",
+                    )
+                  }
                   transaction={transaction}
                 />
               ))}
@@ -553,83 +572,40 @@ export function FocusedOverview({
 
         <aside className="overview-side-column">
           <section
-            aria-labelledby="attention-title"
-            className="overview-attention-panel"
+            aria-labelledby="cashflow-title"
+            className="overview-chart-section"
           >
-            <header className="overview-attention-heading">
-              <h2 id="attention-title">需要关注</h2>
-              <span>
-                {(showTaskAttention ? 1 : 0) +
-                  (leadingAnomaly ? (data?.bills.anomalies.length ?? 0) : 0)}
-                项
-              </span>
+            <header>
+              <div>
+                <h2 id="cashflow-title">收支趋势</h2>
+              </div>
+              <div aria-label="图例" className="overview-chart-legend">
+                <span>
+                  <i />
+                  收入
+                </span>
+                <span>
+                  <i className="legend-expense" />
+                  支出
+                </span>
+              </div>
             </header>
-            <div className="overview-attention-list">
-              {showTaskAttention && activeTask ? (
-                <button
-                  className="overview-attention-item overview-task-attention"
-                  onClick={onOpenAssistant}
-                  type="button"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="overview-attention-symbol"
-                  >
-                    {activeTask.status === "failed" ? "!" : "…"}
-                  </span>
-                  <span className="overview-attention-copy">
-                    <strong>
-                      {activeTask.status === "awaiting_confirmation"
-                        ? "等待你确认"
-                        : activeTask.status === "awaiting_input"
-                          ? "需要补充信息"
-                          : activeTask.status === "failed"
-                            ? "任务未能继续"
-                            : "任务正在处理"}
-                    </strong>
-                    {activeTask.message ? (
-                      <small>{activeTask.message}</small>
-                    ) : null}
-                  </span>
-                  <AppIcon name="arrow-right" size={16} />
-                </button>
-              ) : null}
-              {leadingAnomaly ? (
-                <button
-                  className="overview-attention-item overview-anomaly-attention"
-                  disabled={busy}
-                  onClick={() => {
-                    setSelectedTransaction(null);
-                    setDialog("risk");
-                  }}
-                  type="button"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="overview-attention-symbol"
-                  >
-                    !
-                  </span>
-                  <span className="overview-attention-copy">
-                    <strong>
-                      {data?.bills.anomalies.length ?? 0} 笔交易需核对
-                    </strong>
-                    <small>{leadingAnomaly.merchant}</small>
-                  </span>
-                  <strong className="overview-attention-amount">
-                    {money(
-                      leadingAnomaly.amount_minor,
-                      leadingAnomaly.currency,
-                    )}
-                  </strong>
-                </button>
-              ) : null}
-              {!showTaskAttention && !leadingAnomaly ? (
-                <p className="overview-attention-empty">
-                  暂时没有需要处理的事项。
-                </p>
-              ) : null}
-            </div>
+            {loading ? (
+              <div aria-hidden="true" className="focused-chart-skeleton">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <i key={index} />
+                ))}
+              </div>
+            ) : hasUsefulTrend && data?.bills.trends.length ? (
+              <CashflowChart
+                currencyCode={data.bills.currency}
+                trends={data.bills.trends}
+              />
+            ) : (
+              <div className="overview-chart-empty">
+                交易记录积累后显示月度趋势
+              </div>
+            )}
           </section>
 
           <div className="overview-quick-links">
@@ -639,7 +615,6 @@ export function FocusedOverview({
             >
               <span>自动扣费</span>
               <strong>{activeSubscriptions.length} 项</strong>
-              <AppIcon name="arrow-right" size={16} />
             </button>
             <button onClick={() => setDialog("audit")} type="button">
               <span>操作记录</span>
@@ -656,60 +631,6 @@ export function FocusedOverview({
             重新读取
           </button>
         </div>
-      ) : null}
-
-      {dialog === "transaction" && selectedTransaction ? (
-        <OverviewDialog
-          className="overview-transaction-dialog"
-          onClose={() => setDialog(null)}
-          title={selectedTransaction.merchant}
-        >
-          <div className="overview-transaction-detail">
-            <p
-              className={
-                selectedTransaction.direction === "income" ? "is-income" : ""
-              }
-            >
-              {selectedTransaction.direction === "income" ? "+" : "−"}
-              {money(
-                selectedTransaction.amount_minor,
-                selectedTransaction.currency,
-              )}
-            </p>
-            <dl>
-              <div>
-                <dt>时间</dt>
-                <dd>{transactionDate(selectedTransaction.occurred_at)}</dd>
-              </div>
-              <div>
-                <dt>类别</dt>
-                <dd>{selectedTransaction.category}</dd>
-              </div>
-              <div>
-                <dt>付款卡</dt>
-                <dd>
-                  {selectedTransaction.source_card_suffix
-                    ? `尾号 ${selectedTransaction.source_card_suffix}`
-                    : "未关联银行卡"}
-                </dd>
-              </div>
-            </dl>
-            {selectedTransaction.anomaly_reason ? (
-              <div className="overview-transaction-evidence">
-                <strong>需要核对</strong>
-                <p>{customerText(selectedTransaction.anomaly_reason)}</p>
-                <button
-                  className="overview-primary-action"
-                  onClick={() => setDialog("risk")}
-                  type="button"
-                >
-                  查看提醒
-                  <AppIcon name="arrow-right" size={14} />
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </OverviewDialog>
       ) : null}
 
       {dialog === "transactions" ? (
@@ -751,8 +672,9 @@ export function FocusedOverview({
               <TransactionRow
                 key={transaction.id}
                 onSelect={() => {
-                  setSelectedTransaction(transaction);
-                  setDialog("transaction");
+                  setDialog(
+                    transaction.anomaly_reason ? "risk" : "transactions",
+                  );
                 }}
                 transaction={transaction}
               />
@@ -777,34 +699,31 @@ export function FocusedOverview({
         <OverviewDialog
           className="overview-risk-dialog"
           onClose={() => setDialog(null)}
-          title={riskTransaction ? "需要核对的一笔交易" : "本月没有交易提醒"}
+          title={leadingAnomaly ? "需要核对的一笔交易" : "本月没有交易提醒"}
         >
-          {riskTransaction ? (
+          {leadingAnomaly ? (
             <>
               <div className="overview-risk-amount">
                 <span>商户</span>
-                <h3>{riskTransaction.merchant}</h3>
+                <h3>{leadingAnomaly.merchant}</h3>
                 <strong>
-                  {money(
-                    riskTransaction.amount_minor,
-                    riskTransaction.currency,
-                  )}
+                  {money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}
                 </strong>
               </div>
               <dl className="overview-risk-meta">
                 <div>
                   <dt>时间</dt>
-                  <dd>{transactionDate(riskTransaction.occurred_at)}</dd>
+                  <dd>{transactionDate(leadingAnomaly.occurred_at)}</dd>
                 </div>
                 <div>
                   <dt>类别</dt>
-                  <dd>{riskTransaction.category}</dd>
+                  <dd>{leadingAnomaly.category}</dd>
                 </div>
                 <div>
                   <dt>账户</dt>
                   <dd>
-                    {riskTransaction.source_card_suffix
-                      ? `银行卡 ·•• ${riskTransaction.source_card_suffix}`
+                    {leadingAnomaly.source_card_suffix
+                      ? `银行卡 ·•• ${leadingAnomaly.source_card_suffix}`
                       : "银行卡信息不可用"}
                   </dd>
                 </div>
@@ -815,7 +734,7 @@ export function FocusedOverview({
                   <i />
                   <span>
                     <strong>
-                      {customerText(riskTransaction.anomaly_reason)}
+                      {customerText(leadingAnomaly.anomaly_reason)}
                     </strong>
                     <small>账单规则提醒，仅供核对，不代表欺诈结论。</small>
                   </span>

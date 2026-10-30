@@ -18,7 +18,7 @@ function monthLabel(month: string, previousMonth?: string): string {
   const [year, monthNumber] = month.split("-").map(Number);
   const previousYear = previousMonth
     ? Number(previousMonth.split("-")[0])
-    : year;
+    : null;
   const yearLabel = previousYear === year ? "" : `${String(year).slice(-2)}年`;
   return `${yearLabel}${monthNumber}月`;
 }
@@ -67,20 +67,14 @@ export function CashflowChart({
             <div className="cashflow-chart-month" key={item.month}>
               <div className="cashflow-bar-pair">
                 <span
-                  className={
-                    "cashflow-bar cashflow-bar-income" +
-                    (item.income_minor > 0 ? " has-value" : "")
-                  }
+                  className="cashflow-bar cashflow-bar-income"
                   style={
                     { "--bar-height": `${incomeHeight}%` } as CSSProperties
                   }
                   title={`收入 ${currencyAmount(item.income_minor, currencyCode)}`}
                 />
                 <span
-                  className={
-                    "cashflow-bar cashflow-bar-expense" +
-                    (item.expense_minor > 0 ? " has-value" : "")
-                  }
+                  className="cashflow-bar cashflow-bar-expense"
                   style={
                     { "--bar-height": `${expenseHeight}%` } as CSSProperties
                   }

@@ -6,6 +6,3 @@ apps/web/src/generated/api.d.ts
 pnpm-lock.yaml
 .playwright-cli/
 output/playwright/
-
-# Plain-text Alembic marker is not a code or Markdown deliverable.
-/apps/api/alembic/README

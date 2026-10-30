@@ -1,7 +1,7 @@
 @layer pages {
   .focused-overview {
     display: grid;
-    gap: 28px;
+    gap: 30px;
     min-width: 0;
   }
 
@@ -14,10 +14,10 @@
 
   .overview-page-heading h1 {
     margin: 0;
-    font-size: 30px;
+    font-size: var(--text-xl);
     font-weight: 620;
-    letter-spacing: -0.04em;
-    line-height: 1.15;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
   }
 
   .overview-page-heading time {
@@ -27,138 +27,168 @@
 
   .overview-funds {
     display: grid;
-    min-height: 224px;
-    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
-    align-items: center;
-    gap: 44px;
-    border-radius: 20px;
-    background: var(--balance-surface);
-    color: var(--balance-ink);
-    padding: 30px 36px;
-  }
-
-  .overview-balance-block {
-    display: grid;
-    align-content: center;
-    gap: 6px;
-    min-width: 0;
-  }
-
-  .overview-balance-heading {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    grid-template-columns: minmax(280px, 1.2fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 40px;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 24px 0;
   }
 
   .overview-balance-label {
-    margin: 0;
-    color: var(--balance-muted);
-    font-size: 15px;
-  }
-
-  .overview-balance-heading > span {
-    border-left: 1px solid var(--balance-divider);
-    color: var(--balance-muted);
-    padding-left: 16px;
-    font-size: 14px;
+    margin: 0 0 5px;
+    color: var(--muted);
+    font-size: var(--text-sm);
   }
 
   .overview-balance-value {
     margin: 0;
-    color: var(--balance-ink);
+    color: var(--ink);
     font-family: var(--font-numeric);
-    font-size: clamp(44px, 5vw, 62px);
+    font-size: var(--text-display);
     font-variant-numeric: tabular-nums;
-    font-weight: 540;
-    letter-spacing: -0.055em;
-    line-height: 1.08;
+    font-weight: 560;
+    letter-spacing: -0.045em;
+    line-height: 1.1;
   }
 
   .overview-balance-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    margin-top: 8px;
-    color: var(--balance-muted);
-    font-size: 14px;
+    gap: 8px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: var(--text-sm);
   }
 
   .overview-balance-meta strong {
-    color: var(--balance-ink);
-    font-size: 16px;
-    font-weight: 560;
+    color: var(--ink);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+
+  .overview-balance-meta i {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--subtle);
   }
 
   .overview-monthly-summary {
     display: grid;
-    gap: 0;
-    border-left: 1px solid var(--balance-divider);
-    padding-left: 30px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
   }
 
   .overview-monthly-summary > div {
-    display: flex;
-    min-height: 68px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    border-bottom: 1px solid var(--balance-divider);
-  }
-
-  .overview-monthly-summary > div:last-child {
-    border-bottom: 0;
+    display: grid;
+    align-content: end;
+    gap: 5px;
   }
 
   .overview-monthly-summary span {
-    color: var(--balance-muted);
-    font-size: 15px;
+    color: var(--muted);
+    font-size: var(--text-sm);
   }
 
   .overview-monthly-summary strong {
-    color: var(--balance-ink);
-    font-size: 20px;
-    font-weight: 560;
+    color: var(--ink);
+    font-size: 18px;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+  }
+
+  .overview-attention {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    gap: 12px;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    padding: 10px 0;
+    text-align: left;
+  }
+
+  button.overview-attention {
+    width: 100%;
+  }
+
+  .overview-attention > svg {
+    color: var(--warning);
+  }
+
+  .overview-attention span {
+    min-width: 0;
+    flex: 1;
+    font-size: var(--text-sm);
+  }
+
+  .overview-attention strong {
+    font-weight: 600;
+  }
+
+  .overview-attention > strong {
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .overview-attention.is-clear {
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .overview-attention-action {
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .overview-attention.is-clear > svg {
+    color: var(--success);
   }
 
   .overview-main-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(290px, 0.78fr);
+    grid-template-columns: minmax(0, 1.55fr) minmax(270px, 0.85fr);
     align-items: start;
-    gap: 52px;
+    gap: 48px;
   }
 
   .overview-transactions,
-  .overview-side-column {
+  .overview-side-column,
+  .overview-chart-section {
     display: grid;
     min-width: 0;
   }
 
-  .overview-transactions > header {
+  .overview-transactions > header,
+  .overview-chart-section > header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
 
   .overview-transactions h2,
-  .overview-attention-heading h2 {
+  .overview-chart-section h2 {
     margin: 0;
-    font-size: 20px;
-    font-weight: 620;
-    letter-spacing: -0.025em;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    letter-spacing: -0.02em;
   }
 
   .overview-text-action {
     min-height: 40px;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--radius-control);
     background: transparent;
     color: var(--muted);
-    padding: 0;
+    padding: 0 8px;
     font-size: var(--text-sm);
   }
 
@@ -168,97 +198,41 @@
   }
 
   .overview-side-column {
-    align-content: start;
     gap: 28px;
   }
 
-  .overview-attention-panel {
-    min-width: 0;
+  .overview-chart-section {
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
   }
 
-  .overview-attention-heading {
+  .overview-chart-section > header span {
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .overview-chart-legend {
     display: flex;
+    gap: 14px;
+    color: var(--muted);
+    font-size: var(--text-xs);
+  }
+
+  .overview-chart-legend span {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    border-bottom: 1px solid var(--line);
-    padding-bottom: 14px;
+    gap: 6px;
   }
 
-  .overview-attention-heading > span {
-    color: var(--muted);
-    font-size: var(--text-sm);
+  .overview-chart-legend i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--ink);
   }
 
-  .overview-attention-list {
-    display: grid;
-  }
-
-  .overview-attention-item {
-    display: grid;
-    min-height: 78px;
-    grid-template-columns: 30px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    background: transparent;
-    color: var(--ink);
-    padding: 12px 0;
-    text-align: left;
-  }
-
-  .overview-attention-item:hover .overview-attention-copy strong,
-  .overview-attention-item:hover > svg {
-    color: var(--muted);
-  }
-
-  .overview-attention-symbol {
-    display: grid;
-    width: 28px;
-    height: 28px;
-    place-items: center;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    color: var(--ink);
-    font-size: 17px;
-    font-weight: 600;
-  }
-
-  .overview-attention-copy {
-    display: grid;
-    min-width: 0;
-    gap: 3px;
-  }
-
-  .overview-attention-copy strong {
-    overflow: hidden;
-    font-size: 15px;
-    font-weight: 580;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .overview-attention-copy small {
-    overflow: hidden;
-    color: var(--muted);
-    font-size: 14px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .overview-attention-amount {
-    font-size: 14px;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-
-  .overview-attention-empty {
-    margin: 0;
-    border-bottom: 1px solid var(--line);
-    color: var(--muted);
-    padding: 20px 0;
-    font-size: 15px;
+  .overview-chart-legend .legend-expense {
+    background: var(--neutral-mid);
   }
 
   .overview-quick-links {
@@ -268,7 +242,7 @@
 
   .overview-quick-links button {
     display: flex;
-    min-height: 54px;
+    min-height: 48px;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
@@ -285,13 +259,15 @@
   }
 
   .overview-quick-links button > span {
-    flex: 1;
-    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: var(--text-sm);
   }
 
   .overview-quick-links button > strong {
     color: var(--muted);
-    font-size: 14px;
+    font-size: var(--text-sm);
     font-weight: 500;
     font-variant-numeric: tabular-nums;
   }
@@ -353,80 +329,103 @@
     justify-self: end;
   }
 
-  .overview-transaction-row-compact {
-    min-height: 78px;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
-    gap: 14px;
-    border-top: 0;
-    border-bottom: 1px solid var(--line);
-    padding: 10px 0;
-  }
-
-  .overview-transaction-row-compact:hover {
-    border-radius: 10px;
-    background: var(--surface-soft);
-  }
-
-  .overview-merchant-mark {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-  }
-
-  .overview-transaction-copy {
+  .overview-chart-empty {
     display: grid;
+    min-height: 90px;
     align-content: center;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .overview-chart-skeleton {
+    min-height: 110px;
+  }
+
+  .cashflow-chart {
+    width: 100%;
     min-width: 0;
-    gap: 3px;
-    line-height: 1.35;
+    min-height: 132px;
   }
 
-  .overview-transaction-copy > strong {
-    overflow: hidden;
-    font-size: 16px;
-    font-weight: 580;
-    line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .cashflow-chart-bars {
+    display: grid;
+    height: 132px;
+    grid-template-columns: repeat(var(--chart-month-count, 6), minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+    border-bottom: 1px solid var(--line);
   }
 
-  .overview-transaction-copy > span {
+  .cashflow-chart-month {
+    display: grid;
+    min-width: 0;
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+
+  .cashflow-bar-pair {
+    display: flex;
+    min-height: 0;
+    align-items: end;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .cashflow-bar {
+    width: min(12px, 26%);
+    min-height: 1px;
+    height: var(--bar-height);
+    border-radius: 3px 3px 0 0;
+    background: var(--ink);
+  }
+
+  .cashflow-bar-expense {
+    background: var(--neutral-mid);
+  }
+
+  .cashflow-month-label {
     overflow: hidden;
     color: var(--muted);
-    font-size: 14px;
-    line-height: 1.4;
+    font-size: var(--text-xs);
+    line-height: 1.2;
+    text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .overview-transaction-copy i {
-    margin: 0 2px;
-    font-style: normal;
+  .cashflow-chart.is-empty {
+    height: auto;
+    min-height: 72px;
+    color: var(--muted);
   }
 
-  .overview-transaction-trailing {
+  .focused-chart-skeleton {
     display: grid;
-    justify-items: end;
-    gap: 3px;
+    height: 105px;
+    grid-template-columns: repeat(6, 1fr);
+    align-items: end;
+    gap: 12px;
+    padding: 8px 4px 24px;
   }
 
-  .overview-transaction-trailing > strong {
-    font-size: 15px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    line-height: 1.35;
+  .focused-chart-skeleton i {
+    height: 45%;
+    border-radius: 4px 4px 0 0;
   }
 
-  .overview-transaction-trailing > small {
-    color: var(--ink);
-    font-size: 13px;
+  .focused-chart-skeleton i:nth-child(2n) {
+    height: 72%;
+  }
+
+  .focused-chart-skeleton i:nth-child(3n) {
+    height: 58%;
   }
 
   .chart-skeleton {
     display: grid;
     height: 150px;
     grid-template-columns: repeat(6, minmax(0, 1fr));
-    align-items: flex-end;
+    align-items: end;
     gap: 12px;
     border-bottom: 1px solid var(--line);
     padding: 10px 2px 0;
@@ -574,127 +573,6 @@
     gap: 44px;
   }
 
-  .bills-trend,
-  .bills-categories {
-    min-width: 0;
-    border-top: 1px solid var(--line);
-    padding-top: 18px;
-  }
-
-  .bills-trend > header,
-  .bills-categories > header {
-    min-height: 30px;
-    margin-bottom: 10px;
-  }
-
-  .bills-trend > header h2,
-  .bills-categories > header h2 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 620;
-    line-height: 1.3;
-  }
-
-  .cashflow-legend {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.3;
-  }
-
-  .cashflow-legend > span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-  }
-
-  .cashflow-legend i {
-    width: 9px;
-    height: 9px;
-    border-radius: 3px;
-  }
-
-  .cashflow-legend-income {
-    background: var(--balance-surface);
-  }
-
-  .cashflow-legend-expense {
-    background: var(--neutral-mid);
-  }
-
-  .cashflow-chart {
-    width: 100%;
-    min-height: 180px;
-  }
-
-  .cashflow-chart-bars {
-    display: grid;
-    height: 158px;
-    grid-template-columns: repeat(var(--chart-month-count), minmax(0, 1fr));
-    align-items: stretch;
-    gap: 10px;
-    border-bottom: 1px solid var(--line);
-    padding: 6px 4px 0;
-  }
-
-  .cashflow-chart-month {
-    display: grid;
-    min-width: 0;
-    grid-template-rows: minmax(0, 1fr) 22px;
-    align-items: end;
-    gap: 8px;
-  }
-
-  .cashflow-bar-pair {
-    display: flex;
-    height: 100%;
-    min-height: 0;
-    align-items: flex-end;
-    justify-content: center;
-    gap: clamp(2px, 0.5vw, 7px);
-  }
-
-  .cashflow-bar {
-    width: min(24px, 36%);
-    height: var(--bar-height);
-    border-radius: 5px 5px 0 0;
-  }
-
-  .cashflow-bar.has-value {
-    min-height: 2px;
-  }
-
-  .cashflow-bar-income {
-    background: var(--balance-surface);
-  }
-
-  .cashflow-bar-expense {
-    background: var(--neutral-mid);
-  }
-
-  .cashflow-month-label {
-    overflow: hidden;
-    color: var(--muted);
-    font-size: var(--text-xs);
-    line-height: 1.3;
-    text-align: center;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .cashflow-chart.is-empty {
-    display: grid;
-    min-height: 130px;
-    place-items: center;
-    color: var(--muted);
-    font-size: var(--text-sm);
-    text-align: center;
-  }
-
   .bills-kpis {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -724,15 +602,15 @@
 
   .category-row {
     display: grid;
-    min-height: 58px;
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    min-height: 48px;
+    grid-template-columns: 10px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     border: 0;
     border-bottom: 1px solid var(--line);
     background: transparent;
     color: var(--ink);
-    padding: 8px 0;
+    padding: 6px 2px;
     text-align: left;
   }
 
@@ -741,10 +619,11 @@
     background: var(--surface-soft);
   }
 
-  .category-merchant-mark {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+  .category-row-mark {
+    width: 7px;
+    height: 7px;
+    border: 1px solid var(--muted);
+    border-radius: 50%;
   }
 
   .category-row strong {
@@ -757,160 +636,124 @@
     min-height: 62px;
   }
 
-  .transaction-table .transaction-data-row {
-    grid-template-columns: 40px minmax(0, 1fr) auto auto 18px;
-    gap: 12px;
-  }
-
-  .transaction-table .transaction-data-row > .merchant-mark {
-    grid-column: 1;
-  }
-
-  .transaction-table .transaction-data-row > .data-row-main {
-    grid-column: 2;
-  }
-
-  .transaction-table .transaction-data-row > .risk-badge {
-    grid-column: 3;
-  }
-
-  .transaction-table .transaction-data-row > strong {
-    grid-column: 4;
-    font-variant-numeric: tabular-nums;
-    line-height: 1.35;
-    white-space: nowrap;
-  }
-
-  .transaction-table .transaction-data-row > svg:last-child {
-    grid-column: 5;
-  }
-
   .card-workspace {
     display: grid;
-    gap: 28px;
+    gap: 36px;
   }
 
-  .card-spotlight {
+  .card-workspace-header {
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+  }
+
+  .card-workspace-header h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: 600;
+  }
+
+  .card-workspace-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+    grid-template-columns: minmax(280px, 0.95fr) minmax(300px, 1.05fr);
     align-items: center;
-    gap: clamp(36px, 5vw, 72px);
-    border-bottom: 1px solid var(--line);
-    padding: 12px 0 34px;
+    gap: 48px;
   }
 
   .card-face-stage {
     width: 100%;
-    max-width: 540px;
-    justify-self: start;
+    max-width: 440px;
   }
 
   .card-face {
     position: relative;
     display: flex;
-    width: 100%;
-    aspect-ratio: 1.586;
+    min-height: 250px;
     flex-direction: column;
     justify-content: space-between;
     overflow: hidden;
-    border: 1px solid var(--card-face-edge);
-    border-radius: var(--radius-card-face);
-    background: var(--card-face);
-    color: #ffffff;
-    padding: clamp(22px, 3vw, 34px);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-dialog);
+    background: var(--surface);
+    padding: 23px 25px 20px;
   }
 
   .card-face-inactive {
-    border-color: var(--card-face-edge);
-    background: var(--card-face-inactive);
+    background: var(--surface-soft);
   }
 
   .card-face-top,
   .card-face-brand,
-  .card-face-chip-row,
-  .card-face-bottom,
-  .card-face-state {
+  .card-face-middle,
+  .card-face-bottom {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 14px;
   }
 
   .card-face-brand {
     justify-content: flex-start;
-    font-size: 17px;
-    font-weight: 620;
-  }
-
-  .card-face-brand strong {
-    font-weight: 620;
+    font-size: var(--text-md);
+    font-weight: 600;
   }
 
   .card-face-mark {
     display: grid;
-    width: 34px;
-    height: 34px;
+    width: 30px;
+    height: 30px;
     place-items: center;
-    border-radius: 9px;
-    background: var(--brand-mark-bg);
-    color: var(--brand-mark-ink);
-    font-size: 17px;
-    font-weight: 700;
+    border-radius: var(--radius-control);
+    background: var(--ink);
+    color: var(--accent-ink);
+    font-size: var(--text-sm);
   }
 
-  .card-face-kind {
-    color: rgb(255 255 255 / 68%);
-    font-size: 14px;
+  .card-face-type {
+    color: var(--muted);
+    font-size: var(--text-xs);
   }
 
-  .card-face-chip-row {
+  .card-face-middle {
     justify-content: flex-start;
-    gap: 18px;
   }
 
   .card-face-chip {
-    width: 44px;
-    height: 34px;
-    color: var(--card-detail);
+    display: grid;
+    width: 34px;
+    height: 25px;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    overflow: hidden;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-small);
   }
 
-  .card-face-chip rect,
-  .card-face-chip path {
-    stroke: currentColor;
-    stroke-width: 1.2;
+  .card-face-chip i {
+    border-right: 1px solid var(--line-strong);
+  }
+
+  .card-face-chip i:last-child {
+    border-right: 0;
   }
 
   .card-face-contactless {
-    width: 23px;
-    height: 23px;
-    color: var(--card-detail);
+    color: var(--muted);
+    font-size: 20px;
     transform: rotate(90deg);
-  }
-
-  .card-face-contactless path {
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-width: 1.4;
   }
 
   .card-face-number {
     display: flex;
-    flex-wrap: wrap;
-    gap: clamp(9px, 1.5vw, 18px);
+    gap: 13px;
     margin: 0;
     font-family: var(--font-numeric);
-    font-size: clamp(17px, 2vw, 23px);
+    font-size: clamp(16px, 2vw, 21px);
     font-variant-numeric: tabular-nums;
-    letter-spacing: 0.12em;
-    white-space: nowrap;
-  }
-
-  .card-face-number span {
-    color: rgb(255 255 255 / 86%);
+    letter-spacing: 0.1em;
   }
 
   .card-face-number strong {
-    font-weight: 540;
+    font-weight: 550;
   }
 
   .card-face-bottom {
@@ -919,243 +762,162 @@
 
   .card-face-bottom > span {
     display: grid;
-    gap: 4px;
+    gap: 2px;
   }
 
   .card-face-bottom small {
-    color: rgb(255 255 255 / 66%);
-    font-size: 13px;
+    color: var(--muted);
+    font-size: var(--text-xs);
   }
 
   .card-face-bottom strong {
-    font-size: 15px;
-    font-weight: 560;
-  }
-
-  .card-face-state {
-    justify-content: flex-end;
-    color: #ffffff;
-  }
-
-  .card-face-state i {
-    display: grid;
-    width: 20px;
-    height: 20px;
-    place-items: center;
-    border: 1px solid rgb(255 255 255 / 60%);
-    border-radius: 50%;
-    font-size: 12px;
-    font-style: normal;
-  }
-
-  .card-state-frozen,
-  .card-state-lost,
-  .card-state-replaced {
-    color: #dddddd;
+    font-size: var(--text-sm);
+    font-weight: 550;
   }
 
   .card-control-panel {
     min-width: 0;
   }
 
-  .card-control-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 18px;
+  .card-control-panel > header {
+    margin-bottom: 8px;
   }
 
-  .card-control-heading h2 {
+  .card-control-panel h3 {
     margin: 0;
-    font-size: 23px;
-    font-weight: 620;
-    letter-spacing: -0.03em;
+    font-size: var(--text-md);
+    font-weight: 600;
   }
 
-  .card-control-heading > span {
-    color: var(--muted);
-    font-size: 14px;
-    white-space: nowrap;
+  .card-control-facts {
+    margin: 0;
   }
 
-  .card-control-panel > .card-primary-action {
-    width: 100%;
-    min-height: 52px;
-    justify-content: space-between;
-    border-radius: 11px;
-    margin-bottom: 18px;
-    padding: 0 18px;
-    font-size: 16px;
-  }
-
-  .card-settings-list {
-    border-top: 1px solid var(--line);
-  }
-
-  .card-setting-row {
-    display: grid;
-    width: 100%;
-    min-height: 74px;
-    grid-template-columns: minmax(0, 1fr) auto 16px;
-    align-items: center;
-    gap: 14px;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    background: transparent;
-    color: var(--ink);
-    padding: 10px 2px;
-    text-align: left;
-    transition: background-color 140ms ease;
-  }
-
-  .card-setting-row:hover .card-setting-action,
-  .card-setting-row:hover > svg {
-    color: var(--muted);
-  }
-
-  .card-setting-row:hover {
-    background: var(--surface-soft);
-  }
-
-  .card-setting-row > span:first-child {
-    display: grid;
-    min-width: 0;
-    gap: 3px;
-  }
-
-  .card-setting-row strong {
-    font-size: 15px;
-    font-weight: 580;
-  }
-
-  .card-setting-row small {
-    overflow: hidden;
-    color: var(--muted);
-    font-size: 14px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .card-setting-action {
-    color: var(--ink);
-    font-size: 14px;
-  }
-
-  .card-setting-row > svg {
-    color: var(--subtle);
-  }
-
-  .card-lost-action {
-    display: inline-flex;
+  .card-control-facts > div {
+    display: flex;
     min-height: 44px;
     align-items: center;
-    gap: 8px;
-    border: 0;
-    background: transparent;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .card-control-facts dt {
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .card-control-facts dd {
+    margin: 0;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card-control-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 16px;
+  }
+
+  .card-control-actions button {
+    min-height: 42px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-control);
+    background: var(--surface);
     color: var(--ink);
-    padding: 0;
-    font-size: 14px;
+    padding: 0 13px;
+    font-size: var(--text-sm);
+  }
+
+  .card-control-actions .card-primary-action {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--accent-ink);
+  }
+
+  .card-control-actions .card-danger-action {
+    border-color: var(--line-strong);
+    background: var(--surface);
+    color: var(--danger);
   }
 
   .card-inventory {
-    min-width: 0;
-  }
-
-  .card-inventory > header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-    margin-bottom: 6px;
-  }
-
-  .card-inventory > header h2 {
-    margin: 0;
-    font-size: 19px;
-    font-weight: 620;
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
   }
 
   .card-inventory-list {
     display: grid;
-    border-top: 1px solid var(--line);
   }
 
   .card-inventory-item {
-    display: grid;
-    width: 100%;
-    min-height: 66px;
-    grid-template-columns: minmax(0, 1fr) 18px;
+    display: flex;
+    min-height: 64px;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     border: 0;
     border-bottom: 1px solid var(--line);
     background: transparent;
     color: var(--ink);
-    padding: 10px 2px;
+    padding: 8px 4px;
     text-align: left;
   }
 
-  .card-inventory-item:hover {
+  .card-inventory-item:hover,
+  .card-inventory-item.is-selected {
     background: var(--surface-soft);
   }
 
+  .card-inventory-mark {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--surface-hover);
+    font-weight: 600;
+  }
+
   .card-inventory-main {
-    display: flex;
+    display: grid;
     min-width: 0;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
+    flex: 1;
+    gap: 2px;
   }
 
   .card-inventory-main strong {
-    font-size: 15px;
-    font-weight: 580;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   .card-inventory-main small {
+    overflow: hidden;
     color: var(--muted);
-    font-size: 14px;
-  }
-
-  .card-inventory-main i {
-    margin: 0 3px;
-    font-style: normal;
+    font-size: var(--text-xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .card-inventory-item > svg {
     color: var(--muted);
   }
 
-  .card-inventory-empty {
-    margin: 0;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    padding: 17px 0;
-    font-size: 15px;
-  }
-
   .card-inventory-tools {
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
     gap: 5px;
-    white-space: nowrap;
   }
 
   .card-inventory-tools button {
-    display: inline-flex;
     min-height: 40px;
-    align-items: center;
-    justify-content: center;
     gap: 6px;
     border: 0;
     background: transparent;
     color: var(--muted);
     padding: 0 8px;
     font-size: var(--text-sm);
-    line-height: 1;
-    white-space: nowrap;
   }
 
   .transfer-hero,
@@ -1361,24 +1123,6 @@
     font-weight: 600;
   }
 
-  .reminder-banner button {
-    display: inline-flex;
-    min-height: 40px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius-control);
-    background: var(--surface);
-    color: var(--ink);
-    padding: 0 12px;
-    font-size: var(--text-sm);
-    line-height: 1.2;
-  }
-
-  .reminder-banner button:hover:not(:disabled) {
-    background: var(--surface-soft);
-  }
-
   .subscriptions-card {
     border-top: 1px solid var(--line);
     padding-top: 18px;
@@ -1391,7 +1135,7 @@
   .subscription-row {
     display: grid;
     min-height: 76px;
-    grid-template-columns: 40px minmax(0, 1fr) auto auto;
+    grid-template-columns: 38px minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 14px;
     border-bottom: 1px solid var(--line);
@@ -1400,12 +1144,13 @@
 
   .subscription-logo {
     display: grid;
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     place-items: center;
-    border-radius: 12px;
-    background: var(--merchant-mark-bg);
-    color: var(--merchant-mark-ink);
+    border-radius: 50%;
+    background: var(--surface-hover);
+    color: var(--ink);
+    font-weight: 600;
   }
 
   .subscription-main {
@@ -1456,20 +1201,10 @@
 
   .reminder-preference {
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
     gap: 8px;
     color: var(--muted);
-    font-size: 14px;
-  }
-
-  .reminder-preference label {
-    white-space: nowrap;
-  }
-
-  .reminder-preference select {
-    min-width: 92px;
-    font-size: 14px;
+    font-size: var(--text-xs);
   }
 
   .risk-assessment-form {
@@ -1664,85 +1399,14 @@
     font-size: var(--text-xs);
   }
 
-  .overview-transaction-detail > p {
-    margin: 0 0 18px;
-    padding: 12px 0 18px;
-    border-bottom: 1px solid var(--line);
-    font-size: 34px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 560;
-    letter-spacing: -0.04em;
-  }
-
-  .overview-transaction-detail > p.is-income {
-    color: var(--ink);
-  }
-
-  .overview-transaction-detail dl {
-    display: grid;
-    margin: 0;
-  }
-
-  .overview-transaction-detail dl > div {
-    display: flex;
-    min-height: 48px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 20px;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .overview-transaction-detail dt {
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  .overview-transaction-detail dd {
-    margin: 0;
-    font-size: 15px;
-    text-align: right;
-  }
-
-  .overview-transaction-evidence {
-    display: grid;
-    gap: 8px;
-    border-top: 1px solid var(--line);
-    margin-top: 20px;
-    padding-top: 16px;
-  }
-
-  .overview-transaction-evidence > strong {
-    font-size: 15px;
-  }
-
-  .overview-transaction-evidence > p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 15px;
-    line-height: 1.6;
-  }
-
-  .overview-transaction-evidence .overview-primary-action {
-    width: fit-content;
-    min-height: 42px;
-    gap: 8px;
-    border: 1px solid var(--ink);
-    border-radius: var(--radius-control);
-    background: var(--ink);
-    color: var(--accent-ink);
-    margin-top: 8px;
-    padding: 0 14px;
-  }
-
   @media (max-width: 1050px) {
     .overview-main-grid {
-      grid-template-columns: minmax(0, 1.35fr) minmax(250px, 0.85fr);
+      grid-template-columns: minmax(0, 1.2fr) minmax(230px, 0.8fr);
       gap: 30px;
     }
 
-    .card-spotlight {
-      grid-template-columns: minmax(0, 1fr) minmax(310px, 0.92fr);
-      gap: 34px;
+    .card-workspace-grid {
+      gap: 28px;
     }
   }
 
@@ -1756,47 +1420,29 @@
     }
 
     .overview-page-heading h1 {
-      font-size: 26px;
+      font-size: 23px;
     }
 
     .overview-funds {
       grid-template-columns: 1fr;
       gap: 22px;
-      border-radius: 16px;
-      padding: 24px;
+      padding: 18px 0;
     }
 
     .overview-balance-value {
-      font-size: clamp(40px, 10.5vw, 48px);
+      font-size: clamp(34px, 10vw, 42px);
     }
 
     .overview-monthly-summary {
-      grid-template-columns: 1fr;
-      border-top: 1px solid rgb(255 255 255 / 20%);
-      border-left: 0;
-      padding: 8px 0 0;
-    }
-
-    .overview-monthly-summary > div {
-      min-height: 55px;
-    }
-
-    .overview-monthly-summary > div:nth-child(1) {
-      border-right: 0;
-      border-bottom: 1px solid rgb(255 255 255 / 18%);
-      padding-right: 0;
-    }
-
-    .overview-monthly-summary > div:nth-child(2) {
-      padding-left: 0;
+      gap: 8px;
     }
 
     .overview-monthly-summary strong {
-      font-size: 17px;
+      font-size: 15px;
     }
 
     .overview-monthly-summary span {
-      font-size: 14px;
+      font-size: var(--text-xs);
     }
 
     .overview-main-grid {
@@ -1806,7 +1452,7 @@
 
     .overview-side-column {
       grid-template-columns: 1fr;
-      gap: 24px;
+      gap: 22px;
     }
 
     .overview-table-head {
@@ -1818,48 +1464,22 @@
       gap: 8px;
     }
 
-    .overview-transaction-row-compact {
-      min-height: 72px;
-      grid-template-columns: 38px minmax(0, 1fr) auto;
-      gap: 10px;
-      padding: 8px 0;
-    }
-
-    .overview-merchant-mark {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-    }
-
-    .overview-merchant-mark > svg {
-      width: 18px;
-      height: 18px;
-    }
-
-    .overview-transaction-copy > strong {
-      font-size: 15px;
-    }
-
-    .overview-transaction-copy > span {
-      font-size: 13px;
-    }
-
-    .overview-transaction-amount {
-      font-size: 14px;
-    }
-
-    .overview-transaction-trailing > small {
-      font-size: 12px;
-    }
-
-    .overview-transaction-row:not(.overview-transaction-row-compact)
-      > span:nth-child(3),
+    .overview-transaction-row > span:nth-child(3),
     .overview-transaction-status {
       display: none;
     }
 
     .overview-transaction-date {
       font-size: var(--text-xs);
+    }
+
+    .overview-attention {
+      align-items: flex-start;
+    }
+
+    .overview-attention > strong {
+      align-self: center;
+      white-space: nowrap;
     }
 
     .bills-overview {
@@ -1875,35 +1495,27 @@
       font-size: 15px;
     }
 
-    .card-spotlight {
+    .card-workspace-grid {
       grid-template-columns: 1fr;
-      gap: 26px;
-      padding-top: 0;
-      padding-bottom: 26px;
+      gap: 24px;
     }
 
     .card-face-stage {
       max-width: none;
-      justify-self: stretch;
     }
 
     .card-face {
-      padding: clamp(19px, 6vw, 25px);
+      min-height: 222px;
+      padding: 18px;
     }
 
     .card-face-number {
-      gap: clamp(7px, 2.4vw, 11px);
-      font-size: clamp(16px, 4.6vw, 19px);
+      gap: 9px;
+      font-size: 16px;
     }
 
-    .card-control-heading h2 {
-      font-size: 21px;
-    }
-
-    .card-inventory-main {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 2px;
+    .card-control-actions button {
+      flex: 1 1 130px;
     }
 
     .transfer-hero,
@@ -1938,7 +1550,7 @@
     }
 
     .subscription-row {
-      grid-template-columns: 40px minmax(0, 1fr) auto;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
       gap: 9px;
     }
 
@@ -1956,39 +1568,30 @@
       min-height: 40px;
     }
 
+    .cashflow-chart-bars {
+      height: 118px;
+    }
+
     .overview-risk-actions button {
       flex: 1 1 135px;
     }
   }
 
   @media (max-width: 390px) {
-    .overview-funds {
-      padding: 21px;
+    .overview-monthly-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .overview-monthly-summary > div:last-child {
+      grid-column: 1 / -1;
     }
 
     .overview-balance-value {
-      font-size: 40px;
-    }
-
-    .overview-monthly-summary strong {
-      font-size: 15px;
-    }
-
-    .card-face-brand {
-      font-size: 15px;
-    }
-
-    .card-face-mark {
-      width: 30px;
-      height: 30px;
-    }
-
-    .card-face-number {
-      letter-spacing: 0.07em;
+      font-size: 34px;
     }
 
     .subscription-row {
-      grid-template-columns: 40px minmax(0, 1fr);
+      grid-template-columns: 30px minmax(0, 1fr);
     }
 
     .subscription-row > strong {

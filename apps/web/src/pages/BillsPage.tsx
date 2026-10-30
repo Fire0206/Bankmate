@@ -9,7 +9,6 @@ import type {
 } from "../api/client";
 import { AppIcon } from "../components/AppIcon";
 import { CashflowChart } from "../components/CashflowChart";
-import { MerchantMark } from "../components/MerchantMark";
 import { PageHeader } from "../components/PageHeader";
 import { SideDrawer } from "../components/SideDrawer";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
@@ -404,16 +403,6 @@ export function BillsPage({
           <section className="bills-trend">
             <header>
               <h2>收支趋势</h2>
-              <div aria-label="图表说明" className="cashflow-legend">
-                <span>
-                  <i className="cashflow-legend-income" />
-                  收入
-                </span>
-                <span>
-                  <i className="cashflow-legend-expense" />
-                  支出
-                </span>
-              </div>
             </header>
             <div className="bills-kpis">
               <div>
@@ -493,11 +482,7 @@ export function BillsPage({
                       }
                       type="button"
                     >
-                      <MerchantMark
-                        category={category.category}
-                        className="category-merchant-mark"
-                        merchant=""
-                      />
+                      <span className="category-row-mark" />
                       <span>
                         <strong>{category.category}</strong>
                       </span>
@@ -522,18 +507,19 @@ export function BillsPage({
             <div className="data-table transaction-table">
               {transactions.items.map((transaction) => (
                 <button
-                  className={
-                    "data-row transaction-data-row" +
-                    (transaction.anomaly_reason ? " has-anomaly" : "")
-                  }
+                  className="data-row"
                   key={transaction.id}
                   onClick={() => setSelected(transaction)}
                   type="button"
                 >
-                  <MerchantMark
-                    category={transaction.category}
-                    merchant={transaction.merchant}
-                  />
+                  <span className="transaction-icon">
+                    <AppIcon
+                      name={
+                        transaction.direction === "income" ? "overview" : "bill"
+                      }
+                      size={17}
+                    />
+                  </span>
                   <span className="data-row-main">
                     <strong>{transaction.merchant}</strong>
                     <small>
