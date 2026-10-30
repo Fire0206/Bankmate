@@ -20,6 +20,7 @@ import {
   type TransactionPageResponse,
 } from "../api/client";
 import { AppIcon } from "./AppIcon";
+import { MerchantMark } from "./MerchantMark";
 import { SkeletonLine } from "./Skeleton";
 import { statusLabel } from "./taskFormat";
 import { customerText } from "../userFacing";
@@ -209,12 +210,11 @@ function TransactionRow({
         onClick={onSelect}
         type="button"
       >
-        <span
-          aria-hidden="true"
-          className={`overview-transaction-direction ${transaction.direction}`}
-        >
-          {transaction.direction === "income" ? "+" : "−"}
-        </span>
+        <MerchantMark
+          category={transaction.category}
+          className="overview-merchant-mark"
+          merchant={transaction.merchant}
+        />
         <span className="overview-transaction-copy">
           <strong>{transaction.merchant}</strong>
           <span>

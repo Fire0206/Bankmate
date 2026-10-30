@@ -230,6 +230,10 @@
     display: none;
   }
 
+  .mobile-brand {
+    display: none;
+  }
+
   .page-content {
     width: min(100%, var(--content-max));
     flex: 1;
@@ -333,6 +337,25 @@
       width: 42px;
       height: 42px;
       place-items: center;
+    }
+
+    .mobile-brand {
+      display: inline-flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .mobile-brand .brand-symbol {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      font-size: 14px;
     }
 
     .topbar-new-task {

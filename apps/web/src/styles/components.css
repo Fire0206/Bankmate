@@ -419,6 +419,23 @@
     color: var(--neutral-dark);
   }
 
+  .merchant-mark {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--merchant-mark-bg);
+    color: var(--merchant-mark-ink);
+  }
+
+  .merchant-mark > svg {
+    width: 19px;
+    height: 19px;
+    stroke-width: 1.8;
+  }
+
   .data-row-main {
     display: grid;
     min-width: 0;
@@ -723,6 +740,14 @@
     border-bottom: 1px solid var(--line);
     padding: 6px 0;
     font-size: var(--text-sm);
+  }
+
+  .transaction-result-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    justify-content: initial;
+    gap: 12px;
+    padding: 9px 0;
   }
 
   .task-result-row > span:first-child {
@@ -1575,8 +1600,14 @@
 
   .transaction-result-row > div {
     display: grid;
+    grid-column: 2;
     min-width: 0;
     gap: 2px;
+  }
+
+  .transaction-result-row > strong:last-child {
+    grid-column: 3;
+    white-space: nowrap;
   }
 
   .transaction-result-row > div > strong {

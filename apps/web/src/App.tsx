@@ -872,6 +872,20 @@ export default function App() {
               >
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
+              <a
+                aria-label={`${brand.name} 首页`}
+                className="mobile-brand"
+                href="#/overview"
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate("overview");
+                }}
+              >
+                <span aria-hidden="true" className="brand-symbol">
+                  {brand.mark}
+                </span>
+                <strong>{brand.name}</strong>
+              </a>
               <div className="topbar-path">
                 <strong>{pageMeta(activePage).label}</strong>
               </div>
