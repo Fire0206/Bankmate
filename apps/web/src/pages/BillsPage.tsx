@@ -9,7 +9,6 @@ import type {
 } from "../api/client";
 import { AppIcon } from "../components/AppIcon";
 import { CashflowChart } from "../components/CashflowChart";
-import { MerchantMark } from "../components/MerchantMark";
 import { PageHeader } from "../components/PageHeader";
 import { SideDrawer } from "../components/SideDrawer";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
@@ -271,7 +270,7 @@ function TransactionDrawer({
               onClose();
               onPrompt(
                 transaction.anomaly_reason
-                  ? `核对${transaction.merchant}的账单提示${transaction.source_card_suffix ? `，银行卡尾号 ${transaction.source_card_suffix}` : ""}`
+                  ? `处理异常扣款：${transaction.merchant}，卡片尾号 ${transaction.source_card_suffix ?? "1042"}`
                   : `帮我查看 ${transaction.merchant} 这笔交易并说明影响`,
               );
             }}
@@ -404,16 +403,6 @@ export function BillsPage({
           <section className="bills-trend">
             <header>
               <h2>收支趋势</h2>
-              <div aria-label="图表说明" className="cashflow-legend">
-                <span>
-                  <i className="cashflow-legend-income" />
-                  收入
-                </span>
-                <span>
-                  <i className="cashflow-legend-expense" />
-                  支出
-                </span>
-              </div>
             </header>
             <div className="bills-kpis">
               <div>
@@ -455,7 +444,8 @@ export function BillsPage({
               </div>
             ) : summary?.trends.length ? (
               <CashflowChart
-                currencyCode={summary.currency}
+                expenseMinor={summary.expense_minor}
+                incomeMinor={summary.income_minor}
                 trends={summary.trends}
               />
             ) : (
@@ -493,11 +483,7 @@ export function BillsPage({
                       }
                       type="button"
                     >
-                      <MerchantMark
-                        category={category.category}
-                        className="category-merchant-mark"
-                        merchant=""
-                      />
+                      <span className="category-row-mark" />
                       <span>
                         <strong>{category.category}</strong>
                       </span>
@@ -522,18 +508,19 @@ export function BillsPage({
             <div className="data-table transaction-table">
               {transactions.items.map((transaction) => (
                 <button
-                  className={
-                    "data-row transaction-data-row" +
-                    (transaction.anomaly_reason ? " has-anomaly" : "")
-                  }
+                  className="data-row"
                   key={transaction.id}
                   onClick={() => setSelected(transaction)}
                   type="button"
                 >
-                  <MerchantMark
-                    category={transaction.category}
-                    merchant={transaction.merchant}
-                  />
+                  <span className="transaction-icon">
+                    <AppIcon
+                      name={
+                        transaction.direction === "income" ? "overview" : "bill"
+                      }
+                      size={17}
+                    />
+                  </span>
                   <span className="data-row-main">
                     <strong>{transaction.merchant}</strong>
                     <small>
