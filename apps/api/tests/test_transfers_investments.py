@@ -103,7 +103,7 @@ def test_transfer_requires_confirmation_and_writes_balanced_transactions(banking
 
     response = confirm(client, task)
     assert response.status_code == 200, response.text
-    assert response.json()["status"] == "completed"
+    assert response.json()["status"] == "completed", response.text
     assert balances(database)[ALICE_SOURCE_ACCOUNT] == before[ALICE_SOURCE_ACCOUNT] - 10_000
     assert balances(database)[BOB_ACCOUNT] == before[BOB_ACCOUNT] + 10_000
 
@@ -459,7 +459,7 @@ def test_scheduled_transfer_is_confirmed_then_simulated_only_when_due(banking_ap
     assert task["steps"][-1]["tool_name"] == "transfer.schedule"
     scheduled = confirm(client, task)
     assert scheduled.status_code == 200
-    assert scheduled.json()["status"] == "completed"
+    assert scheduled.json()["status"] == "completed", scheduled.text
     assert balances(database) == before
 
     with database.session_factory.begin() as session:
@@ -1000,11 +1000,17 @@ def test_payee_management_uses_owned_demo_identity(banking_api) -> None:
     payees = client.get("/api/v1/payees").json()["items"]
     assert {item["display_name"] for item in payees} == {"小林", "储蓄账户"}
 
+    destinations = client.get("/api/v1/transfer-destinations")
+    assert destinations.status_code == 200
+    destination_items = destinations.json()["items"]
+    assert [item["id"] for item in destination_items] == [str(BOB_ACCOUNT)]
+    assert set(destination_items[0]) == {"id", "label", "currency"}
+
     created = client.post(
         "/api/v1/payees",
         json={
             "display_name": "测试收款人",
-            "destination_account_id": str(BOB_ACCOUNT),
+            "destination_account_id": destination_items[0]["id"],
         },
     )
     assert created.status_code == 201, created.text
@@ -1019,3 +1025,57 @@ def test_payee_management_uses_owned_demo_identity(banking_api) -> None:
             )
             == 0
         )
+
+
+def test_newly_saved_payee_can_be_selected_by_agent_transfer(banking_api) -> None:
+    client, _actor, _database = banking_api
+    destination = client.get("/api/v1/transfer-destinations").json()["items"][0]
+    created = client.post(
+        "/api/v1/payees",
+        json={
+            "display_name": "邻居王",
+            "destination_account_id": destination["id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    task = submit(client, "帮我给邻居王转账 520 元", "transfer-to-new-payee")
+
+    assert task["status"] == "awaiting_confirmation", task
+    assert task["confirmation"]["details"]["payee_name"] == "邻居王"
+    assert task["confirmation"]["details"]["amount_minor"] == 52_000
+
+
+def test_transfer_amount_only_followup_uses_saved_task_recipient(banking_api) -> None:
+    client, _actor, database = banking_api
+    destination = client.get("/api/v1/transfer-destinations").json()["items"][0]
+    created = client.post(
+        "/api/v1/payees",
+        json={
+            "display_name": "邻居王",
+            "destination_account_id": destination["id"],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    before = balances(database)
+    initial = submit(client, "给邻居王发起一笔转账，请询问金额", "transfer-amount-input")
+    assert initial["status"] == "awaiting_input", initial
+    assert initial["confirmation"] is None
+
+    continuation = client.post(
+        f"/api/v1/agent/tasks/{initial['id']}/input",
+        json={"request_text": "520 元"},
+        headers={"Idempotency-Key": "transfer-amount-only-followup"},
+    )
+
+    assert continuation.status_code == 200, continuation.text
+    proposal = continuation.json()
+    assert proposal["status"] == "awaiting_confirmation", proposal
+    assert proposal["confirmation"]["details"]["payee_name"] == "邻居王"
+    assert proposal["confirmation"]["details"]["amount_minor"] == 52_000
+    assert proposal["confirmation"]["details"]["source_account_label"]
+    with database.session_factory() as session:
+        transfer = session.scalar(select(Transfer))
+        assert transfer is not None and transfer.status == "awaiting_confirmation"
+    assert balances(database) == before

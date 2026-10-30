@@ -46,6 +46,20 @@ class PayeeListResponse(BaseModel):
     items: list[PayeeResponse]
 
 
+class TransferDestinationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    label: str
+    currency: str
+
+
+class TransferDestinationListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TransferDestinationResponse]
+
+
 class TransferResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

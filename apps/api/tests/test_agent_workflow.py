@@ -277,6 +277,20 @@ def test_unknown_recipient_after_payee_lookup_returns_clarification() -> None:
         )
         is None
     )
+    assert (
+        unknown_requested_transfer_payee_message(
+            "明天给小林定时转 50 元。",
+            context,
+        )
+        is None
+    )
+    scheduled_unknown = unknown_requested_transfer_payee_message(
+        "明天给邻居王定时转 50 元。",
+        context,
+    )
+    assert scheduled_unknown is not None
+    assert "邻居王" in scheduled_unknown
+    assert "邻居王定时" not in scheduled_unknown
     assert "张三" in unknown_requested_transfer_payee_message(
         "把 100 元转给张三；如果不是已保存的收款人，请先问我。",
         context,

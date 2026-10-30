@@ -558,8 +558,8 @@ def unknown_requested_transfer_payee_message(
     if re.search(r"\d+(?:\.\d{1,2})?\s*(?:元|块|块钱)", request) is None:
         return None
     match = re.search(
-        r"(?:转给\s*(?P<to_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*(?=\d|转|[，。！？；：,.!?;:\s]|$)|"
-        r"给\s*(?P<from_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*转(?:账)?)",
+        r"(?:转给\s*(?P<to_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*(?=\d|(?:(?:定时|预约)?转)|[，。！？；：,.!?;:\s]|$)|"
+        r"给\s*(?P<from_name>[\u4e00-\u9fffA-Za-z0-9]{1,12}?)\s*(?:定时|预约)?转(?:账)?)",
         request,
     )
     if match is None:

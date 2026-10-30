@@ -89,6 +89,7 @@ Phase 1D 查询 API 也仅返回当前 Demo actor 的合成数据：
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `GET /api/v1/accounts`                                                 | 当前 actor 的模拟账户及服务端余额投影。                                                                       |
 | `GET /api/v1/payees`                                                   | 当前 actor 已保存的模拟收款人。                                                                               |
+| `GET /api/v1/transfer-destinations`                                    | 新增收款人可选的合成目标账户；只返回账户 ID、展示名称和币种，不返回账户持有人或余额。                         |
 | `GET /api/v1/transfers?limit=50`                                       | 普通/定时转账历史及模拟状态。                                                                                 |
 | `GET /api/v1/transfers/{transfer_id}`                                  | actor 范围内的单笔转账；越权按 not found 处理。                                                               |
 | `GET /api/v1/splits?limit=50`                                          | AA 分账、参与人及模拟收付状态。                                                                               |
@@ -111,6 +112,7 @@ Demo Session 与 Agent Task 端点：
 | `POST /api/v1/agent/tasks`                                                                       | 创建自然语言任务并运行有界 Provider/工具流程；必须带 `Idempotency-Key`                                                                            |
 | `GET /api/v1/agent/tasks/{task_id}`                                                              | 读取当前 actor 可见的持久化任务、步骤、可选依赖计划和待确认详情                                                                                   |
 | `GET /api/v1/agent/tasks/recent?conversation_id=...`                                             | 优先恢复最近活动任务；若无活动任务则返回最近终态任务；未找到时返回 `null`                                                                         |
+| `GET /api/v1/agent/tasks/history?limit=20`                                                       | 当前 actor 最近任务列表，最多 50 项；可选 `conversation_id` 筛选。会话 ID 仅用于关联，不是授权凭证。                                              |
 | `GET /api/v1/agent/tasks/by-idempotency-key/{key}?conversation_id=...&operation=...&task_id=...` | 在 actor、会话、操作类型及（非创建操作）任务范围内查询写请求结果；未找到时返回 `null`                                                             |
 | `POST /api/v1/agent/tasks/{task_id}/input`                                                       | 为 `awaiting_input` 或修改待确认任务补充输入；修改会取消旧挑战；必须带 `Idempotency-Key`                                                          |
 | `POST /api/v1/agent/tasks/{task_id}/confirm`                                                     | 消费服务端创建的卡片、生日计划、订阅、转账、分账或理财确认挑战；body 包含 `challenge_id` 与 `parameters_hash`，header 必须匹配 challenge 的幂等键 |

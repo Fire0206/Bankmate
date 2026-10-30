@@ -2,7 +2,7 @@ from dataclasses import asdict
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Path, Request
+from fastapi import APIRouter, Depends, Header, Path, Query, Request
 from sqlalchemy.orm import Session
 
 from finorch_api.agent.providers import ProviderSelection, select_provider
@@ -11,6 +11,7 @@ from finorch_api.api.v1.agent_schemas import (
     AgentAuditResponse,
     AgentConfirmationRequest,
     AgentTaskCreateRequest,
+    AgentTaskHistoryResponse,
     AgentTaskInputRequest,
     AgentTaskResponse,
 )
@@ -25,6 +26,7 @@ from finorch_api.application.agent import (
     get_agent_task_by_idempotency_key,
     get_recent_agent_task,
     get_task_audit,
+    list_agent_task_history,
     submit_task_input,
 )
 from finorch_api.application.agent import (
@@ -121,6 +123,26 @@ def read_recent_task(
         request_id=request.state.request_id,
     )
     return _task_response(task) if task is not None else None
+
+
+@router.get(
+    "/history",
+    response_model=AgentTaskHistoryResponse,
+    summary="List persisted tasks for the current actor",
+)
+def read_task_history(
+    session: DatabaseSession,
+    actor: CurrentDemoActor,
+    conversation_id: UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> AgentTaskHistoryResponse:
+    items = list_agent_task_history(
+        session,
+        actor_id=actor.user_id,
+        conversation_id=conversation_id,
+        limit=limit,
+    )
+    return AgentTaskHistoryResponse(items=[asdict(item) for item in items])
 
 
 @router.get(

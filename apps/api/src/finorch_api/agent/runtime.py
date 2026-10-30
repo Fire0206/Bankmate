@@ -621,6 +621,7 @@ class FakeProvider(LLMProvider):
         full_request = _last_user_text(messages).strip()
         has_followup = "用户补充：" in full_request
         request = full_request.rsplit("用户补充：", 1)[-1].strip() if has_followup else full_request
+        original_request = full_request.split("\n\n用户补充：", 1)[0].strip()
         split_request = full_request
         lowered = request.casefold()
         context = _trusted_context(messages)
@@ -1047,6 +1048,60 @@ class FakeProvider(LLMProvider):
                 status="completed",
             )
 
+        payee_items = result_for("transfer.payees").get("items", [])
+        payee_names = (
+            [
+                item["display_name"]
+                for item in payee_items
+                if isinstance(item, dict) and isinstance(item.get("display_name"), str)
+            ]
+            if isinstance(payee_items, list)
+            else []
+        )
+        phone_match = re.search(r"(?<!\d)(1[3-9]\d{9})(?!\d)", request)
+        recipient_phone = phone_match.group(1) if phone_match else None
+        payee_pattern = (
+            r"(?:转给|给|向)\s*([\w\u4e00-\u9fff·.-]{1,24}?)\s*(?:(?:定时|预约)?转账?|汇款|打款)"
+        )
+        active_requested_payee_match = re.search(payee_pattern, request)
+        requested_payee_match = active_requested_payee_match
+        if requested_payee_match is None and has_followup:
+            requested_payee_match = re.search(payee_pattern, original_request)
+        requested_payee = requested_payee_match.group(1).strip() if requested_payee_match else None
+        payee_name = next((name for name in payee_names if name in request), None)
+        if (
+            payee_name is None
+            and has_followup
+            and active_requested_payee_match is None
+            and recipient_phone is None
+        ):
+            payee_name = next((name for name in payee_names if name in original_request), None)
+        explicit_transfer_request = any(
+            word in original_request for word in ("转账", "转给", "汇款", "打款")
+        )
+        amount_followup = (
+            has_followup
+            and re.search(r"(?:人民币|￥|¥)?\s*\d{1,10}(?:\.\d{1,2})?\s*(?:元|块钱|块)", request)
+            is not None
+        )
+        transfer_amount_followup = (
+            amount_followup
+            and explicit_transfer_request
+            and "transfer.create" not in succeeded
+            and "transfer.schedule" not in succeeded
+        )
+        transfer_payee_followup = (
+            "transfer.payees" in succeeded
+            and "transfer.create" not in succeeded
+            and "transfer.schedule" not in succeeded
+            and "transfer.cancel_scheduled" not in succeeded
+            and (payee_name is not None or requested_payee is not None)
+            and (
+                any(word in request for word in ("转账", "转给", "转", "汇款", "打款"))
+                or transfer_amount_followup
+            )
+        )
+
         investment_purchase_followup = (
             "investment.products" in succeeded
             and any(word in request for word in ("申购", "买入", "购买"))
@@ -1065,6 +1120,7 @@ class FakeProvider(LLMProvider):
             not has_followup
             and succeeded
             and not investment_purchase_followup
+            and not transfer_payee_followup
             and not pending_independent_reads
         ):
             completion_messages = {
@@ -1115,9 +1171,6 @@ class FakeProvider(LLMProvider):
 
             amount_minor = int(Decimal(amount_match.group(1)) * 100)
 
-        payee_name = next((name for name in ("小林", "储蓄账户") if name in request), None)
-        phone_match = re.search(r"(?<!\d)(1[3-9]\d{9})(?!\d)", request)
-        recipient_phone = phone_match.group(1) if phone_match else None
         remark_match = re.search(r"(?:备注|附言)[：:\s]*([^，。；;]+)", request)
         remark = remark_match.group(1).strip() if remark_match else None
         recipient_target = (
@@ -1142,6 +1195,7 @@ class FakeProvider(LLMProvider):
                 )
             )
             or re.search(r"给.{1,24}转", request) is not None
+            or transfer_amount_followup
             or is_split_creation_request(split_request)
             or (
                 any(word in full_request for word in ("最近", "状态", "是什么"))
@@ -1152,7 +1206,8 @@ class FakeProvider(LLMProvider):
             if "余额" in full_request or "账户" in full_request and "转账" not in full_request:
                 return call("transfer.accounts", {})
             if "收款人" in full_request or "收款账户" in full_request:
-                return call("transfer.payees", {})
+                if "transfer.payees" not in succeeded:
+                    return call("transfer.payees", {})
             if (
                 "转账记录" in full_request
                 or "转账历史" in full_request
@@ -1202,14 +1257,38 @@ class FakeProvider(LLMProvider):
                     },
                 )
             if "取消" in request and any(word in request for word in ("定时", "预约")):
+                if "transfer.payees" not in succeeded:
+                    return call("transfer.payees", {})
                 if payee_name is None:
-                    return ModelTurn("请说明要取消哪位收款人的定时转账。")
+                    if not payee_names:
+                        return ModelTurn("当前没有已保存的收款人，无法查找定时转账。")
+                    return ModelTurn(
+                        "请说明要取消哪位收款人的定时转账，例如："
+                        + "、".join(payee_names[:5])
+                        + "。",
+                        status="awaiting_input",
+                    )
                 return call("transfer.cancel_scheduled", {"payee_name": payee_name})
             if any(word in request for word in ("执行到期", "执行定时", "模拟执行")):
                 return call("transfer.simulate_due", {})
             if "定时" in request or "预约转" in request:
+                if recipient_phone is None and "transfer.payees" not in succeeded:
+                    return call("transfer.payees", {})
                 if payee_name is None and recipient_phone is None:
-                    return ModelTurn("请说明要转给哪位已保存的收款人。")
+                    if requested_payee:
+                        return ModelTurn(
+                            f"没有找到名为“{requested_payee}”的已保存收款人。请先在转账页面添加收款人，或选择已有收款人。",
+                            status="awaiting_input",
+                        )
+                    if not payee_names:
+                        return ModelTurn(
+                            "请先在转账页面添加收款人，再继续安排转账。",
+                            status="awaiting_input",
+                        )
+                    return ModelTurn(
+                        "请指定一位已保存的收款人，例如：" + "、".join(payee_names[:5]) + "。",
+                        status="awaiting_input",
+                    )
                 if amount_minor is None:
                     return ModelTurn("请告诉我定时转账金额。")
                 date_match = re.search(
@@ -1228,9 +1307,29 @@ class FakeProvider(LLMProvider):
                         **({"remark": remark} if remark else {}),
                     },
                 )
-            if "转账" in request or "转给" in request or re.search(r"给.{1,24}转", request):
+            if (
+                "转账" in request
+                or "转给" in request
+                or re.search(r"给.{1,24}转", request)
+                or transfer_amount_followup
+            ):
+                if recipient_phone is None and "transfer.payees" not in succeeded:
+                    return call("transfer.payees", {})
                 if payee_name is None and recipient_phone is None:
-                    return ModelTurn("请指定一位已保存的收款人，例如小林。")
+                    if requested_payee:
+                        return ModelTurn(
+                            f"没有找到名为“{requested_payee}”的已保存收款人。请先在转账页面添加收款人，或选择已有收款人。",
+                            status="awaiting_input",
+                        )
+                    if not payee_names:
+                        return ModelTurn(
+                            "请先在转账页面添加收款人，再继续发起转账。",
+                            status="awaiting_input",
+                        )
+                    return ModelTurn(
+                        "请指定一位已保存的收款人，例如：" + "、".join(payee_names[:5]) + "。",
+                        status="awaiting_input",
+                    )
                 if amount_minor is None:
                     return ModelTurn("请告诉我转账金额。")
                 return call(

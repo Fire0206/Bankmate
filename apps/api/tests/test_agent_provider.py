@@ -67,6 +67,79 @@ def test_fake_provider_summarizes_recorded_successful_write() -> None:
     assert turn.content == "银行卡已冻结。"
 
 
+def test_fake_provider_uses_saved_payees_for_transfer_requests() -> None:
+    provider = FakeProvider()
+    request = "帮我给邻居王转账 520 元"
+    first_turn = provider.complete([{"role": "user", "content": request}], [])
+
+    assert first_turn.tool_calls[0].name == "transfer.payees"
+
+    messages = [
+        {
+            "role": "system",
+            "content": "Trusted demo context: "
+            + json.dumps(
+                {
+                    "task_progress": {
+                        "status": "running",
+                        "tools": [
+                            {
+                                "tool_name": "transfer.payees",
+                                "status": "succeeded",
+                                "result_data": {"items": [{"display_name": "邻居王"}]},
+                            }
+                        ],
+                    }
+                },
+                ensure_ascii=False,
+            ),
+        },
+        {"role": "user", "content": request},
+    ]
+    second_turn = provider.complete(messages, [])
+
+    assert second_turn.tool_calls[0].name == "transfer.create"
+    assert json.loads(second_turn.tool_calls[0].arguments) == {
+        "recipient_name": "邻居王",
+        "amount_minor": 52_000,
+    }
+
+
+def test_fake_provider_does_not_reuse_old_payee_after_recipient_is_changed() -> None:
+    provider = FakeProvider()
+    messages = [
+        {
+            "role": "system",
+            "content": "Trusted demo context: "
+            + json.dumps(
+                {
+                    "task_progress": {
+                        "status": "awaiting_input",
+                        "tools": [
+                            {
+                                "tool_name": "transfer.payees",
+                                "status": "succeeded",
+                                "result_data": {"items": [{"display_name": "邻居王"}]},
+                            }
+                        ],
+                    }
+                },
+                ensure_ascii=False,
+            ),
+        },
+        {
+            "role": "user",
+            "content": "给邻居王发起一笔转账，请询问金额\n\n用户补充：给另一位收款人转账 520 元",
+        },
+    ]
+
+    turn = provider.complete(messages, [])
+
+    assert turn.status == "awaiting_input"
+    assert not turn.tool_calls
+    assert "没有找到" in turn.content
+
+
 def test_tool_registry_generates_closed_openai_function_schema() -> None:
     registry = ToolRegistry(
         (

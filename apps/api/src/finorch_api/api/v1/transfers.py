@@ -13,6 +13,7 @@ from finorch_api.api.v1.transfer_schemas import (
     PayeeResponse,
     SimulatedTransfersResponse,
     SplitBillListResponse,
+    TransferDestinationListResponse,
     TransferListResponse,
     TransferResponse,
 )
@@ -24,6 +25,7 @@ from finorch_api.application.transfers import (
     list_accounts,
     list_payees,
     list_splits,
+    list_transfer_destinations,
     list_transfers,
     simulate_due_transfers,
 )
@@ -64,6 +66,21 @@ def read_accounts(session: DatabaseSession, actor: CurrentDemoActor) -> AccountB
 def read_payees(session: DatabaseSession, actor: CurrentDemoActor) -> PayeeListResponse:
     return PayeeListResponse(
         items=[item.__dict__ for item in list_payees(session, actor_id=actor.user_id)]
+    )
+
+
+@router.get(
+    "/transfer-destinations",
+    response_model=TransferDestinationListResponse,
+    summary="List available synthetic transfer destinations",
+)
+def read_transfer_destinations(
+    session: DatabaseSession, actor: CurrentDemoActor
+) -> TransferDestinationListResponse:
+    return TransferDestinationListResponse(
+        items=[
+            item.__dict__ for item in list_transfer_destinations(session, actor_id=actor.user_id)
+        ]
     )
 
 

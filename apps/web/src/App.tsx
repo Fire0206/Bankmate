@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, apiClient } from "./api/client";
 import type {
+  AgentTaskHistoryResponse,
   AgentTaskResponse,
   AuditResponse,
   CardListResponse,
@@ -15,6 +16,8 @@ import { Navigation } from "./components/Navigation";
 import { SideDrawer } from "./components/SideDrawer";
 import { TaskResult } from "./components/TaskResult";
 import { TaskDetails, TaskOverview } from "./components/TaskDetails";
+import { TaskHandoffAction } from "./components/TaskHandoffAction";
+import { TaskHistory } from "./components/TaskHistory";
 import { statusLabel, taskMessage } from "./components/taskFormat";
 import { Toast, type ToastMessage } from "./components/Toast";
 import { pageFromHash, pageMeta, type PageKey } from "./pageConfig";
@@ -327,6 +330,11 @@ export default function App() {
   const [cards, setCards] = useState<CardListResponse["items"]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeTask, setActiveTask] = useState<AgentTaskResponse | null>(null);
+  const [taskHistory, setTaskHistory] = useState<
+    AgentTaskHistoryResponse["items"]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(() => {
     try {
       // Remove pending request bodies left by older builds. Recovery reads
@@ -343,6 +351,9 @@ export default function App() {
     error: ApiError | Error | null;
   } | null>(null);
   const [draft, setDraft] = useState("");
+  const [taskSwitchRequest, setTaskSwitchRequest] = useState<string | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -383,11 +394,36 @@ export default function App() {
         text: taskMessage(task),
         task,
       };
-      return [
-        ...current.filter((message) => message.task?.id !== task.id),
-        response,
-      ];
+      const withoutTask = current.filter(
+        (message) => message.task?.id !== task.id,
+      );
+      if (withoutTask.length === 0) {
+        return [
+          {
+            id: "task-request-" + task.id,
+            role: "user",
+            text: task.request_text,
+          },
+          response,
+        ];
+      }
+      return [...withoutTask, response];
     });
+  }, []);
+
+  const refreshTaskHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await apiClient.readTaskHistory(30);
+      setTaskHistory(response.items);
+      setHistoryError(null);
+    } catch (error) {
+      setHistoryError(
+        error instanceof Error ? error.message : "暂时无法读取办理记录。",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
 
   const dismissToast = useCallback(() => setToast(null), []);
@@ -504,6 +540,29 @@ export default function App() {
   }, [applyTask, conversationId]);
 
   useEffect(() => {
+    let current = true;
+    apiClient
+      .readTaskHistory(30)
+      .then((response) => {
+        if (!current) return;
+        setTaskHistory(response.items);
+        setHistoryError(null);
+      })
+      .catch((error: unknown) => {
+        if (!current) return;
+        setHistoryError(
+          error instanceof Error ? error.message : "暂时无法读取办理记录。",
+        );
+      })
+      .finally(() => {
+        if (current) setHistoryLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     function onHashChange() {
       withViewTransition(() => {
         setActivePage(pageFromHash());
@@ -552,7 +611,10 @@ export default function App() {
       apiClient
         .readTask(activeTaskId)
         .then((task) => {
-          if (current) applyTask(task);
+          if (current) {
+            applyTask(task);
+            if (task.status !== activeTaskStatus) void refreshTaskHistory();
+          }
         })
         .catch((error: unknown) => {
           if (current) setRequestError(toUiError(error));
@@ -565,7 +627,7 @@ export default function App() {
       current = false;
       window.clearInterval(timer);
     };
-  }, [activeTaskId, activeTaskStatus, applyTask]);
+  }, [activeTaskId, activeTaskStatus, applyTask, refreshTaskHistory]);
 
   useEffect(() => {
     if (!activeTaskId || !detailsOpen || !auditKey) return;
@@ -660,13 +722,17 @@ export default function App() {
     return apiClient.cancelTask(write.taskId, write.key);
   }
 
-  async function submitWrite(write: PendingWrite, verificationCode?: string) {
+  async function submitWrite(
+    write: PendingWrite,
+    verificationCode?: string,
+  ): Promise<AgentTaskResponse | null> {
     storePendingWrite(write);
     setBusy(true);
     setRequestError(null);
     try {
       const task = await executeWrite(write, verificationCode);
       applyTask(task);
+      await refreshTaskHistory();
       storePendingWrite(null);
       if (task.status === "completed") {
         notify("任务已完成", task.message, "success");
@@ -685,10 +751,14 @@ export default function App() {
           ))
       )
         await refreshCards();
+      return task;
     } catch (error) {
       try {
         const recovered = await lookupPendingWrite(write);
-        if (recovered.task) applyTask(recovered.task);
+        if (recovered.task) {
+          applyTask(recovered.task);
+          await refreshTaskHistory();
+        }
         if (recovered.resolved) {
           storePendingWrite(null);
           if (
@@ -701,12 +771,13 @@ export default function App() {
               ))
           )
             await refreshCards();
-          return;
+          return recovered.task;
         }
       } catch {
         // Keep the idempotency record so the user can query or safely retry it later.
       }
       setRequestError(toUiError(error));
+      return null;
     } finally {
       setBusy(false);
     }
@@ -719,7 +790,10 @@ export default function App() {
     setRequestError(null);
     try {
       const recovered = await lookupPendingWrite(pendingWrite);
-      if (recovered.task) applyTask(recovered.task);
+      if (recovered.task) {
+        applyTask(recovered.task);
+        await refreshTaskHistory();
+      }
       if (recovered.resolved) {
         storePendingWrite(null);
         if (recovered.task?.status === "completed") await refreshCards();
@@ -740,6 +814,7 @@ export default function App() {
       }
       const task = await executeWrite(pendingWrite);
       applyTask(task);
+      await refreshTaskHistory();
       storePendingWrite(null);
       if (task.status === "completed") {
         notify("任务已完成", task.message, "success");
@@ -750,7 +825,10 @@ export default function App() {
     } catch (error) {
       try {
         const latest = await lookupPendingWrite(pendingWrite);
-        if (latest.task) applyTask(latest.task);
+        if (latest.task) {
+          applyTask(latest.task);
+          await refreshTaskHistory();
+        }
         if (latest.resolved) {
           storePendingWrite(null);
           if (latest.task?.status === "completed") await refreshCards();
@@ -773,6 +851,7 @@ export default function App() {
     try {
       const task = await apiClient.readRecentTask(conversationId);
       if (task) applyTask(task);
+      await refreshTaskHistory();
     } catch (error) {
       setRequestError(toUiError(error));
     } finally {
@@ -786,6 +865,7 @@ export default function App() {
     try {
       const task = await apiClient.readTask(activeTask.id);
       applyTask(task);
+      await refreshTaskHistory();
       if (task.status === "completed") await refreshCards();
       setRequestError(null);
     } catch (error) {
@@ -795,9 +875,18 @@ export default function App() {
     }
   }
 
-  async function sendMessage(value = draft) {
+  async function sendMessage(value = draft, continueActiveTask = false) {
     const requestText = value.trim();
     if (!requestText || busy || !session || pendingWrite) return;
+    const needsTaskChoice =
+      activeTask &&
+      ["awaiting_input", "awaiting_confirmation"].includes(activeTask.status);
+    if (needsTaskChoice && !continueActiveTask) {
+      setTaskSwitchRequest(requestText);
+      setDraft("");
+      return;
+    }
+    setTaskSwitchRequest(null);
     setDraft("");
     setMessages((current) => [
       ...current,
@@ -809,21 +898,71 @@ export default function App() {
     );
     const canContinueFailedTask =
       activeTask?.status === "failed" && hasCompletedStep;
-    const write: PendingWrite =
+    const continuingTask =
       activeTask &&
       (["awaiting_input", "awaiting_confirmation"].includes(
         activeTask.status,
       ) ||
-        canContinueFailedTask)
+        canContinueFailedTask);
+    const taskConversationId = continuingTask
+      ? activeTask.conversation_id
+      : conversationId;
+    const write: PendingWrite =
+      continuingTask && activeTask
         ? {
             kind: "input",
             key,
-            conversationId,
+            conversationId: taskConversationId,
             taskId: activeTask.id,
             requestText,
           }
-        : { kind: "create", key, conversationId, requestText };
+        : {
+            kind: "create",
+            key,
+            conversationId: taskConversationId,
+            requestText,
+          };
     await submitWrite(write);
+  }
+
+  async function resolveTaskSwitch(choice: "continue" | "new") {
+    const requestText = taskSwitchRequest;
+    const task = activeTask;
+    if (!requestText || !task || busy || pendingWrite) return;
+    if (choice === "continue") {
+      setTaskSwitchRequest(null);
+      await sendMessage(requestText, true);
+      return;
+    }
+
+    if (task.status !== "cancelled") {
+      const cancelled = await submitWrite({
+        kind: "cancel",
+        key: crypto.randomUUID(),
+        conversationId: task.conversation_id,
+        taskId: task.id,
+      });
+      if (cancelled?.status !== "cancelled") return;
+    }
+
+    const nextConversationId = crypto.randomUUID();
+    try {
+      sessionStorage.setItem("finorch.demo.conversation", nextConversationId);
+    } catch {
+      // The new task still uses a fresh in-memory conversation ID.
+    }
+    setConversationId(nextConversationId);
+    setActiveTask(null);
+    setAuditState(null);
+    setConfirmationOpen(false);
+    setTaskSwitchRequest(null);
+    setMessages([{ id: crypto.randomUUID(), role: "user", text: requestText }]);
+    await submitWrite({
+      kind: "create",
+      key: crypto.randomUUID(),
+      conversationId: nextConversationId,
+      requestText,
+    });
   }
 
   async function confirmTask(
@@ -857,6 +996,26 @@ export default function App() {
   function askAssistant(prompt: string) {
     navigate("assistant");
     void sendMessage(prompt);
+  }
+
+  async function openHistoryTask(taskId: string) {
+    if (busy || pendingWrite) return;
+    setRequestError(null);
+    try {
+      const task = await apiClient.readTask(taskId);
+      setMessages([
+        {
+          id: "history-request-" + task.id,
+          role: "user",
+          text: task.request_text,
+        },
+      ]);
+      applyTask(task);
+      setConfirmationOpen(Boolean(task.confirmation));
+      await refreshTaskHistory();
+    } catch (error) {
+      setRequestError(toUiError(error));
+    }
   }
 
   const overviewRefreshKey = activeTask
@@ -1059,6 +1218,7 @@ export default function App() {
                                   </span>
                                 </div>
                                 <TaskResult task={message.task} />
+                                <TaskHandoffAction task={message.task} />
                               </>
                             ) : null}
                           </article>
@@ -1083,6 +1243,40 @@ export default function App() {
                       void sendMessage();
                     }}
                   >
+                    {taskSwitchRequest ? (
+                      <div
+                        aria-label="选择任务处理方式"
+                        className="task-switch-prompt"
+                        role="group"
+                      >
+                        <div>
+                          <strong>当前任务尚未结束</strong>
+                          <p>
+                            “{taskSwitchRequest}
+                            ”要继续当前任务，还是开始新任务？
+                          </p>
+                          <small>
+                            开始新任务会取消当前待处理请求；已经完成的操作不会撤销。
+                          </small>
+                        </div>
+                        <div className="task-switch-actions">
+                          <button
+                            disabled={busy || Boolean(pendingWrite)}
+                            onClick={() => void resolveTaskSwitch("continue")}
+                            type="button"
+                          >
+                            继续当前任务
+                          </button>
+                          <button
+                            disabled={busy || Boolean(pendingWrite)}
+                            onClick={() => void resolveTaskSwitch("new")}
+                            type="button"
+                          >
+                            取消当前任务并开始新任务
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     {pendingWrite ? (
                       <p className="composer-hint">
                         上一项请求状态尚未确认，请先查询结果或使用相同请求安全重试。
@@ -1146,6 +1340,16 @@ export default function App() {
                     </div>
                   </form>
                 </section>
+
+                <TaskHistory
+                  disabled={busy || Boolean(pendingWrite)}
+                  error={historyError}
+                  items={taskHistory}
+                  loading={historyLoading}
+                  onRefresh={() => void refreshTaskHistory()}
+                  onSelect={(taskId) => void openHistoryTask(taskId)}
+                  selectedId={activeTask?.id}
+                />
 
                 <details
                   className="context-disclosure"

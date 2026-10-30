@@ -238,6 +238,18 @@ class AgentTaskView:
 
 
 @dataclass(frozen=True)
+class AgentTaskHistoryView:
+    id: UUID
+    conversation_id: UUID
+    request_text: str
+    status: str
+    message: str
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
 class AuditSummaryView:
     id: UUID
     event_type: str
@@ -2132,6 +2144,34 @@ def get_recent_agent_task(
     if task_id is None:
         return None
     return get_agent_task(session, actor_id=actor_id, task_id=task_id, request_id=request_id)
+
+
+def list_agent_task_history(
+    session: Session,
+    *,
+    actor_id: UUID,
+    conversation_id: UUID | None = None,
+    limit: int = 20,
+) -> tuple[AgentTaskHistoryView, ...]:
+    statement = select(AgentTask).where(AgentTask.actor_id == actor_id)
+    if conversation_id is not None:
+        statement = statement.where(AgentTask.conversation_id == conversation_id)
+    rows = session.scalars(
+        statement.order_by(AgentTask.created_at.desc(), AgentTask.id.desc()).limit(limit)
+    )
+    return tuple(
+        AgentTaskHistoryView(
+            id=task.id,
+            conversation_id=task.conversation_id,
+            request_text=task.request_text,
+            status=task.status,
+            message=task.message,
+            error_code=task.error_code,
+            created_at=_utc(task.created_at),
+            updated_at=_utc(task.updated_at),
+        )
+        for task in rows
+    )
 
 
 def get_agent_task_by_idempotency_key(

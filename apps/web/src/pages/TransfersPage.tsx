@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import { apiClient } from "../api/client";
 import type {
   AccountBalanceListResponse,
   PayeeListResponse,
+  TransferDestinationListResponse,
   SplitBillListResponse,
   TransferListResponse,
 } from "../api/client";
@@ -33,6 +34,7 @@ function dateLabel(value: string | null): string {
 type TransferData = {
   accounts: AccountBalanceListResponse;
   payees: PayeeListResponse;
+  destinations: TransferDestinationListResponse;
   transfers: TransferListResponse;
   splits: SplitBillListResponse;
 };
@@ -47,16 +49,24 @@ export function TransfersPage({
   const [data, setData] = useState<TransferData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPayeeForm, setShowPayeeForm] = useState(false);
+  const [payeeName, setPayeeName] = useState("");
+  const [destinationId, setDestinationId] = useState("");
+  const [savingPayee, setSavingPayee] = useState(false);
+  const [payeeError, setPayeeError] = useState<string | null>(null);
+  const [payeeNotice, setPayeeNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [accounts, payees, transfers, splits] = await Promise.all([
-        apiClient.readAccounts(),
-        apiClient.readPayees(),
-        apiClient.readTransfers(),
-        apiClient.readSplits(),
-      ]);
-      setData({ accounts, payees, transfers, splits });
+      const [accounts, payees, destinations, transfers, splits] =
+        await Promise.all([
+          apiClient.readAccounts(),
+          apiClient.readPayees(),
+          apiClient.readTransferDestinations(),
+          apiClient.readTransfers(),
+          apiClient.readSplits(),
+        ]);
+      setData({ accounts, payees, destinations, transfers, splits });
       setError(null);
     } catch (caught) {
       setError(
@@ -66,6 +76,56 @@ export function TransfersPage({
       setLoading(false);
     }
   }, []);
+
+  async function savePayee(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedDestinationId =
+      destinationId || data?.destinations.items[0]?.id || "";
+    if (!data || savingPayee || !payeeName.trim() || !selectedDestinationId)
+      return;
+    const previousIds = new Set(data.payees.items.map((item) => item.id));
+    setSavingPayee(true);
+    setPayeeError(null);
+    setPayeeNotice(null);
+    try {
+      await apiClient.createPayee({
+        display_name: payeeName.trim(),
+        destination_account_id: selectedDestinationId,
+      });
+      setPayeeNotice("收款人已保存，可以继续发起转账。");
+      setPayeeName("");
+      setShowPayeeForm(false);
+      await load();
+    } catch (caught) {
+      // Payee creation has no server idempotency key yet. Re-read first if the
+      // response was lost; never blindly submit another create request.
+      try {
+        const latest = await apiClient.readPayees();
+        setData((current) =>
+          current ? { ...current, payees: latest } : current,
+        );
+        const wasCreated = latest.items.some(
+          (item) =>
+            !previousIds.has(item.id) &&
+            item.display_name.trim() === payeeName.trim() &&
+            item.destination_account_id === selectedDestinationId,
+        );
+        if (wasCreated) {
+          setPayeeNotice("收款人已保存，可以继续发起转账。");
+          setPayeeName("");
+          setShowPayeeForm(false);
+          return;
+        }
+      } catch {
+        // Keep the form open so the user can inspect it after connectivity returns.
+      }
+      setPayeeError(
+        caught instanceof Error ? caught.message : "暂时无法保存收款人。",
+      );
+    } finally {
+      setSavingPayee(false);
+    }
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -164,8 +224,78 @@ export function TransfersPage({
 
         <section className="data-panel">
           <header>
-            <h2>最近收款人</h2>
+            <h2>收款人</h2>
+            <button
+              className="payee-add-toggle"
+              disabled={busy}
+              onClick={() => {
+                setShowPayeeForm((open) => !open);
+                setPayeeError(null);
+                setPayeeNotice(null);
+              }}
+              type="button"
+            >
+              {showPayeeForm ? "收起" : "添加收款人"}
+            </button>
           </header>
+          {showPayeeForm ? (
+            <form
+              className="payee-form"
+              onSubmit={(event: FormEvent<HTMLFormElement>) =>
+                void savePayee(event)
+              }
+            >
+              <label>
+                收款人姓名
+                <input
+                  autoComplete="off"
+                  maxLength={80}
+                  onChange={(event) => setPayeeName(event.target.value)}
+                  required
+                  value={payeeName}
+                />
+              </label>
+              <label>
+                收款账户
+                <select
+                  onChange={(event) => setDestinationId(event.target.value)}
+                  required
+                  value={destinationId || data?.destinations.items[0]?.id || ""}
+                >
+                  {data?.destinations.items.map((destination) => (
+                    <option key={destination.id} value={destination.id}>
+                      {customerText(destination.label)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="payee-save-button"
+                disabled={
+                  savingPayee ||
+                  busy ||
+                  !payeeName.trim() ||
+                  data?.destinations.items.length === 0
+                }
+                type="submit"
+              >
+                {savingPayee ? "正在保存…" : "保存收款人"}
+              </button>
+              {data?.destinations.items.length === 0 ? (
+                <p className="payee-form-note">当前没有可选的收款账户。</p>
+              ) : null}
+              {payeeError ? (
+                <p className="payee-form-error" role="alert">
+                  {payeeError}
+                </p>
+              ) : null}
+            </form>
+          ) : null}
+          {payeeNotice ? (
+            <p className="payee-form-note" role="status">
+              {payeeNotice}
+            </p>
+          ) : null}
           {loading ? (
             <SkeletonRows count={2} />
           ) : (
