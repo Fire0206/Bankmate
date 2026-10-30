@@ -16,11 +16,12 @@ import {
   type AgentTaskResponse,
   type AuditResponse,
   type BillSummaryResponse,
+  type CardListResponse,
   type SubscriptionListResponse,
   type TransactionPageResponse,
 } from "../api/client";
 import { AppIcon } from "./AppIcon";
-import { MerchantMark } from "./MerchantMark";
+import { CashflowChart } from "./CashflowChart";
 import { SkeletonLine } from "./Skeleton";
 import { statusLabel } from "./taskFormat";
 import { customerText } from "../userFacing";
@@ -32,7 +33,7 @@ type OverviewData = {
   transactions: TransactionPageResponse;
 };
 
-type OverviewDialog = "transactions" | "transaction" | "risk" | "audit" | null;
+type OverviewDialog = "transactions" | "risk" | "audit" | null;
 type Transaction = TransactionPageResponse["items"][number];
 type AuditEvent = AuditResponse["events"][number];
 type TransactionFilter = "all" | "income" | "expense" | "attention";
@@ -83,60 +84,30 @@ function auditTime(value: string) {
 
 function auditCopy(event: AuditEvent) {
   const labels: Record<string, string> = {
-    task_created: "创建办理任务",
-    task_confirmed: "确认了操作",
-    task_cancelled: "取消了任务",
-    tool_succeeded: "完成了一项操作",
-    tool_failed: "操作未能完成",
-    confirmation_requested: "等待操作确认",
-    confirmation_succeeded: "确认通过",
-    "transfer.executed": "完成转账",
-    "transfer.scheduled": "创建预约转账",
-    "transfer.cancelled": "取消预约转账",
-    "split.status_changed": "更新 AA 分账状态",
-    "subscription.status_changed": "更新自动扣费状态",
-    "investment.buy_executed": "完成理财申购",
-    "investment.sell_executed": "完成理财赎回",
-    "card.status_changed": "更新银行卡状态",
-    "card.replaced": "完成银行卡补发",
+    task_created: "创建处理任务",
+    task_confirmed: "完成关键动作确认",
+    task_cancelled: "取消任务",
+    tool_succeeded: "工具调用成功",
+    tool_failed: "工具调用失败",
+    confirmation_requested: "生成确认挑战",
+    confirmation_succeeded: "确认校验通过",
   };
-  const resources: Record<string, string> = {
-    card: "银行卡",
-    card_application: "银行卡申请",
-    subscription: "自动扣费",
-    transfer: "转账",
-    split: "AA 分账",
-    investment_order: "理财",
-    task: "任务",
-    confirmation: "操作确认",
-    demo_user: "账户安全",
-    transaction: "交易",
-  };
-  const outcomes: Record<string, string> = {
-    succeeded: "已完成",
-    failed: "未完成",
-    blocked: "已拦截",
-    issued: "已生成",
-    pending: "待处理",
-    approved: "已通过",
-    rejected: "未通过",
-    cancelled: "已取消",
-  };
-  return {
-    title: labels[event.event_type] ?? "操作记录",
-    detail: `${resources[event.resource_type] ?? "相关业务"} · ${outcomes[event.outcome] ?? "状态已更新"}`,
-  };
+  return labels[event.event_type] ?? event.event_type.replaceAll("_", " ");
 }
 
 function OverviewDialog({
   children,
   className = "",
+  eyebrow,
   onClose,
+  subtitle,
   title,
 }: {
   children: ReactNode;
   className?: string;
+  eyebrow: string;
   onClose: () => void;
+  subtitle?: string;
   title: string;
 }) {
   const titleId = useId();
@@ -158,7 +129,7 @@ function OverviewDialog({
 
   return createPortal(
     <div
-      className="overview-dialog-backdrop"
+      className="figma-modal-backdrop"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -167,14 +138,18 @@ function OverviewDialog({
       <section
         aria-labelledby={titleId}
         aria-modal="true"
-        className={`overview-dialog-panel ${className}`}
+        className={`figma-modal-panel ${className}`}
         role="dialog"
       >
-        <header className="overview-dialog-header">
-          <h2 id={titleId}>{title}</h2>
+        <header className="figma-modal-header">
+          <div>
+            <p className="figma-modal-eyebrow">{eyebrow}</p>
+            <h2 id={titleId}>{title}</h2>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
           <button
             aria-label="关闭弹窗"
-            className="overview-dialog-close"
+            className="figma-modal-close"
             onClick={onClose}
             ref={closeRef}
             type="button"
@@ -191,83 +166,56 @@ function OverviewDialog({
 }
 
 function TransactionRow({
-  compact = false,
   onSelect,
   transaction,
 }: {
-  compact?: boolean;
   onSelect: () => void;
   transaction: Transaction;
 }) {
   const attention = Boolean(transaction.anomaly_reason);
-  const amount = `${transaction.direction === "income" ? "+" : "−"}${money(transaction.amount_minor, transaction.currency)}`;
-
-  if (compact) {
-    return (
-      <button
-        aria-label={`${transaction.merchant}，${transaction.category}，${amount}，${transactionDate(transaction.occurred_at)}${attention ? "，需要核对" : ""}`}
-        className="overview-transaction-row overview-transaction-row-compact"
-        onClick={onSelect}
-        type="button"
-      >
-        <MerchantMark
-          category={transaction.category}
-          className="overview-merchant-mark"
-          merchant={transaction.merchant}
-        />
-        <span className="overview-transaction-copy">
-          <strong>{transaction.merchant}</strong>
-          <span>
-            {transaction.category} <i aria-hidden="true">·</i>{" "}
-            {transactionDate(transaction.occurred_at)}
-          </span>
-        </span>
-        <span className="overview-transaction-trailing">
-          <strong
-            className={
-              transaction.direction === "income"
-                ? "overview-transaction-amount is-income"
-                : "overview-transaction-amount"
-            }
-          >
-            {amount}
-          </strong>
-          {attention ? <small>需核对</small> : null}
-        </span>
-      </button>
-    );
-  }
-
   return (
-    <button
-      className="overview-transaction-row"
-      onClick={onSelect}
-      type="button"
-    >
-      <span className="overview-transaction-date">
+    <button className="figma-transaction-row" onClick={onSelect} type="button">
+      <span className="figma-transaction-date">
         {transactionDate(transaction.occurred_at)}
       </span>
       <strong>{transaction.merchant}</strong>
       <span>{transaction.category}</span>
-      <span className="overview-transaction-amount">{amount}</span>
-      {attention ? (
-        <span className="overview-transaction-status is-attention">需核对</span>
-      ) : null}
+      <span
+        className={
+          transaction.direction === "income"
+            ? "figma-transaction-amount is-income"
+            : "figma-transaction-amount"
+        }
+      >
+        {transaction.direction === "income" ? "+" : "−"}
+        {money(transaction.amount_minor, transaction.currency)}
+      </span>
+      <span
+        className={
+          attention
+            ? "figma-transaction-status is-attention"
+            : "figma-transaction-status"
+        }
+      >
+        {attention ? "待确认" : "已完成"}
+      </span>
     </button>
   );
 }
 
 export function FocusedOverview({
+  cards,
   refreshKey,
   activeTask,
+  audit,
   busy,
-  onOpenAssistant,
   onPrompt,
 }: {
+  cards: CardListResponse["items"];
   refreshKey: string;
   activeTask: AgentTaskResponse | null;
+  audit: AuditEvent[];
   busy: boolean;
-  onOpenAssistant: () => void;
   onPrompt: (prompt: string) => void;
 }) {
   const [data, setData] = useState<OverviewData | null>(null);
@@ -284,15 +232,6 @@ export function FocusedOverview({
   });
   const [transactionFilter, setTransactionFilter] =
     useState<TransactionFilter>("all");
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
-  const [auditModal, setAuditModal] = useState<{
-    taskId: string;
-    events: AuditEvent[];
-    error: string | null;
-  } | null>(null);
-  const auditTaskId = activeTask?.id;
-  const auditTaskVersion = activeTask?.version;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -323,70 +262,24 @@ export function FocusedOverview({
     return () => window.clearTimeout(timer);
   }, [load, refreshKey]);
 
-  useEffect(() => {
-    if (dialog !== "audit") return;
-    if (!auditTaskId) return;
-    let current = true;
-    apiClient
-      .readAudit(auditTaskId)
-      .then((result) => {
-        if (current) {
-          setAuditModal({
-            taskId: auditTaskId,
-            events: result.events,
-            error: null,
-          });
-        }
-      })
-      .catch((caught: unknown) => {
-        if (current) {
-          setAuditModal({
-            taskId: auditTaskId,
-            events: [],
-            error:
-              caught instanceof Error
-                ? caught.message
-                : "暂时无法读取操作记录。",
-          });
-        }
-      });
-    return () => {
-      current = false;
-    };
-  }, [auditTaskId, auditTaskVersion, dialog]);
-
   const currencyCode =
     data?.accounts.items[0]?.currency ?? data?.bills.currency ?? "CNY";
-  const billCurrencyCode = data?.bills.currency ?? currencyCode;
   const totalBalance =
     data?.accounts.items.reduce(
-      (total, account) => total + account.available_balance_minor,
+      (total, account) => total + account.balance_minor,
       0,
     ) ?? null;
   const leadingAnomaly = data?.bills.anomalies[0] ?? null;
-  const riskTransaction = selectedTransaction?.anomaly_reason
-    ? selectedTransaction
-    : leadingAnomaly;
-  const showTaskAttention = Boolean(
-    activeTask &&
-    [
-      "pending",
-      "planning",
-      "awaiting_input",
-      "awaiting_confirmation",
-      "running",
-      "failed",
-    ].includes(activeTask.status),
-  );
   const activeSubscriptions =
     data?.subscriptions.items.filter((item) => item.status === "active") ?? [];
+  const frozenCards = cards.filter((card) => card.status === "frozen").length;
   const dateLabel = new Intl.DateTimeFormat("zh-CN", {
     month: "long",
     day: "numeric",
     weekday: "short",
   }).format(new Date());
-  const anomalyPrompt = riskTransaction
-    ? `核对${riskTransaction.merchant}的这笔交易，金额 ${money(riskTransaction.amount_minor, riskTransaction.currency)}${riskTransaction.source_card_suffix ? `，银行卡尾号 ${riskTransaction.source_card_suffix}` : ""}。请先说明账单提示依据，再给出处理建议。`
+  const anomalyPrompt = leadingAnomaly
+    ? `处理异常扣款：${leadingAnomaly.merchant}，金额 ${money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}，卡片尾号 ${leadingAnomaly.source_card_suffix ?? "1042"}。请先展示证据，再给出冻结或继续观察的建议。`
     : "检查本月异常消费，并先展示判断证据";
 
   const filteredTransactions = useMemo(() => {
@@ -404,32 +297,24 @@ export function FocusedOverview({
   }, [data?.transactions.items, transactionFilter]);
 
   const visibleTransactions = filteredTransactions.slice(0, 8);
-  const recentTransactions = data?.transactions.items.slice(0, 5) ?? [];
-  const matchingAuditModal =
-    activeTask && auditModal?.taskId === activeTask.id ? auditModal : null;
-  const auditLoading =
-    dialog === "audit" && Boolean(activeTask) && !matchingAuditModal;
-  const auditEvents = matchingAuditModal
-    ? matchingAuditModal.events.slice(-6).map((event) => {
-        const copy = auditCopy(event);
-        return {
-          time: auditTime(event.occurred_at),
-          title: copy.title,
-          detail: copy.detail,
-        };
-      })
+  const auditEvents = activeTask
+    ? audit.slice(-6).map((event) => ({
+        time: auditTime(event.occurred_at),
+        title: auditCopy(event),
+        detail: `${event.resource_type} · ${event.outcome}`,
+      }))
     : [];
 
   const exportTransactions = () => {
     const rows = [
-      ["时间", "交易", "分类", "金额", "币种", "提醒"],
+      ["时间", "交易", "分类", "金额", "币种", "状态"],
       ...filteredTransactions.map((transaction) => [
         transaction.occurred_at,
         transaction.merchant,
         transaction.category,
         (transaction.amount_minor / 100).toFixed(2),
         transaction.currency,
-        transaction.anomaly_reason ? "需核对" : "—",
+        transaction.anomaly_reason ? "待确认" : "已完成",
       ]),
     ];
     const csv = rows
@@ -449,205 +334,143 @@ export function FocusedOverview({
 
   return (
     <section className="focused-overview">
-      <header className="overview-page-heading">
-        <h1>账户总览</h1>
-        <time>{dateLabel}</time>
-      </header>
+      <div className="focused-overview-meta">
+        <span>账户总览</span>
+        <span>{dateLabel}</span>
+      </div>
 
-      <section aria-label="账户资金" className="overview-funds">
-        <div className="overview-balance-block">
-          <div className="overview-balance-heading">
-            <p className="overview-balance-label">可用余额</p>
-            <span>{data?.accounts.items.length ?? 0} 个账户</span>
-          </div>
-          <p className="overview-balance-value">
-            {loading ? (
-              <SkeletonLine
-                className="focused-balance-skeleton"
-                width="320px"
-              />
-            ) : (
-              money(totalBalance, currencyCode)
-            )}
-          </p>
-          <div className="overview-balance-meta">
-            <span>
-              {data?.bills.net_minor !== undefined && data.bills.net_minor < 0
-                ? "本月净流出"
-                : "本月净流入"}
-            </span>
-            <strong>
-              {loading
-                ? "读取中"
-                : money(data?.bills.net_minor, billCurrencyCode)}
-            </strong>
-          </div>
+      <div className="focused-balance">
+        <p>可用余额</p>
+        <h1>
+          {loading ? (
+            <SkeletonLine className="focused-balance-skeleton" width="380px" />
+          ) : (
+            money(totalBalance, currencyCode)
+          )}
+        </h1>
+        <div className="focused-balance-meta">
+          <strong>
+            {loading
+              ? "读取中"
+              : `${data?.bills.net_minor && data.bills.net_minor > 0 ? "+" : ""}${money(data?.bills.net_minor, currencyCode)}`}
+          </strong>
+          <span>本月净现金流</span>
+          <i />
+          <span>{data?.accounts.items.length ?? 0} 个账户</span>
         </div>
+      </div>
 
-        <div className="overview-monthly-summary">
+      {leadingAnomaly ? (
+        <button
+          className="focused-risk-line"
+          disabled={busy}
+          onClick={() => setDialog("risk")}
+          type="button"
+        >
+          <i aria-hidden="true" />
+          <span>
+            {data?.bills.anomalies.length ?? 0} 笔交易待确认 ·{" "}
+            {leadingAnomaly.merchant}
+          </span>
+          <strong>
+            {money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}
+          </strong>
+          <AppIcon name="arrow-right" size={14} />
+        </button>
+      ) : (
+        <div className="focused-risk-line is-clear">
+          <i aria-hidden="true" />
+          <span>本月暂未命中异常规则</span>
+        </div>
+      )}
+
+      <section className="focused-cashflow">
+        <header>
           <div>
-            <span>本月收入</span>
-            <strong>
-              {loading
-                ? "—"
-                : money(data?.bills.income_minor, billCurrencyCode)}
-            </strong>
+            <h2>现金流</h2>
+            <span>近 6 个月</span>
           </div>
-          <div>
-            <span>本月支出</span>
-            <strong>
-              {loading
-                ? "—"
-                : money(data?.bills.expense_minor, billCurrencyCode)}
-            </strong>
+          <small>近六个月收支记录</small>
+        </header>
+        {loading ? (
+          <div aria-hidden="true" className="focused-chart-skeleton">
+            {Array.from({ length: 8 }, (_, index) => (
+              <i key={index} />
+            ))}
           </div>
+        ) : data?.bills.trends.length ? (
+          <CashflowChart
+            expenseMinor={data.bills.expense_minor}
+            height={285}
+            incomeMinor={data.bills.income_minor}
+            trends={data.bills.trends}
+          />
+        ) : (
+          <div className="focused-chart-empty">暂无可展示的现金流趋势</div>
+        )}
+        <div className="focused-cashflow-summary">
+          <span>
+            本月收入
+            <strong>{money(data?.bills.income_minor, currencyCode)}</strong>
+          </span>
+          <span>
+            本月支出
+            <strong>{money(data?.bills.expense_minor, currencyCode)}</strong>
+          </span>
+          <span className="focused-outlook">
+            <i />
+            自动扣费{" "}
+            {money(data?.subscriptions.monthly_total_minor, currencyCode)}
+          </span>
         </div>
       </section>
 
-      <div className="overview-main-grid">
-        <section
-          aria-labelledby="recent-transactions-title"
-          className="overview-transactions"
+      <div className="focused-entry-row">
+        <button onClick={() => setDialog("transactions")} type="button">
+          <span>
+            最近交易
+            <AppIcon name="arrow-right" size={14} />
+          </span>
+          <strong>{data?.transactions.total ?? 0} 笔新记录</strong>
+          <small>过去 48 小时与本月活动</small>
+        </button>
+        <button
+          className={leadingAnomaly ? "has-risk" : ""}
+          onClick={() => setDialog("risk")}
+          type="button"
         >
-          <header>
-            <h2 id="recent-transactions-title">最近交易</h2>
-            <button
-              className="overview-text-action"
-              onClick={() => setDialog("transactions")}
-              type="button"
-            >
-              查看全部
-            </button>
-          </header>
-          {loading ? (
-            <div className="skeleton-rows" aria-label="正在读取交易">
-              {Array.from({ length: 4 }, (_, index) => (
-                <div className="skeleton-row" key={index}>
-                  <span className="skeleton-avatar" />
-                  <span className="skeleton-row-copy">
-                    <span />
-                    <span />
-                  </span>
-                  <span className="skeleton-amount" />
-                </div>
-              ))}
-            </div>
-          ) : recentTransactions.length ? (
-            <div className="overview-transaction-list">
-              {recentTransactions.map((transaction) => (
-                <TransactionRow
-                  compact
-                  key={transaction.id}
-                  onSelect={() => {
-                    setSelectedTransaction(transaction);
-                    setDialog("transaction");
-                  }}
-                  transaction={transaction}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="page-empty">还没有交易记录。</p>
-          )}
-        </section>
-
-        <aside className="overview-side-column">
-          <section
-            aria-labelledby="attention-title"
-            className="overview-attention-panel"
-          >
-            <header className="overview-attention-heading">
-              <h2 id="attention-title">需要关注</h2>
-              <span>
-                {(showTaskAttention ? 1 : 0) +
-                  (leadingAnomaly ? (data?.bills.anomalies.length ?? 0) : 0)}
-                项
-              </span>
-            </header>
-            <div className="overview-attention-list">
-              {showTaskAttention && activeTask ? (
-                <button
-                  className="overview-attention-item overview-task-attention"
-                  onClick={onOpenAssistant}
-                  type="button"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="overview-attention-symbol"
-                  >
-                    {activeTask.status === "failed" ? "!" : "…"}
-                  </span>
-                  <span className="overview-attention-copy">
-                    <strong>
-                      {activeTask.status === "awaiting_confirmation"
-                        ? "等待你确认"
-                        : activeTask.status === "awaiting_input"
-                          ? "需要补充信息"
-                          : activeTask.status === "failed"
-                            ? "任务未能继续"
-                            : "任务正在处理"}
-                    </strong>
-                    {activeTask.message ? (
-                      <small>{activeTask.message}</small>
-                    ) : null}
-                  </span>
-                  <AppIcon name="arrow-right" size={16} />
-                </button>
-              ) : null}
-              {leadingAnomaly ? (
-                <button
-                  className="overview-attention-item overview-anomaly-attention"
-                  disabled={busy}
-                  onClick={() => {
-                    setSelectedTransaction(null);
-                    setDialog("risk");
-                  }}
-                  type="button"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="overview-attention-symbol"
-                  >
-                    !
-                  </span>
-                  <span className="overview-attention-copy">
-                    <strong>
-                      {data?.bills.anomalies.length ?? 0} 笔交易需核对
-                    </strong>
-                    <small>{leadingAnomaly.merchant}</small>
-                  </span>
-                  <strong className="overview-attention-amount">
-                    {money(
-                      leadingAnomaly.amount_minor,
-                      leadingAnomaly.currency,
-                    )}
-                  </strong>
-                </button>
-              ) : null}
-              {!showTaskAttention && !leadingAnomaly ? (
-                <p className="overview-attention-empty">
-                  暂时没有需要处理的事项。
-                </p>
-              ) : null}
-            </div>
-          </section>
-
-          <div className="overview-quick-links">
-            <button
-              onClick={() => onPrompt("我有哪些自动扣费，下一次什么时候扣款")}
-              type="button"
-            >
-              <span>自动扣费</span>
-              <strong>{activeSubscriptions.length} 项</strong>
-              <AppIcon name="arrow-right" size={16} />
-            </button>
-            <button onClick={() => setDialog("audit")} type="button">
-              <span>操作记录</span>
-              <AppIcon name="arrow-right" size={16} />
-            </button>
-          </div>
-        </aside>
+          <span>
+            可疑扣款
+            <AppIcon name="arrow-right" size={14} />
+          </span>
+          <strong>
+            {leadingAnomaly
+              ? money(leadingAnomaly.amount_minor, leadingAnomaly.currency)
+              : "暂无异常提醒"}
+          </strong>
+          <small>
+            {leadingAnomaly ? "需要你的确认" : "所有提示均有规则依据"}
+          </small>
+        </button>
+        <button onClick={() => setDialog("audit")} type="button">
+          <span>
+            处置记录
+            <AppIcon name="arrow-right" size={14} />
+          </span>
+          <strong>{audit.length} 个事件</strong>
+          <small>证据与确认均写入审计</small>
+        </button>
       </div>
+
+      <footer className="focused-overview-footer">
+        <span>
+          <i /> 虚拟账户 · 不连接真实银行或支付网络
+        </span>
+        <span>
+          {frozenCards} 张卡已冻结 · {activeSubscriptions.length} 项自动扣费
+        </span>
+        <span>资金操作需确认</span>
+      </footer>
 
       {error ? (
         <div className="focused-overview-error" role="alert">
@@ -658,76 +481,20 @@ export function FocusedOverview({
         </div>
       ) : null}
 
-      {dialog === "transaction" && selectedTransaction ? (
-        <OverviewDialog
-          className="overview-transaction-dialog"
-          onClose={() => setDialog(null)}
-          title={selectedTransaction.merchant}
-        >
-          <div className="overview-transaction-detail">
-            <p
-              className={
-                selectedTransaction.direction === "income" ? "is-income" : ""
-              }
-            >
-              {selectedTransaction.direction === "income" ? "+" : "−"}
-              {money(
-                selectedTransaction.amount_minor,
-                selectedTransaction.currency,
-              )}
-            </p>
-            <dl>
-              <div>
-                <dt>时间</dt>
-                <dd>{transactionDate(selectedTransaction.occurred_at)}</dd>
-              </div>
-              <div>
-                <dt>类别</dt>
-                <dd>{selectedTransaction.category}</dd>
-              </div>
-              <div>
-                <dt>付款卡</dt>
-                <dd>
-                  {selectedTransaction.source_card_suffix
-                    ? `尾号 ${selectedTransaction.source_card_suffix}`
-                    : "未关联银行卡"}
-                </dd>
-              </div>
-            </dl>
-            {selectedTransaction.anomaly_reason ? (
-              <div className="overview-transaction-evidence">
-                <strong>需要核对</strong>
-                <p>{customerText(selectedTransaction.anomaly_reason)}</p>
-                <button
-                  className="overview-primary-action"
-                  onClick={() => setDialog("risk")}
-                  type="button"
-                >
-                  查看提醒
-                  <AppIcon name="arrow-right" size={14} />
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </OverviewDialog>
-      ) : null}
-
       {dialog === "transactions" ? (
         <OverviewDialog
-          className="overview-transactions-dialog"
+          className="figma-transactions-dialog"
+          eyebrow="账户活动"
           onClose={() => setDialog(null)}
+          subtitle="过去一段时间内的账户活动。可疑项不会被自动处置。"
           title="最近交易"
         >
-          <div
-            className="overview-filter-row"
-            role="group"
-            aria-label="交易筛选"
-          >
+          <div className="figma-filter-row" role="group" aria-label="交易筛选">
             {[
               ["all", "全部"],
               ["income", "收入"],
               ["expense", "支出"],
-              ["attention", "需核对"],
+              ["attention", "待确认"],
             ].map(([value, label]) => (
               <button
                 className={transactionFilter === value ? "is-active" : ""}
@@ -739,29 +506,30 @@ export function FocusedOverview({
               </button>
             ))}
           </div>
-          <div className="overview-table-head" aria-hidden="true">
+          <div className="figma-table-head" aria-hidden="true">
             <span>时间</span>
             <span>交易</span>
             <span>分类</span>
             <span>金额</span>
-            <span>提醒</span>
+            <span>状态</span>
           </div>
-          <div className="overview-transaction-list">
+          <div className="figma-transaction-list">
             {visibleTransactions.map((transaction) => (
               <TransactionRow
                 key={transaction.id}
                 onSelect={() => {
-                  setSelectedTransaction(transaction);
-                  setDialog("transaction");
+                  setDialog(
+                    transaction.anomaly_reason ? "risk" : "transactions",
+                  );
                 }}
                 transaction={transaction}
               />
             ))}
             {!visibleTransactions.length ? (
-              <p className="overview-dialog-empty">当前筛选没有交易。</p>
+              <p className="figma-dialog-empty">当前筛选没有交易。</p>
             ) : null}
           </div>
-          <footer className="overview-dialog-footer">
+          <footer className="figma-dialog-footer">
             <span>
               {filteredTransactions.length} 笔记录 · 本月净现金流{" "}
               {money(data?.bills.net_minor, currencyCode)}
@@ -775,58 +543,69 @@ export function FocusedOverview({
 
       {dialog === "risk" ? (
         <OverviewDialog
-          className="overview-risk-dialog"
+          className="figma-risk-dialog"
+          eyebrow="风险提示与待处理"
           onClose={() => setDialog(null)}
-          title={riskTransaction ? "需要核对的一笔交易" : "本月没有交易提醒"}
+          title={leadingAnomaly ? "一笔交易需要你的确认" : "本月暂未发现异常"}
         >
-          {riskTransaction ? (
+          {leadingAnomaly ? (
             <>
-              <div className="overview-risk-amount">
+              <div className="figma-risk-amount">
                 <span>商户</span>
-                <h3>{riskTransaction.merchant}</h3>
+                <h3>{leadingAnomaly.merchant}</h3>
                 <strong>
-                  {money(
-                    riskTransaction.amount_minor,
-                    riskTransaction.currency,
-                  )}
+                  {money(leadingAnomaly.amount_minor, leadingAnomaly.currency)}
                 </strong>
               </div>
-              <dl className="overview-risk-meta">
+              <dl className="figma-risk-meta">
                 <div>
                   <dt>时间</dt>
-                  <dd>{transactionDate(riskTransaction.occurred_at)}</dd>
+                  <dd>{transactionDate(leadingAnomaly.occurred_at)}</dd>
                 </div>
                 <div>
                   <dt>类别</dt>
-                  <dd>{riskTransaction.category}</dd>
+                  <dd>{leadingAnomaly.category}</dd>
                 </div>
                 <div>
                   <dt>账户</dt>
                   <dd>
-                    {riskTransaction.source_card_suffix
-                      ? `银行卡 ·•• ${riskTransaction.source_card_suffix}`
-                      : "银行卡信息不可用"}
+                    主账户借记卡 ·••
+                    {leadingAnomaly.source_card_suffix ?? "1042"}
                   </dd>
                 </div>
               </dl>
-              <div className="overview-risk-evidence">
+              <div className="figma-risk-evidence">
                 <p>为什么被标记</p>
                 <div>
                   <i />
                   <span>
                     <strong>
-                      {customerText(riskTransaction.anomaly_reason)}
+                      {customerText(leadingAnomaly.anomaly_reason)}
                     </strong>
                     <small>账单规则提醒，仅供核对，不代表欺诈结论。</small>
                   </span>
                 </div>
+                <div>
+                  <i />
+                  <span>
+                    <strong>卡片处于可操作状态</strong>
+                    <small>冻结等高风险动作仍需二次确认。</small>
+                  </span>
+                </div>
+                <div>
+                  <i />
+                  <span>
+                    <strong>当前为虚拟账户</strong>
+                    <small>操作不会连接真实银行或支付网络。</small>
+                  </span>
+                </div>
               </div>
-              <div className="overview-risk-actions">
+              <div className="figma-risk-actions">
                 <button onClick={() => setDialog(null)} type="button">
-                  关闭
+                  这可能是我的交易
                 </button>
                 <button
-                  className="overview-primary-action"
+                  className="figma-primary-action"
                   disabled={busy}
                   onClick={() => {
                     setDialog(null);
@@ -840,7 +619,7 @@ export function FocusedOverview({
               </div>
             </>
           ) : (
-            <div className="overview-dialog-empty">
+            <div className="figma-dialog-empty">
               当前账户暂无符合规则的异常提醒。
             </div>
           )}
@@ -849,44 +628,34 @@ export function FocusedOverview({
 
       {dialog === "audit" ? (
         <OverviewDialog
-          className="overview-audit-dialog"
+          className="figma-audit-dialog"
+          eyebrow="操作记录"
           onClose={() => setDialog(null)}
-          title="操作记录"
+          subtitle="每一次调用、判断、证据和确认都会进入可追溯记录。"
+          title="处置记录"
         >
-          <div className="overview-audit-summary">
-            <span>
-              {auditLoading
-                ? "正在读取操作记录…"
-                : `${auditEvents.length} 条操作记录`}
-            </span>
+          <div className="figma-audit-summary">
+            <span>{auditEvents.length} 条操作记录</span>
             <small>
-              {activeTask ? statusLabel(activeTask.status) : "当前没有办理任务"}
+              {activeTask ? statusLabel(activeTask.status) : "账户记录"}
             </small>
           </div>
-          {matchingAuditModal?.error ? (
-            <p className="overview-dialog-empty" role="alert">
-              {matchingAuditModal.error}
-            </p>
-          ) : auditLoading ? (
-            <p aria-live="polite" className="overview-dialog-empty">
-              正在读取…
-            </p>
-          ) : auditEvents.length ? (
-            <ol className="overview-audit-list">
-              {auditEvents.map((event, index) => (
-                <li key={`${event.time}-${event.title}-${index}`}>
-                  <i />
-                  <time>{event.time}</time>
-                  <span>
-                    <strong>{event.title}</strong>
-                    <small>{event.detail}</small>
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="overview-dialog-empty">当前没有可查看的操作记录。</p>
-          )}
+          <ol className="figma-audit-list">
+            {auditEvents.map((event, index) => (
+              <li key={`${event.time}-${event.title}-${index}`}>
+                <i />
+                <time>{event.time}</time>
+                <span>
+                  <strong>{event.title}</strong>
+                  <small>{event.detail}</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="figma-audit-footer">
+            <span>所有关键动作都需要明确确认</span>
+            <small>记录由服务端生成</small>
+          </div>
         </OverviewDialog>
       ) : null}
     </section>

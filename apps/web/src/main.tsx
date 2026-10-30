@@ -1,31 +1,24 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import "./index.css";
+import "./figma-theme.css";
+import "./phase3-compat.css";
+import "./finance-authority.css";
+import "./workspace-refresh.css";
+
+const showcaseRoute = lazy(() => import("./showcase/Showcase"));
 const currentPath = window.location.pathname.replace(/\/+$/, "") || "/";
-const root = ReactDOM.createRoot(document.getElementById("root")!);
-
-async function mountApplication() {
-  if (currentPath === "/showcase") {
-    await import("./showcase/legacy/index.css");
-    await import("./showcase/legacy/figma-theme.css");
-    await import("./showcase/legacy/phase3-compat.css");
-    await import("./showcase/legacy/finance-authority.css");
-    const { default: Showcase } = await import("./showcase/Showcase");
-    root.render(
-      <React.StrictMode>
-        <Showcase />
-      </React.StrictMode>,
-    );
-    return;
-  }
-
-  await import("./styles/app.css");
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
+const entry =
+  currentPath === "/showcase" ? (
+    <Suspense fallback={<p role="status">正在读取场景工作台…</p>}>
+      {React.createElement(showcaseRoute)}
+    </Suspense>
+  ) : (
+    <App />
   );
-}
 
-void mountApplication();
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>{entry}</React.StrictMode>,
+);

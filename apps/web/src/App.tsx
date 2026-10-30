@@ -321,7 +321,7 @@ function promptSuggestions(cards: CardListResponse["items"]): string[] {
 }
 
 export default function App() {
-  const [conversationId] = useState(conversationKey);
+  const [conversationId, setConversationId] = useState(conversationKey);
   const [apiState, setApiState] = useState<ApiState>("checking");
   const [session, setSession] = useState<DemoSessionResponse | null>(null);
   const [cards, setCards] = useState<CardListResponse["items"]>([]);
@@ -421,6 +421,27 @@ export default function App() {
     });
   }, []);
 
+  const startNewConversation = useCallback(() => {
+    const nextConversationId = crypto.randomUUID();
+    try {
+      sessionStorage.setItem("finorch.demo.conversation", nextConversationId);
+    } catch {
+      // Storage may be disabled; the in-memory conversation remains isolated.
+    }
+    setConversationId(nextConversationId);
+    setMessages([]);
+    setActiveTask(null);
+    setAuditState(null);
+    setRequestError(null);
+    setDraft("");
+    setConfirmationOpen(false);
+    setDetailsOpen(false);
+    navigate("assistant");
+    window.requestAnimationFrame(() => {
+      document.getElementById("agent-request")?.focus();
+    });
+  }, [navigate]);
+
   const storePendingWrite = useCallback((write: PendingWrite | null) => {
     setPendingWrite(write);
   }, []);
@@ -513,9 +534,7 @@ export default function App() {
 
   useEffect(() => {
     const container = conversationRef.current;
-    if (container && messages.length > 0) {
-      container.lastElementChild?.scrollIntoView({ block: "end" });
-    }
+    if (container) container.scrollTop = container.scrollHeight;
   }, [messages.length, busy]);
 
   useEffect(() => {
@@ -872,31 +891,16 @@ export default function App() {
               >
                 <AppIcon name={mobileNavOpen ? "close" : "menu"} size={20} />
               </button>
-              <a
-                aria-label={`${brand.name} 首页`}
-                className="mobile-brand"
-                href="#/overview"
-                onClick={(event) => {
-                  event.preventDefault();
-                  navigate("overview");
-                }}
-              >
-                <span aria-hidden="true" className="brand-symbol">
-                  {brand.mark}
-                </span>
-                <strong>{brand.name}</strong>
-              </a>
               <div className="topbar-path">
+                <span>{brand.name}</span>
+                <i aria-hidden="true">/</i>
                 <strong>{pageMeta(activePage).label}</strong>
               </div>
             </div>
             <div className="topbar-actions">
               <button
                 className="topbar-new-task"
-                onClick={() => {
-                  navigate("assistant");
-                  document.getElementById("agent-request")?.focus();
-                }}
+                onClick={startNewConversation}
                 type="button"
               >
                 <span aria-hidden="true">+</span>
@@ -923,7 +927,7 @@ export default function App() {
         </header>
 
         <main
-          className="page-content"
+          className={"page-content page-" + activePage}
           id="main-content"
           ref={mainRef}
           tabIndex={-1}
@@ -931,8 +935,9 @@ export default function App() {
           {activePage === "overview" ? (
             <FocusedOverview
               activeTask={activeTask}
+              audit={audit}
               busy={busy}
-              onOpenAssistant={() => navigate("assistant")}
+              cards={cards}
               onPrompt={askAssistant}
               refreshKey={overviewRefreshKey}
             />
@@ -977,18 +982,16 @@ export default function App() {
 
           {activePage === "assistant" ? (
             <>
+              <div className="assistant-page-heading">
+                <h1>智能助手</h1>
+              </div>
+
               <div className="workbench-grid">
                 <section
-                  aria-labelledby="assistant-title"
+                  aria-label="智能助手对话"
                   className="assistant-panel"
                   id="assistant"
                 >
-                  <div className="assistant-header">
-                    <div>
-                      <h1 id="assistant-title">智能助手</h1>
-                    </div>
-                  </div>
-
                   <div
                     aria-live="polite"
                     className="conversation"
@@ -1071,7 +1074,10 @@ export default function App() {
                   </div>
 
                   <form
-                    className="composer"
+                    className={
+                      "composer" +
+                      (messages.length === 0 ? " composer-empty" : "")
+                    }
                     onSubmit={(event) => {
                       event.preventDefault();
                       void sendMessage();
@@ -1133,6 +1139,10 @@ export default function App() {
                       >
                         <AppIcon name="send" size={19} />
                       </button>
+                    </div>
+                    <div className="composer-foot">
+                      <span>Enter 发送，Shift + Enter 换行</span>
+                      <span>资金操作需确认</span>
                     </div>
                   </form>
                 </section>
@@ -1205,7 +1215,6 @@ export default function App() {
             <CardsPage
               busy={busy || Boolean(pendingWrite)}
               cards={cards}
-              holderName={displayName}
               loading={loading}
               onManage={(card) =>
                 askAssistant(
@@ -1292,8 +1301,8 @@ export default function App() {
       {detailsDrawerOpen ? (
         <SideDrawer
           onClose={closeDetailsDrawer}
-          subtitle="办理进度"
-          title="任务详情"
+          subtitle="Task evidence and audit"
+          title="执行记录"
         >
           <TaskOverview
             busy={busy}
