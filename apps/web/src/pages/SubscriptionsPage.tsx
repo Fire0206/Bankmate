@@ -7,6 +7,7 @@ import type {
   SubscriptionResponse,
 } from "../api/client";
 import { PageHeader } from "../components/PageHeader";
+import { MerchantMark } from "../components/MerchantMark";
 import { SkeletonLine, SkeletonRows } from "../components/Skeleton";
 
 function money(value: number, currency = "CNY"): string {
@@ -197,9 +198,11 @@ export function SubscriptionsPage({
           <div className="subscription-list">
             {data.items.map((subscription) => (
               <article className="subscription-row" key={subscription.id}>
-                <span className="subscription-logo">
-                  {subscription.merchant.slice(0, 1)}
-                </span>
+                <MerchantMark
+                  category="订阅"
+                  className="subscription-logo"
+                  merchant={subscription.merchant}
+                />
                 <span className="subscription-main">
                   <strong>{subscription.merchant}</strong>
                   <small>

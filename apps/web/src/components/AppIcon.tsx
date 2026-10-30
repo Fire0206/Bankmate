@@ -20,7 +20,16 @@ export type IconName =
   | "check"
   | "shield"
   | "alert"
-  | "lock";
+  | "lock"
+  | "cloud"
+  | "play"
+  | "music"
+  | "coffee"
+  | "bag"
+  | "car"
+  | "wallet"
+  | "home"
+  | "device";
 
 const drawings: Record<IconName, ReactNode> = {
   assistant: (
@@ -113,6 +122,56 @@ const drawings: Record<IconName, ReactNode> = {
     <>
       <path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" />
       <path d="m9 12 2 2 4-4" />
+    </>
+  ),
+  cloud: (
+    <path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18Z" />
+  ),
+  play: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="3" />
+      <path d="m10 9 5 3-5 3V9Z" />
+    </>
+  ),
+  music: (
+    <>
+      <path d="M9 18V5l12-2v13" />
+      <path d="M9 8l12-2" />
+      <ellipse cx="6" cy="18" rx="3" ry="2" />
+      <ellipse cx="18" cy="16" rx="3" ry="2" />
+    </>
+  ),
+  coffee: (
+    <>
+      <path d="M5 8h12v7a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Z" />
+      <path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17M8 4v2M12 4v2" />
+    </>
+  ),
+  bag: (
+    <>
+      <path d="M4 8h16l-1 13H5L4 8Z" />
+      <path d="M9 9V6a3 3 0 0 1 6 0v3" />
+    </>
+  ),
+  car: (
+    <>
+      <path d="m5 11 1.5-4h11L19 11l2 2v5h-2M3 18v-5l2-2" />
+      <path d="M5 11h14M7 18h10M6 15h.01M18 15h.01" />
+    </>
+  ),
+  wallet: (
+    <>
+      <rect x="3" y="6" width="18" height="14" rx="2" />
+      <path d="M3 9h18M15 14h3" />
+    </>
+  ),
+  home: (
+    <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1V10Z" />
+  ),
+  device: (
+    <>
+      <rect x="6" y="3" width="12" height="18" rx="2" />
+      <path d="M10 17h4" />
     </>
   ),
 };

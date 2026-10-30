@@ -1,17 +1,36 @@
 @layer tokens {
   :root {
     color-scheme: light;
-    --canvas: #ffffff;
-    --surface: #ffffff;
-    --surface-soft: #f7f7f7;
-    --surface-hover: #f2f2f2;
-    --ink: #171717;
-    --muted: #666666;
-    --subtle: #858585;
-    --line: #e8e8e8;
-    --line-strong: #d6d6d6;
-    --accent: #171717;
+    --canvas: #f3f0e7;
+    --surface: #fffefa;
+    --surface-soft: #eeece4;
+    --surface-hover: #e6e4db;
+    --ink: #1b2721;
+    --muted: #626d66;
+    --subtle: #626e66;
+    --line: #e1ded5;
+    --line-strong: #c9c7bc;
+    --accent: #18392d;
     --accent-ink: #ffffff;
+    --accent-hover: #24483a;
+    --nav-bg: #102019;
+    --nav-raised: #203129;
+    --nav-ink: #f6f3eb;
+    --nav-muted: #aab5ad;
+    --nav-line: #293830;
+    --nav-accent: #c3a96f;
+    --brand-mark-bg: #e4d4aa;
+    --brand-mark-ink: #183126;
+    --merchant-mark-bg: #e6ebe4;
+    --merchant-mark-ink: #24483a;
+    --balance-surface: #17372b;
+    --balance-ink: #fffefa;
+    --balance-muted: rgb(255 254 250 / 74%);
+    --balance-divider: rgb(255 254 250 / 22%);
+    --card-face: #17372b;
+    --card-face-inactive: #33443b;
+    --card-face-edge: #2a473a;
+    --card-detail: #d8c79c;
     --success: #276749;
     --warning: #805400;
     --danger: #a12d25;
@@ -21,14 +40,14 @@
     --neutral-mid: #bdbdbd;
     --neutral-skeleton: #ededed;
     --neutral-dark: #575757;
-    --ink-hover: #353535;
-    --selection: #dedede;
+    --ink-hover: #304139;
+    --selection: #e1ded5;
     --overlay: rgb(0 0 0 / 28%);
     --overlay-strong: rgb(0 0 0 / 32%);
     --font-sans:
-      -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
-      "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Segoe UI",
-      sans-serif;
+      "HarmonyOS Sans SC", "Noto Sans SC", "MiSans", -apple-system,
+      BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei UI",
+      "Microsoft YaHei", "Segoe UI", sans-serif;
     --font-numeric: var(--font-sans);
     --text-xs: 13px;
     --text-sm: 15px;
@@ -48,6 +67,7 @@
     --radius-small: 6px;
     --radius-panel: 14px;
     --radius-dialog: 18px;
+    --radius-card-face: 22px;
     --sidebar-width: 224px;
     --content-max: 1440px;
     --focus-ring: 2px solid var(--ink);

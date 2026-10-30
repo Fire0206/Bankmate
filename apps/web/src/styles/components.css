@@ -1,4 +1,14 @@
 @layer components {
+  .icon-button.mobile-menu-button {
+    display: none;
+  }
+
+  @media (max-width: 760px) {
+    .icon-button.mobile-menu-button {
+      display: grid;
+    }
+  }
+
   .icon-button,
   .quiet-button,
   .text-button,
@@ -68,8 +78,8 @@
   .confirmation-actions .button-primary,
   .task-confirm-button,
   .send-button {
-    border-color: var(--ink);
-    background: var(--ink);
+    border-color: var(--accent);
+    background: var(--accent);
     color: var(--accent-ink);
   }
 
@@ -80,7 +90,7 @@
   .confirmation-actions .button-primary:hover:not(:disabled),
   .task-confirm-button:hover:not(:disabled),
   .send-button:hover:not(:disabled) {
-    background: var(--ink-hover);
+    background: var(--accent-hover);
   }
 
   .button-secondary,
@@ -409,10 +419,43 @@
     color: var(--neutral-dark);
   }
 
+  .merchant-mark {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--merchant-mark-bg);
+    color: var(--merchant-mark-ink);
+  }
+
+  .merchant-mark > svg {
+    width: 19px;
+    height: 19px;
+    stroke-width: 1.8;
+  }
+
+  .merchant-mark--wordmark {
+    font-family: var(--font-sans);
+  }
+
+  .merchant-wordmark {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.06em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
   .data-row-main {
     display: grid;
+    align-content: center;
     min-width: 0;
     gap: 2px;
+    line-height: 1.35;
   }
 
   .data-row-main strong,
@@ -420,12 +463,14 @@
     color: var(--ink);
     font-size: var(--text-sm);
     font-weight: 550;
+    line-height: 1.35;
   }
 
   .data-row-main small {
     overflow: hidden;
     color: var(--muted);
     font-size: var(--text-xs);
+    line-height: 1.4;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -713,6 +758,14 @@
     border-bottom: 1px solid var(--line);
     padding: 6px 0;
     font-size: var(--text-sm);
+  }
+
+  .transaction-result-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    justify-content: initial;
+    gap: 12px;
+    padding: 9px 0;
   }
 
   .task-result-row > span:first-child {
@@ -1565,8 +1618,14 @@
 
   .transaction-result-row > div {
     display: grid;
+    grid-column: 2;
     min-width: 0;
     gap: 2px;
+  }
+
+  .transaction-result-row > strong:last-child {
+    grid-column: 3;
+    white-space: nowrap;
   }
 
   .transaction-result-row > div > strong {
@@ -1717,7 +1776,7 @@
     }
 
     .data-row {
-      grid-template-columns: 24px minmax(0, 1fr) auto;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
       gap: 8px;
     }
 
