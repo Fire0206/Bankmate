@@ -15,7 +15,7 @@ BankMate 是一款面向个人金融场景的银行业务助手。用户可以�
 
 ## 本地运行
 
-需要 Node.js 22 以上、pnpm 11、Python 3.13 和 uv。
+需要 Node.js 24、pnpm 11、Python 3.13 和 uv。
 
 ```powershell
 Copy-Item .env.example .env
