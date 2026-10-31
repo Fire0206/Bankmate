@@ -47,11 +47,11 @@ export function Navigation({
           }}
         >
           <span aria-hidden="true" className="brand-symbol">
-            {brand.mark}
+            <img alt="" src={brand.logoMark} />
           </span>
           <span className="brand-copy">
             <strong className="brand-name">{brand.name}</strong>
-            <small>DIGITAL BANKING</small>
+            <small>{brand.descriptor}</small>
           </span>
         </a>
 

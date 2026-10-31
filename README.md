@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="apps/web/public/favicon.svg" alt="BankMate 标志" width="76" />
+  <img src="apps/web/public/logo-mark.svg" alt="BankMate 标志" width="84" />
 </p>
 
 <h1 align="center">BankMate</h1>
 
 <p align="center">
-  用日常语言管理账户、账单与资金安排
+  LEDGER · 用日常语言管理账户、账单与资金安排
 </p>
 
 <p align="center">
@@ -46,6 +46,28 @@ BankMate 将账户查询和常见银行事务放在同一处。用户可以查�
   <img src="docs/submission/assets/system-architecture.svg" alt="BankMate 系统结构和操作权限" width="920" />
 </p>
 
+## 准备演示数据
+
+仓库提供一组固定的合成数据，覆盖账户总览、银行卡、账单、订阅、转账、AA 分账和理财页面。每次重置都会重新生成相同的展示记录，方便录制时从一致的起点开始。
+
+视频数据保存在独立的 `.data/finorch-showcase.db`，不会覆盖普通开发库 `.data/finorch.db`。Windows 在仓库根目录运行：
+
+```powershell
+.\scripts\demo.ps1 -Mode reset -DataProfile video -Showcase
+```
+
+macOS / Linux：
+
+```bash
+mkdir -p .data
+export FINORCH_ENVIRONMENT=development
+export FINORCH_DATABASE_URL=sqlite:///./.data/finorch-showcase.db
+uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+uv run --project apps/api python -m finorch_api.reset --confirm --showcase
+```
+
+重置只允许写入专用展示数据库。每次重置会恢复同一组合成记录，便于从固定起点录制。
+
 ## 本地运行
 
 当前数据为虚拟账户、交易和产品，不连接真实银行、支付网络或商户。默认使用本地规则处理请求；如需使用兼容模型服务，可在本机 `.env` 配置。密钥只交给 API 服务读取，不要放进网页配置或提交到仓库。
@@ -65,6 +87,18 @@ uv sync --project apps/api
 
 ```powershell
 .\scripts\demo.ps1 -Mode api
+```
+
+录制视频时，API 使用展示数据库启动：
+
+```powershell
+.\scripts\demo.ps1 -Mode api -DataProfile video
+```
+
+如果本机 `.env` 已配置兼容模型服务，可追加 `-Provider openai-compatible`。默认 Fake Provider 使用固定规则，不会调用外部模型。红色高风险操作的本地验证码可在另一个终端通过以下命令生成，再输入页面：
+
+```powershell
+.\scripts\demo.ps1 -Mode otp -DataProfile video
 ```
 
 ```powershell
@@ -90,6 +124,22 @@ uv run --project apps/api uvicorn --app-dir apps/api/src finorch_api.main:app --
 ```bash
 pnpm --filter @finorch/web exec vite --host 127.0.0.1
 ```
+
+运行 API 前保持 `.env` 中的 `FINORCH_DATABASE_URL` 指向 `.data/finorch-showcase.db`，并将 `FINORCH_ENVIRONMENT` 设为 `development`。
+
+## 测试与检查
+
+API 测试使用临时 SQLite 数据库；前端检查、构建和格式验证可分别运行：
+
+```bash
+uv run --project apps/api pytest apps/api/tests
+pnpm --filter @finorch/web lint
+pnpm --filter @finorch/web typecheck
+pnpm --filter @finorch/web build
+pnpm run format:check
+```
+
+提交材料压缩包应包含本 README、源代码、部署启动说明和测试用例。可直接从 Git 跟踪文件生成源码包，不包含 `.env`、`.data`、依赖缓存或构建产物；压缩包上限为 300 MB。
 
 ## 项目资料
 

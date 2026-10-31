@@ -38,7 +38,9 @@ from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
 from finorch_api.showcase_seed import seed_submission_showcase
 
 
-def validate_reset_target(*, environment: str, database_url: str, repository_root: Path) -> Path:
+def validate_reset_target(
+    *, environment: str, database_url: str, repository_root: Path, showcase: bool = False
+) -> Path:
     if environment not in {"development", "test"}:
         raise ValueError("Database reset is allowed only in development or test environments.")
 
@@ -58,8 +60,12 @@ def validate_reset_target(*, environment: str, database_url: str, repository_roo
     )
     if not resolved_path.is_relative_to(allowed_root) or resolved_path == allowed_root:
         raise ValueError(f"Reset target must be inside the allowed directory: {allowed_root}")
-    if environment == "development" and resolved_path != (allowed_root / "finorch.db"):
-        raise ValueError("Development reset is restricted to the repository .data/finorch.db file.")
+    if environment == "development":
+        expected_name = "finorch-showcase.db" if showcase else "finorch.db"
+        if resolved_path != (allowed_root / expected_name):
+            raise ValueError(
+                "Development reset is restricted to the matching repository .data database file."
+            )
     if environment == "test" and not (
         resolved_path.name.startswith("finorch-test") and resolved_path.suffix == ".sqlite3"
     ):
@@ -122,13 +128,18 @@ def main() -> None:
         environment=settings.environment,
         database_url=settings.database_url,
         repository_root=repository_root,
+        showcase=args.showcase,
     )
     session_factory = get_session_factory(settings.database_url)
     with session_factory.begin() as session:
         reset_demo_data(session)
     if args.showcase:
-        seed_submission_showcase(session_factory)
+        page_counts = seed_submission_showcase(session_factory)
         print(f"Reset {target} to the BankMate submission showcase dataset.")
+        print(
+            "Showcase records: "
+            + ", ".join(f"{name}={count}" for name, count in page_counts.items())
+        )
     else:
         print(f"Reset {target} to synthetic dataset {DATASET_VERSION}.")
 
