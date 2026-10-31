@@ -35,6 +35,7 @@ from finorch_api.infrastructure.models import (
     Transfer,
 )
 from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
+from finorch_api.showcase_seed import seed_submission_showcase
 
 
 def validate_reset_target(*, environment: str, database_url: str, repository_root: Path) -> Path:
@@ -106,6 +107,11 @@ def main() -> None:
         action="store_true",
         help="Confirm deleting and recreating the synthetic database contents.",
     )
+    parser.add_argument(
+        "--showcase",
+        action="store_true",
+        help="Recreate the database with deterministic records for every product page.",
+    )
     args = parser.parse_args()
     if not args.confirm:
         parser.error("--confirm is required; this replaces the database with synthetic seed data.")
@@ -120,7 +126,11 @@ def main() -> None:
     session_factory = get_session_factory(settings.database_url)
     with session_factory.begin() as session:
         reset_demo_data(session)
-    print(f"Reset {target} to synthetic dataset {DATASET_VERSION}.")
+    if args.showcase:
+        seed_submission_showcase(session_factory)
+        print(f"Reset {target} to the BankMate submission showcase dataset.")
+    else:
+        print(f"Reset {target} to synthetic dataset {DATASET_VERSION}.")
 
 
 if __name__ == "__main__":
