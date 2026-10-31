@@ -144,7 +144,7 @@ export function RiskAssessmentForm() {
         </fieldset>
       ))}
       <p className="risk-assessment-notice">
-        测评会更新当前账户的风险等级；待确认的申购仍由服务端重新核对适当性。
+        完成后会更新账户风险等级；申购前还会再次检查产品是否匹配。
       </p>
       {error ? <p role="alert">{error}</p> : null}
       <div className="risk-assessment-actions">
