@@ -36,6 +36,24 @@ uv run --project apps/api python -m finorch_api
 
 首次启动前需先运行迁移并 Seed（见上方命令）。API 不会在启动时自动创建业务表。默认 SQLite 文件为仓库 `.data/finorch.db`，由 `.gitignore` 排除。
 
+### 提交演示数据
+
+要让各页面都显示可操作的合成内容，迁移后运行：
+
+```powershell
+uv run --project apps/api python -m finorch_api.seed --showcase
+```
+
+该命令只追加固定的提交展示数据，不清空已有记录；重复运行不会重复记账或覆盖后续操作。数据覆盖账户总览、助手最近办理、账单分类与异常、银行卡状态、转账与 AA 分账、订阅与续费提醒、年度账单、风险测评、理财产品/持仓/订单。助手历史由本地确定性 Provider 产生，不调用外部模型。
+
+需要从干净数据重新开始时，可显式运行：
+
+```powershell
+uv run --project apps/api python -m finorch_api.reset --confirm --showcase
+```
+
+重置命令会替换当前允许的本地 SQLite 合成数据；只在确认 `.env` 指向本仓库 `.data/finorch.db` 后使用。所有金额、商户、账户和操作记录均为合成数据。
+
 Web（另开终端）：
 
 ```powershell
