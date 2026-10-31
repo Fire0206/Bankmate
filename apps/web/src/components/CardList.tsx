@@ -105,7 +105,6 @@ export function CardList({
           ))}
         </ul>
       )}
-      <p className="card-footnote">卡片状态以服务端数据为准。</p>
     </section>
   );
 }

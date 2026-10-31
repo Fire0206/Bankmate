@@ -328,14 +328,14 @@ export function TaskDetails({
           </dl>
           {task.status === "failed" ? (
             <div className="raw-task-error">
-              <strong>服务端返回</strong>
+              <strong>处理说明</strong>
               <p>{customerText(task.message)}</p>
             </div>
           ) : null}
 
           {task.workflow_plan ? (
             <>
-              <h3 className="details-subheading">任务依赖</h3>
+              <h3 className="details-subheading">办理顺序</h3>
               <ol className="step-list">
                 {task.workflow_plan.nodes.map((node) => (
                   <li className="step-row" key={node.node_id}>

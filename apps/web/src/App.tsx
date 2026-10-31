@@ -293,15 +293,14 @@ function AccountDetails({
       <div className="environment-popover">
         <h2>账户与服务</h2>
         <p>
-          账户、交易和产品信息为虚拟数据。操作只更新 BankMate
-          账户记录，不连接银行、支付网络或商户。
+          账户、交易和产品信息使用本地数据。操作只更新本地账户记录，不会触达真实资金。
         </p>
         <p className="environment-note">
           {mode === "fake"
-            ? "请求在本地处理，不会发送到外部模型。"
+            ? "请求在本机处理，不会发送到外部服务。"
             : externalModelEgressEnabled
-              ? "外部模型请求已开启。请求文字、合成账户信息和工具结果会发送到配置的模型服务。请勿输入真实个人或账户信息。"
-              : "外部模型请求已关闭。新的请求不会发送到模型服务。"}
+              ? "已启用外部服务。你的输入和完成请求所需的本地账户信息会发送至配置的服务，请勿输入真实个人信息。"
+              : "外部服务未启用，请求不会发送到外部。"}
         </p>
       </div>
     </details>
@@ -801,10 +800,10 @@ export default function App() {
       }
       if (!allowResubmit) {
         setRequestError({
-          title: "尚未找到已完成的提交",
+          title: "暂时无法确认处理结果",
           message: recovered.task
-            ? "服务端任务仍处于当前状态。可以继续查看任务，或用相同幂等键安全重试。"
-            : "服务端暂时没有这次请求的记录。若要继续，请用原请求和同一幂等键重试。",
+            ? "请求已保存，可以继续查看进度，或用相同内容安全重试。"
+            : "暂时没有查到这次请求的处理结果。请使用原请求继续尝试。",
           code: null,
           status: null,
           requestId: null,

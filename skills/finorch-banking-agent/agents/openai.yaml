@@ -1,4 +1,0 @@
-interface:
-  display_name: "FinOrch Banking Agent"
-  short_description: "Design, build, and demo a safe banking AI agent"
-  default_prompt: "Use $finorch-banking-agent to review the current FinOrch task and produce the next implementation-ready artifact."

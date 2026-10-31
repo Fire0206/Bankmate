@@ -94,7 +94,7 @@ export function Navigation({
             <strong>{displayName}</strong>
             <small>
               <i aria-hidden="true" />
-              虚拟账户 · 本地数据
+              本地账户
             </small>
           </span>
         </div>

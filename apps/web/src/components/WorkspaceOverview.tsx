@@ -11,7 +11,7 @@ import type {
 import { AppIcon } from "./AppIcon";
 import { CashflowChart } from "./CashflowChart";
 import { SkeletonLine } from "./Skeleton";
-import { customerName, customerText } from "../userFacing";
+import { customerName } from "../userFacing";
 
 type OverviewData = {
   accounts: AccountBalanceListResponse;
@@ -175,14 +175,14 @@ export function WorkspaceOverview({
                   ? "财务摘要暂不可用"
                   : anomalies.length > 0
                     ? `发现 ${anomalies.length} 笔待复核交易`
-                    : "本月暂未命中异常规则"}
+                    : "本月没有需要核对的交易"}
             </strong>
             <small>
               {error
                 ? "请重新读取账户与账单数据。"
                 : leadingAnomaly
-                  ? `${leadingAnomaly.merchant} · ${currency(leadingAnomaly.amount_minor, leadingAnomaly.currency)} · 规则提示，不是欺诈结论`
-                  : customerText("所有提示均由服务端账单规则生成。")}
+                  ? `${leadingAnomaly.merchant} · ${currency(leadingAnomaly.amount_minor, leadingAnomaly.currency)} · 根据账单记录提醒，请核对交易`
+                  : "提醒依据为账单记录。"}
             </small>
           </span>
           {anomalies.length > 0 ? (

@@ -87,8 +87,8 @@ function auditCopy(event: AuditEvent) {
     task_created: "创建处理任务",
     task_confirmed: "完成关键动作确认",
     task_cancelled: "取消任务",
-    tool_succeeded: "工具调用成功",
-    tool_failed: "工具调用失败",
+    tool_succeeded: "操作完成",
+    tool_failed: "操作未完成",
     confirmation_requested: "生成确认挑战",
     confirmation_succeeded: "确认校验通过",
   };
@@ -448,9 +448,7 @@ export function FocusedOverview({
               ? money(leadingAnomaly.amount_minor, leadingAnomaly.currency)
               : "暂无异常提醒"}
           </strong>
-          <small>
-            {leadingAnomaly ? "需要你的确认" : "所有提示均有规则依据"}
-          </small>
+          <small>{leadingAnomaly ? "需要你核对" : "账单记录正常"}</small>
         </button>
         <button onClick={() => setDialog("audit")} type="button">
           <span>
@@ -458,13 +456,13 @@ export function FocusedOverview({
             <AppIcon name="arrow-right" size={14} />
           </span>
           <strong>{audit.length} 个事件</strong>
-          <small>证据与确认均写入审计</small>
+          <small>查看操作过程与结果</small>
         </button>
       </div>
 
       <footer className="focused-overview-footer">
         <span>
-          <i /> 虚拟账户 · 不连接真实银行或支付网络
+          <i /> 本地账户 · 不接入真实银行
         </span>
         <span>
           {frozenCards} 张卡已冻结 · {activeSubscriptions.length} 项自动扣费
@@ -582,7 +580,7 @@ export function FocusedOverview({
                     <strong>
                       {customerText(leadingAnomaly.anomaly_reason)}
                     </strong>
-                    <small>账单规则提醒，仅供核对，不代表欺诈结论。</small>
+                    <small>根据交易记录发出的核对提醒。</small>
                   </span>
                 </div>
                 <div>
@@ -595,8 +593,8 @@ export function FocusedOverview({
                 <div>
                   <i />
                   <span>
-                    <strong>当前为虚拟账户</strong>
-                    <small>操作不会连接真实银行或支付网络。</small>
+                    <strong>本地账户</strong>
+                    <small>操作不会触达真实资金。</small>
                   </span>
                 </div>
               </div>
@@ -654,7 +652,7 @@ export function FocusedOverview({
           </ol>
           <div className="figma-audit-footer">
             <span>所有关键动作都需要明确确认</span>
-            <small>记录由服务端生成</small>
+            <small>展示本次操作的处理结果</small>
           </div>
         </OverviewDialog>
       ) : null}
