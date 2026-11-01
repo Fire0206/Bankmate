@@ -2,29 +2,30 @@ from datetime import UTC, timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.application.subscriptions import (
+from sqlalchemy import func, select
+
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.application.subscriptions import (
     generate_due_subscription_reminders,
     list_subscription_reminders,
 )
-from finorch_api.config import Settings
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import Account, AuditEvent, Subscription, utc_now
-from finorch_api.main import app
-from finorch_api.security.demo_identity import (
+from bankmate_api.config import Settings
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.infrastructure.models import Account, AuditEvent, Subscription, utc_now
+from bankmate_api.main import app
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from finorch_api.subscription_scheduler import run_subscription_reminder_tick
-from sqlalchemy import func, select
+from bankmate_api.subscription_scheduler import run_subscription_reminder_tick
 
 
 def _active_subscription(session, actor_id):
-    from finorch_api.infrastructure.models import Account
+    from bankmate_api.infrastructure.models import Account
 
     return session.scalar(
         select(Subscription)

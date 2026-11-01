@@ -1,6 +1,7 @@
 import pytest
-from finorch_api.agent.registry import build_tool_registry
-from finorch_api.application.workflow_graph import (
+
+from bankmate_api.agent.registry import build_tool_registry
+from bankmate_api.application.workflow_graph import (
     WorkflowNode,
     build_workflow_plan,
     next_ready_workflow_tool,

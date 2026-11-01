@@ -1,7 +1,8 @@
 from fastapi.testclient import TestClient
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.main import app
-from finorch_api.security.demo_identity import (
+
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.main import app
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,

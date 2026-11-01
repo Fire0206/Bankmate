@@ -1,4 +1,4 @@
-"""Run a small, live DeepSeek tool-calling evaluation against a local FinOrch API.
+"""Run a small, live DeepSeek tool-calling evaluation against a local BankMate API.
 
 Only sanitized case labels, selected tool names, task states, and error codes are
 printed. Raw prompts, API keys, and model responses are never written to output.
@@ -16,16 +16,17 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from finorch_api.application.transactions import write_transaction
-from finorch_api.config import Settings
-from finorch_api.domain.cards import CardStatus
-from finorch_api.infrastructure.database import get_session_factory
-from finorch_api.infrastructure.models import Account, Card, Subscription, utc_now
-from finorch_api.reset import reset_demo_data, validate_reset_target
-from finorch_api.security.verification import issue_demo_code
 from sqlalchemy import select
 
-BASE_URL = os.getenv("FINORCH_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.config import Settings
+from bankmate_api.domain.cards import CardStatus
+from bankmate_api.infrastructure.database import get_session_factory
+from bankmate_api.infrastructure.models import Account, Card, Subscription, utc_now
+from bankmate_api.reset import reset_demo_data, validate_reset_target
+from bankmate_api.security.verification import issue_demo_code
+
+BASE_URL = os.getenv("BANKMATE_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 PHASE3_HOLDOUT_CASES_PATH = (
     REPOSITORY_ROOT / "apps" / "api" / "scripts" / "phase3-holdout-cases.json"
@@ -100,7 +101,7 @@ def task_error(task: dict) -> str | None:
 def _reset_eval_database() -> None:
     """Reset only an explicitly opted-in, validated temporary test database."""
     settings = Settings()
-    if os.getenv("FINORCH_EVAL_RESET_SYNTHETIC") != "1" or settings.environment != "test":
+    if os.getenv("BANKMATE_EVAL_RESET_SYNTHETIC") != "1" or settings.environment != "test":
         raise RuntimeError("Live evaluation requires an opted-in test database.")
     repository_root = Path(__file__).resolve().parents[3]
     validate_reset_target(
@@ -173,7 +174,7 @@ def _prepare_holdout_case(case: dict) -> None:
 
 def _issue_holdout_otp(confirmation: dict) -> str:
     settings = Settings()
-    if settings.environment != "test" or os.getenv("FINORCH_EVAL_RESET_SYNTHETIC") != "1":
+    if settings.environment != "test" or os.getenv("BANKMATE_EVAL_RESET_SYNTHETIC") != "1":
         raise RuntimeError("Automated OTP issuance requires an opted-in isolated test database.")
     factory = get_session_factory(settings.database_url)
     with factory() as session:
@@ -1411,7 +1412,7 @@ def cases() -> list[dict]:
 
 
 def selected_cases() -> list[dict]:
-    dataset = os.getenv("FINORCH_EVAL_DATASET", "phase1e-dev")
+    dataset = os.getenv("BANKMATE_EVAL_DATASET", "phase1e-dev")
     if dataset == "phase3-holdout":
         data = json.loads(PHASE3_HOLDOUT_CASES_PATH.read_text(encoding="utf-8"))
         lock = json.loads(PHASE3_HOLDOUT_LOCK_PATH.read_text(encoding="utf-8"))
@@ -1433,14 +1434,14 @@ def selected_cases() -> list[dict]:
     elif dataset == "phase1e-dev":
         all_cases = cases()
     else:
-        raise ValueError("FINORCH_EVAL_DATASET is unknown.")
-    requested = os.getenv("FINORCH_EVAL_CASES")
+        raise ValueError("BANKMATE_EVAL_DATASET is unknown.")
+    requested = os.getenv("BANKMATE_EVAL_CASES")
     if not requested:
         return all_cases
     by_name = {case["name"]: case for case in all_cases}
     selected_names = [name.strip() for name in requested.split(",") if name.strip()]
     if not selected_names or any(name not in by_name for name in selected_names):
-        raise ValueError("FINORCH_EVAL_CASES contains an unknown or empty case selection")
+        raise ValueError("BANKMATE_EVAL_CASES contains an unknown or empty case selection")
     return [by_name[name] for name in selected_names]
 
 
@@ -1473,10 +1474,10 @@ def main() -> int:
         if case.get("verification") == "risk_rejected"
     ]
     summary = {
-        "dataset": os.getenv("FINORCH_EVAL_DATASET", "phase1e-dev"),
+        "dataset": os.getenv("BANKMATE_EVAL_DATASET", "phase1e-dev"),
         "dataset_version": (
             "phase3-feature-holdout-v1"
-            if os.getenv("FINORCH_EVAL_DATASET") == "phase3-holdout"
+            if os.getenv("BANKMATE_EVAL_DATASET") == "phase3-holdout"
             else "phase1e-dev"
         ),
         "model": Settings().llm_model or "configured by server",
@@ -1513,7 +1514,7 @@ def main() -> int:
         "server_risk_interception_cases": len(risk_cases),
         "cases": results,
     }
-    report_path = Path(os.getenv("FINORCH_EVAL_REPORT", ".data/deepseek-eval-last.json"))
+    report_path = Path(os.getenv("BANKMATE_EVAL_REPORT", ".data/deepseek-eval-last.json"))
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))

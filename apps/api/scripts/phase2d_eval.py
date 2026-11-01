@@ -38,16 +38,18 @@ API_ROOT = REPOSITORY_ROOT / "apps" / "api"
 sys.path.insert(0, str(API_ROOT))
 sys.path.insert(0, str(API_ROOT / "src"))
 
-from finorch_api.agent.registry import build_tool_registry  # noqa: E402
-from finorch_api.application.birthday_plans import dispatch_due_birthday_orders  # noqa: E402
-from finorch_api.application.transactions import write_transaction  # noqa: E402
-from finorch_api.config import Settings  # noqa: E402
-from finorch_api.domain.cards import CardStatus  # noqa: E402
-from finorch_api.infrastructure.database import (  # noqa: E402
+from scripts.phase2d_case_catalog import WRITE_TOOLS, cases  # noqa: E402
+
+from bankmate_api.agent.registry import build_tool_registry  # noqa: E402
+from bankmate_api.application.birthday_plans import dispatch_due_birthday_orders  # noqa: E402
+from bankmate_api.application.transactions import write_transaction  # noqa: E402
+from bankmate_api.config import Settings  # noqa: E402
+from bankmate_api.domain.cards import CardStatus  # noqa: E402
+from bankmate_api.infrastructure.database import (  # noqa: E402
     get_engine,
     get_session_factory,
 )
-from finorch_api.infrastructure.models import (  # noqa: E402
+from bankmate_api.infrastructure.models import (  # noqa: E402
     Account,
     AuditEvent,
     BirthdayOrder,
@@ -68,10 +70,9 @@ from finorch_api.infrastructure.models import (  # noqa: E402
     Transfer,
     utc_now,
 )
-from finorch_api.reset import reset_demo_data, validate_reset_target  # noqa: E402
-from finorch_api.security.verification import issue_demo_code  # noqa: E402
-from finorch_api.seed_data import seed_demo_data  # noqa: E402
-from scripts.phase2d_case_catalog import WRITE_TOOLS, cases  # noqa: E402
+from bankmate_api.reset import reset_demo_data, validate_reset_target  # noqa: E402
+from bankmate_api.security.verification import issue_demo_code  # noqa: E402
+from bankmate_api.seed_data import seed_demo_data  # noqa: E402
 
 DATASET_VERSION = "phase2d-v1"
 HOLDOUT_LOCK_PATH = REPOSITORY_ROOT / "apps" / "api" / "scripts" / "phase2d_holdout.lock.json"
@@ -330,16 +331,16 @@ def start_isolated_api(
     env = os.environ.copy()
     env.update(
         {
-            "FINORCH_ENVIRONMENT": "test",
-            "FINORCH_AGENT_PROVIDER": "openai-compatible",
-            "FINORCH_DATABASE_URL": database_url,
-            "FINORCH_API_HOST": "127.0.0.1",
-            "FINORCH_API_PORT": str(port),
-            "FINORCH_EVAL_INSTANCE_ID": instance_id,
-            "FINORCH_EVAL_USAGE_FILE": str(usage_file),
-            "FINORCH_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
-            "FINORCH_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
-            "FINORCH_EVAL_INITIAL_COST_CNY": str(initial_cost_cny),
+            "BANKMATE_ENVIRONMENT": "test",
+            "BANKMATE_AGENT_PROVIDER": "openai-compatible",
+            "BANKMATE_DATABASE_URL": database_url,
+            "BANKMATE_API_HOST": "127.0.0.1",
+            "BANKMATE_API_PORT": str(port),
+            "BANKMATE_EVAL_INSTANCE_ID": instance_id,
+            "BANKMATE_EVAL_USAGE_FILE": str(usage_file),
+            "BANKMATE_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
+            "BANKMATE_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
+            "BANKMATE_EVAL_INITIAL_COST_CNY": str(initial_cost_cny),
         }
     )
     src_path = str(API_ROOT / "src")
@@ -350,7 +351,7 @@ def start_isolated_api(
         "uvicorn",
         "--app-dir",
         "apps/api/src",
-        "finorch_api.main:app",
+        "bankmate_api.main:app",
         "--host",
         "127.0.0.1",
         "--port",
@@ -370,7 +371,7 @@ def start_isolated_api(
         start_new_session=os.name != "nt",
     )
     if log_handle is not None:
-        process._finorch_log_handle = log_handle
+        process._bankmate_log_handle = log_handle
     return process
 
 
@@ -408,7 +409,7 @@ def stop_owned_process(process: subprocess.Popen) -> None:
                 except ProcessLookupError:
                     pass
             process.wait(timeout=10)
-    log_handle = getattr(process, "_finorch_log_handle", None)
+    log_handle = getattr(process, "_bankmate_log_handle", None)
     if log_handle is not None and not log_handle.closed:
         log_handle.close()
 
@@ -443,9 +444,9 @@ def wait_for_owned_service(
             last_observation["api_status"] = status
             if status == 200:
                 normalized_headers = {key.casefold(): value for key, value in headers.items()}
-                if normalized_headers.get("x-finorch-eval-instance") != instance_id:
+                if normalized_headers.get("x-bankmate-eval-instance") != instance_id:
                     raise RuntimeError("API instance identity did not match the isolated runner.")
-                if normalized_headers.get("x-finorch-eval-database") != expected_database_hash:
+                if normalized_headers.get("x-bankmate-eval-database") != expected_database_hash:
                     raise RuntimeError(
                         "API database identity did not match the temporary database."
                     )
@@ -506,11 +507,11 @@ def preflight_isolation() -> dict[str, Any]:
         raise RuntimeError("A configured DeepSeek OpenAI-compatible provider is required.")
 
     temp_parent = Path(tempfile.gettempdir()).resolve()
-    with tempfile.TemporaryDirectory(prefix="finorch-phase2d-preflight-") as directory_name:
+    with tempfile.TemporaryDirectory(prefix="bankmate-phase2d-preflight-") as directory_name:
         run_directory = Path(directory_name).resolve()
         if not run_directory.is_relative_to(temp_parent) or run_directory == temp_parent:
             raise RuntimeError("Evaluation temporary directory escaped the OS temp directory.")
-        database_path = run_directory / f"finorch-test-{uuid4().hex}.sqlite3"
+        database_path = run_directory / f"bankmate-test-{uuid4().hex}.sqlite3"
         database_url = URL.create("sqlite", database=str(database_path)).render_as_string(
             hide_password=False
         )
@@ -520,16 +521,16 @@ def preflight_isolation() -> dict[str, Any]:
         env = os.environ.copy()
         env.update(
             {
-                "FINORCH_ENVIRONMENT": "test",
-                "FINORCH_AGENT_PROVIDER": "openai-compatible",
-                "FINORCH_DATABASE_URL": database_url,
-                "FINORCH_API_HOST": "127.0.0.1",
-                "FINORCH_API_PORT": str(port),
-                "FINORCH_EVAL_INSTANCE_ID": instance_id,
-                "FINORCH_EVAL_USAGE_FILE": str(usage_file),
-                "FINORCH_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
-                "FINORCH_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
-                "FINORCH_EVAL_INITIAL_COST_CNY": "0",
+                "BANKMATE_ENVIRONMENT": "test",
+                "BANKMATE_AGENT_PROVIDER": "openai-compatible",
+                "BANKMATE_DATABASE_URL": database_url,
+                "BANKMATE_API_HOST": "127.0.0.1",
+                "BANKMATE_API_PORT": str(port),
+                "BANKMATE_EVAL_INSTANCE_ID": instance_id,
+                "BANKMATE_EVAL_USAGE_FILE": str(usage_file),
+                "BANKMATE_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
+                "BANKMATE_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
+                "BANKMATE_EVAL_INITIAL_COST_CNY": "0",
             }
         )
         env["PYTHONPATH"] = str(API_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
@@ -594,11 +595,11 @@ def _apply_setup(database_url: str, setup: dict[str, str] | None) -> None:
     if not setup:
         return
     if setup.get("kind") == "birthday_due":
-        from finorch_api.application.birthday_plans import (
+        from bankmate_api.application.birthday_plans import (
             SIMULATED_MERCHANT,
             SIMULATED_PICKUP,
         )
-        from finorch_api.application.card_controls import CATALOG
+        from bankmate_api.application.card_controls import CATALOG
 
         settings = _load_user_settings()
         current = settings.demo_now or datetime.now(UTC)
@@ -1767,7 +1768,7 @@ def _strong_verification_checks(
     expected_count = sum(item.get("confirmation_method") == "demo_otp" for item in expected)
     if not expected_count:
         return []
-    from finorch_api.infrastructure.models import StrongVerification
+    from bankmate_api.infrastructure.models import StrongVerification
 
     challenge_ids = [
         item.get("challenge_id")
@@ -1793,7 +1794,7 @@ def _strong_verification_checks(
 def _execution_rows(database_url: str, task_id: str) -> list[tuple[str, str, str | None]]:
     from uuid import UUID
 
-    from finorch_api.infrastructure.models import ToolExecution
+    from bankmate_api.infrastructure.models import ToolExecution
 
     factory = get_session_factory(database_url)
     with factory() as session:
@@ -2134,7 +2135,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
     stop_reason: str | None = None
     run_directory_parent = Path(tempfile.gettempdir()).resolve()
     with tempfile.TemporaryDirectory(
-        prefix="finorch-phase2d-", ignore_cleanup_errors=True
+        prefix="bankmate-phase2d-", ignore_cleanup_errors=True
     ) as directory_name:
         run_directory = Path(directory_name).resolve()
         if (
@@ -2142,7 +2143,7 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
             or run_directory == run_directory_parent
         ):
             raise RuntimeError("Evaluation temporary directory escaped the OS temp directory.")
-        database_path = run_directory / f"finorch-test-{uuid4().hex}.sqlite3"
+        database_path = run_directory / f"bankmate-test-{uuid4().hex}.sqlite3"
         database_url = URL.create("sqlite", database=str(database_path)).render_as_string(
             hide_password=False
         )
@@ -2158,14 +2159,14 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
         env = os.environ.copy()
         env.update(
             {
-                "FINORCH_ENVIRONMENT": "test",
-                "FINORCH_AGENT_PROVIDER": "openai-compatible",
-                "FINORCH_DATABASE_URL": database_url,
-                "FINORCH_EVAL_USAGE_FILE": str(usage_file),
-                "FINORCH_EVAL_INSTANCE_ID": instance_id,
-                "FINORCH_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
-                "FINORCH_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
-                "FINORCH_EVAL_INITIAL_COST_CNY": str(initial_cost_cny),
+                "BANKMATE_ENVIRONMENT": "test",
+                "BANKMATE_AGENT_PROVIDER": "openai-compatible",
+                "BANKMATE_DATABASE_URL": database_url,
+                "BANKMATE_EVAL_USAGE_FILE": str(usage_file),
+                "BANKMATE_EVAL_INSTANCE_ID": instance_id,
+                "BANKMATE_EVAL_MAX_COMPLETION_TOKENS": str(MAX_COMPLETION_TOKENS_PER_REQUEST),
+                "BANKMATE_EVAL_HARD_BUDGET_CNY": str(HARD_BUDGET_CNY),
+                "BANKMATE_EVAL_INITIAL_COST_CNY": str(initial_cost_cny),
             }
         )
         env["PYTHONPATH"] = str(API_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")

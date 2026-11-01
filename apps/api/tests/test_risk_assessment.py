@@ -4,23 +4,24 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.domain.risk_assessment import score_risk
-from finorch_api.infrastructure.database import build_engine, get_db_session
-from finorch_api.infrastructure.models import AuditEvent, DemoUser, InvestmentOrder, RiskAssessment
-from finorch_api.main import app
-from finorch_api.reset import reset_demo_data
-from finorch_api.security.demo_identity import (
+from sqlalchemy import func, select, text
+from sqlalchemy.engine import URL
+
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.domain.risk_assessment import score_risk
+from bankmate_api.infrastructure.database import build_engine, get_db_session
+from bankmate_api.infrastructure.models import AuditEvent, DemoUser, InvestmentOrder, RiskAssessment
+from bankmate_api.main import app
+from bankmate_api.reset import reset_demo_data
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from finorch_api.seed_data import seed_demo_data
-from sqlalchemy import func, select, text
-from sqlalchemy.engine import URL
+from bankmate_api.seed_data import seed_demo_data
 
 QUESTIONNAIRE = "/api/v1/investments/risk-assessment"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]

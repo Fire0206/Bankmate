@@ -130,6 +130,13 @@ select:focus-visible {
   font-weight: 700;
 }
 
+.brand-symbol img {
+  display: block;
+  width: 23px;
+  height: 19px;
+  object-fit: contain;
+}
+
 .brand-copy {
   display: grid;
   align-content: center;
@@ -917,6 +924,13 @@ select:focus-visible {
   background: var(--gold-soft);
   color: var(--nav);
   font-size: 11px;
+}
+
+.card-face-mark img {
+  display: block;
+  width: 17px;
+  height: 14px;
+  object-fit: contain;
 }
 
 .card-face-type {

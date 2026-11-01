@@ -5,11 +5,13 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider, ModelToolCall, ModelTurn
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import (
+from sqlalchemy import func, select, update
+
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider, ModelToolCall, ModelTurn
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.infrastructure.models import (
     Account,
     AuditEvent,
     Card,
@@ -20,22 +22,22 @@ from finorch_api.infrastructure.models import (
     ToolExecution,
     Transfer,
 )
-from finorch_api.main import app
-from finorch_api.security.demo_identity import (
+from bankmate_api.main import app
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from sqlalchemy import func, select, update
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from finorch_api.agent.registry import build_tool_registry
 from scripts.phase2d_eval import (  # noqa: E402
     _business_snapshot,
     _confirmed_resource_checks,
     _result_schema_checks,
 )
+
+from bankmate_api.agent.registry import build_tool_registry
 
 CONVERSATION_ID = "30000000-0000-4000-8000-000000000001"
 SOURCE_ACCOUNT_ID = UUID("10000000-0000-4000-8000-000000000001")

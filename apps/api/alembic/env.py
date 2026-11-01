@@ -1,7 +1,8 @@
-import finorch_api.infrastructure.models as _models  # noqa: F401
 from alembic import context
-from finorch_api.config import get_settings
-from finorch_api.infrastructure.database import Base, build_engine
+
+import bankmate_api.infrastructure.models as _models  # noqa: F401
+from bankmate_api.config import get_settings
+from bankmate_api.infrastructure.database import Base, build_engine
 
 config = context.config
 

@@ -3,9 +3,11 @@ import urllib.error
 from typing import Any
 
 import pytest
-from finorch_api.agent import providers
-from finorch_api.agent.providers import OpenAICompatibleProvider, select_provider
-from finorch_api.agent.runtime import (
+from pydantic import SecretStr
+
+from bankmate_api.agent import providers
+from bankmate_api.agent.providers import OpenAICompatibleProvider, select_provider
+from bankmate_api.agent.runtime import (
     AgentProviderError,
     AgentRuntime,
     FakeProvider,
@@ -15,15 +17,14 @@ from finorch_api.agent.runtime import (
     ToolRegistry,
     ToolSpec,
 )
-from finorch_api.agent.tools import CardListOutput, CardSuffixInput, EmptyToolInput
-from finorch_api.config import Settings
-from pydantic import SecretStr
+from bankmate_api.agent.tools import CardListOutput, CardSuffixInput, EmptyToolInput
+from bankmate_api.config import Settings
 
 
 def test_fake_provider_is_deterministic_and_does_not_call_network() -> None:
     provider = FakeProvider()
     messages = [
-        {"role": "system", "content": "FinOrch system"},
+        {"role": "system", "content": "BankMate system"},
         {"role": "system", "content": 'Trusted demo context: {"recent_card_suffix":"1042"}'},
         {"role": "user", "content": "把刚才冻结的卡解冻"},
     ]
@@ -245,7 +246,7 @@ def test_openai_compatible_adapter_sends_tools_and_parses_function_call(monkeypa
         captured["timeout"] = timeout
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1",
         api_key=SecretStr("unit-test-key"),
@@ -289,7 +290,7 @@ def test_openai_compatible_adapter_can_force_a_server_required_workflow_tool(mon
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://api.deepseek.com/v1",
         api_key=SecretStr("unit-test-key"),
@@ -480,7 +481,7 @@ def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
@@ -501,7 +502,7 @@ def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
         [
             {
                 "role": "tool",
-                "content": "FINORCH_EVAL_UNTRUSTED_DATA:synthetic hostile description",
+                "content": "BANKMATE_EVAL_UNTRUSTED_DATA:synthetic hostile description",
             }
         ],
         [],
@@ -562,7 +563,7 @@ def test_evaluation_usage_telemetry_is_disabled_outside_test_environment(
             ).encode()
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers._open_provider_request", lambda *_args, **_kwargs: Response()
+        "bankmate_api.agent.providers._open_provider_request", lambda *_args, **_kwargs: Response()
     )
     selection = select_provider(
         Settings(
@@ -592,7 +593,7 @@ def test_evaluation_hard_budget_guard_refuses_request_before_network(monkeypatch
         network_called = True
         raise AssertionError("Budget rejection must happen before the provider request.")
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
@@ -625,7 +626,7 @@ def test_evaluation_hard_budget_guard_includes_previous_runs(monkeypatch, tmp_pa
         network_called = True
         raise AssertionError("Cumulative budget rejection must happen before the provider request.")
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     selection = select_provider(
         Settings(
             _env_file=None,
@@ -668,7 +669,7 @@ def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypat
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://api.deepseek.com/v1",
         api_key=SecretStr("unit-test-key"),
@@ -701,7 +702,7 @@ def test_other_openai_compatible_adapters_keep_provider_defaults(monkeypatch) ->
         captured["body"] = json.loads(request.data)
         return Response()
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1",
         api_key=SecretStr("unit-test-key"),
@@ -761,7 +762,7 @@ def test_openai_compatible_adapter_preserves_multiple_tool_calls_and_empty_turn(
         captured.append(json.loads(request.data))
         return Response(responses.pop(0))
 
-    monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fake_urlopen)
+    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
     provider = OpenAICompatibleProvider(
         base_url="https://model.example/v1/chat/completions",
         api_key=SecretStr("unit-test-key"),
@@ -830,7 +831,7 @@ def test_openai_compatible_adapter_maps_http_timeout_connection_and_json_errors(
         def fail_urlopen(*_args, **_kwargs):
             raise error
 
-        monkeypatch.setattr("finorch_api.agent.providers._open_provider_request", fail_urlopen)
+        monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fail_urlopen)
         try:
             provider.complete([], [])
         except Exception as raised:
@@ -857,7 +858,7 @@ def test_openai_compatible_adapter_maps_http_timeout_connection_and_json_errors(
             return b"not-json"
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers._open_provider_request",
+        "bankmate_api.agent.providers._open_provider_request",
         lambda *_args, **_kwargs: InvalidJsonResponse(),
     )
     try:
@@ -899,7 +900,7 @@ def test_openai_compatible_adapter_rejects_duplicate_or_malformed_call_ids(monke
             ).encode()
 
     monkeypatch.setattr(
-        "finorch_api.agent.providers._open_provider_request",
+        "bankmate_api.agent.providers._open_provider_request",
         lambda *_args, **_kwargs: Response(),
     )
     provider = OpenAICompatibleProvider(

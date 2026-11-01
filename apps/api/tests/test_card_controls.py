@@ -5,12 +5,15 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.application.transactions import write_transaction
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import (
+from sqlalchemy import func, select
+from test_agent_api import ALICE_ACTIVE_CARD_ID, confirm, submit
+
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.infrastructure.models import (
     Account,
     AuditEvent,
     Card,
@@ -18,16 +21,14 @@ from finorch_api.infrastructure.models import (
     Transaction,
     utc_now,
 )
-from finorch_api.main import app
-from finorch_api.security.demo_identity import (
+from bankmate_api.main import app
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from finorch_api.security.verification import issue_demo_code
-from sqlalchemy import func, select
-from test_agent_api import ALICE_ACTIVE_CARD_ID, confirm, submit
+from bankmate_api.security.verification import issue_demo_code
 
 
 @pytest.fixture

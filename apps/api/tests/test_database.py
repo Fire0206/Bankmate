@@ -3,8 +3,12 @@ from uuid import UUID
 
 from alembic import command
 from alembic.config import Config
-from finorch_api.infrastructure.database import build_engine
-from finorch_api.infrastructure.models import (
+from sqlalchemy import func, inspect, select, text
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import sessionmaker
+
+from bankmate_api.infrastructure.database import build_engine
+from bankmate_api.infrastructure.models import (
     Account,
     AuditEvent,
     Card,
@@ -15,10 +19,7 @@ from finorch_api.infrastructure.models import (
     Subscription,
     Transaction,
 )
-from finorch_api.seed_data import DATASET_VERSION, seed_demo_data
-from sqlalchemy import func, inspect, select, text
-from sqlalchemy.engine import URL
-from sqlalchemy.orm import sessionmaker
+from bankmate_api.seed_data import DATASET_VERSION, seed_demo_data
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 

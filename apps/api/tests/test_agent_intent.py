@@ -1,5 +1,6 @@
 import pytest
-from finorch_api.agent.intent import (
+
+from bankmate_api.agent.intent import (
     has_explicit_transfer_write_intent,
     is_annual_bill_query,
     is_split_creation_request,

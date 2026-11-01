@@ -143,7 +143,7 @@ function toUiError(error: unknown): UiError {
 }
 
 function conversationKey(): string {
-  const key = "finorch.demo.conversation";
+  const key = "bankmate.demo.conversation";
   try {
     const saved = sessionStorage.getItem(key);
     if (saved) return saved;
@@ -338,7 +338,7 @@ export default function App() {
     try {
       // Remove pending request bodies left by older builds. Recovery reads
       // authoritative task state from the server instead of browser storage.
-      sessionStorage.removeItem("finorch.demo.pending-write");
+      sessionStorage.removeItem("bankmate.demo.pending-write");
     } catch {
       // Storage may be disabled; task recovery still works through the API.
     }
@@ -459,7 +459,7 @@ export default function App() {
   const startNewConversation = useCallback(() => {
     const nextConversationId = crypto.randomUUID();
     try {
-      sessionStorage.setItem("finorch.demo.conversation", nextConversationId);
+      sessionStorage.setItem("bankmate.demo.conversation", nextConversationId);
     } catch {
       // Storage may be disabled; the in-memory conversation remains isolated.
     }
@@ -946,7 +946,7 @@ export default function App() {
 
     const nextConversationId = crypto.randomUUID();
     try {
-      sessionStorage.setItem("finorch.demo.conversation", nextConversationId);
+      sessionStorage.setItem("bankmate.demo.conversation", nextConversationId);
     } catch {
       // The new task still uses a fresh in-memory conversation ID.
     }

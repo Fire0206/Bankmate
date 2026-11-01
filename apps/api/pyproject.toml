@@ -1,7 +1,7 @@
 [project]
-name = "finorch-api"
+name = "bankmate-api"
 version = "0.1.0"
-description = "FinOrch simulated banking API foundation"
+description = "BankMate simulated banking API foundation"
 license = "Apache-2.0"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -34,6 +34,9 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bankmate_api"]
 
 [tool.ruff.format]
 quote-style = "double"

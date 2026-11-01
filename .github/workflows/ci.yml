@@ -1,4 +1,4 @@
-name: finorch-ci
+name: bankmate-ci
 
 on:
   push:
@@ -62,16 +62,16 @@ jobs:
         run: uv run --project apps/api pytest apps/api/tests
 
       - name: Lint frontend
-        run: pnpm --filter @finorch/web lint
+        run: pnpm --filter @bankmate/web lint
 
       - name: Check task result rendering
-        run: pnpm --filter @finorch/web test:results
+        run: pnpm --filter @bankmate/web test:results
 
       - name: Check frontend types
-        run: pnpm --filter @finorch/web typecheck
+        run: pnpm --filter @bankmate/web typecheck
 
       - name: Build frontend
-        run: pnpm --filter @finorch/web build
+        run: pnpm --filter @bankmate/web build
 
       - name: Check documentation and configuration formatting
         run: pnpm run format:check

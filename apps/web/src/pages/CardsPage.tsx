@@ -37,7 +37,7 @@ function CardFace({ card }: { card: CardItem }) {
       <div className="card-face-top">
         <span className="card-face-brand">
           <span aria-hidden="true" className="card-face-mark">
-            {brand.mark}
+            <img alt="" src={brand.logoMark} />
           </span>
           {brand.name}
         </span>
