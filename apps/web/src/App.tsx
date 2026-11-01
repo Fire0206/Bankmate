@@ -296,7 +296,7 @@ function AccountDetails({
           账户、交易和产品信息使用本地数据。操作只更新本地账户记录，不会触达真实资金。
         </p>
         <p className="environment-note">
-          {mode === "fake"
+          {mode === "fake" || mode === "rules"
             ? "请求在本机处理，不会发送到外部服务。"
             : externalModelEgressEnabled
               ? "已启用外部服务。你的输入和完成请求所需的本地账户信息会发送至配置的服务，请勿输入真实个人信息。"
@@ -309,6 +309,7 @@ function AccountDetails({
 
 function promptSuggestions(cards: CardListResponse["items"]): string[] {
   const suggestions = [
+    "我能办理哪些业务？",
     "我这个月花了多少钱",
     "最近有没有异常消费",
     "我有哪些自动扣费",
@@ -1066,7 +1067,9 @@ export default function App() {
               </button>
               <AccountDetails
                 mode={
-                  activeTask?.provider_mode ?? session?.agent_provider ?? "fake"
+                  activeTask?.provider_mode ??
+                  session?.agent_provider ??
+                  "rules"
                 }
                 externalModelEgressEnabled={
                   session?.external_model_egress_enabled ?? false

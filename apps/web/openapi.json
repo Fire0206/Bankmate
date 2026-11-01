@@ -4814,6 +4814,7 @@
           "provider_mode": {
             "type": "string",
             "enum": [
+              "rules",
               "fake",
               "openai-compatible"
             ],
@@ -6048,6 +6049,7 @@
           "agent_provider": {
             "type": "string",
             "enum": [
+              "rules",
               "fake",
               "openai-compatible"
             ],

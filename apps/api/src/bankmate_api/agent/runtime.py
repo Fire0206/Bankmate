@@ -350,7 +350,7 @@ class AgentRuntime:
                         error_code=None,
                         executed_tools=executed,
                     )
-                if self.provider.mode != "fake":
+                if self.provider.mode not in {"fake", "rules"}:
                     if continuation:
                         return AgentRunResult(
                             status="completed",
@@ -612,10 +612,10 @@ def _tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return history
 
 
-class FakeProvider(LLMProvider):
-    """Deterministic local demo provider; this performs no LLM inference or network call."""
+class RuleProvider(LLMProvider):
+    """Resolve supported requests with fixed local rules; never calls a model or network."""
 
-    mode = "fake"
+    mode = "rules"
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> ModelTurn:
         del tools
@@ -693,11 +693,29 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        f"fake-{name.replace('.', '-')}",
+                        f"rules-{name.replace('.', '-')}",
                         name,
                         json.dumps(arguments, ensure_ascii=False),
                     ),
                 ),
+            )
+
+        if any(
+            phrase in request.casefold()
+            for phrase in (
+                "我能办理哪些业务",
+                "你能帮我做什么",
+                "你能做什么",
+                "你可以做什么",
+                "有什么功能",
+                "能办理什么",
+                "what can i do",
+            )
+        ) or request.casefold().strip() in {"帮助", "help"}:
+            return ModelTurn(
+                "我可以查询账户余额、收支和交易，管理银行卡与自动扣费，查看理财产品，"
+                "也可以协助发起转账。涉及资金或账户状态变化时，我会先展示具体内容并等待你确认。",
+                status="awaiting_input",
             )
 
         suspicious_intent = any(
@@ -1441,7 +1459,7 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        f"fake-{tool_name.replace('.', '-')}",
+                        f"rules-{tool_name.replace('.', '-')}",
                         tool_name,
                         json.dumps({"merchant_name": subscription_target}, ensure_ascii=False),
                     ),
@@ -1452,7 +1470,7 @@ class FakeProvider(LLMProvider):
         annual_bill_query = is_annual_bill_query(full_request)
         if reminder_query and "subscription.reminders" not in succeeded:
             name = "subscription.reminders"
-            return ModelTurn("", (ModelToolCall("fake-subscription-reminders", name, "{}"),))
+            return ModelTurn("", (ModelToolCall("rules-subscription-reminders", name, "{}"),))
 
         # Combined read requests must drain each requested result before taking the
         # general subscription-inventory branch. Otherwise the word "续费" can
@@ -1464,7 +1482,7 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        "fake-bill-annual-report",
+                        "rules-bill-annual-report",
                         "bill.annual_report",
                         json.dumps({"year": year}),
                     ),
@@ -1477,13 +1495,13 @@ class FakeProvider(LLMProvider):
             and not annual_bill_query
         ):
             name = "subscription.list"
-            return ModelTurn("", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, "{}"),))
+            return ModelTurn("", (ModelToolCall(f"rules-{name.replace('.', '-')}", name, "{}"),))
 
         if any(word in request for word in ("异常", "可疑", "不正常")):
             name = "bill.anomalies"
             args = {"month": month}
             return ModelTurn(
-                "", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, json.dumps(args)),)
+                "", (ModelToolCall(f"rules-{name.replace('.', '-')}", name, json.dumps(args)),)
             )
 
         bill_intent = any(
@@ -1521,7 +1539,7 @@ class FakeProvider(LLMProvider):
                 name = "bill.monthly_summary"
                 args = {"month": month, "category": category}
             return ModelTurn(
-                "", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, json.dumps(args)),)
+                "", (ModelToolCall(f"rules-{name.replace('.', '-')}", name, json.dumps(args)),)
             )
         requested_card_action = requested_card_tool(full_request)
         if (
@@ -1533,7 +1551,7 @@ class FakeProvider(LLMProvider):
             and any(phrase in full_request for phrase in ("银行卡", "借记卡", "卡片"))
         ):
             return ModelTurn(
-                "", (ModelToolCall("fake-card-applications", "card.applications", "{}"),)
+                "", (ModelToolCall("rules-card-applications", "card.applications", "{}"),)
             )
         is_unfreeze = requested_card_action == "card.unfreeze"
         is_freeze = requested_card_action == "card.freeze"
@@ -1591,7 +1609,7 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        f"fake-{tool_name.replace('.', '-')}", tool_name, json.dumps(args)
+                        f"rules-{tool_name.replace('.', '-')}", tool_name, json.dumps(args)
                     ),
                 ),
             )
@@ -1611,7 +1629,7 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        "fake-card-apply",
+                        "rules-card-apply",
                         name,
                         json.dumps({"account_label": account_label, "card_label": "模拟借记卡"}),
                     ),
@@ -1637,7 +1655,7 @@ class FakeProvider(LLMProvider):
                 "",
                 (
                     ModelToolCall(
-                        f"fake-{tool_name.replace('.', '-')}",
+                        f"rules-{tool_name.replace('.', '-')}",
                         tool_name,
                         json.dumps({"card_suffix": suffix}),
                     ),
@@ -1654,10 +1672,14 @@ class FakeProvider(LLMProvider):
                 name = "card.list"
                 args = {}
             return ModelTurn(
-                "", (ModelToolCall(f"fake-{name.replace('.', '-')}", name, json.dumps(args)),)
+                "", (ModelToolCall(f"rules-{name.replace('.', '-')}", name, json.dumps(args)),)
             )
 
         return ModelTurn(
             "我可以查询银行卡、账单和订阅，也可以办理模拟转账与理财操作。请说说你要办理的事项。",
             status="awaiting_input",
         )
+
+
+# Preserve the former internal import name for existing integrations.
+FakeProvider = RuleProvider

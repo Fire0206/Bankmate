@@ -74,7 +74,6 @@ export function customerText(value: string | null | undefined): string {
     .replaceAll("演示提示阈值", "提醒阈值")
     .replaceAll("模拟", "")
     .replaceAll("演示", "")
-    .replaceAll("Fake Provider", "本地处理")
     .replaceAll("demo_otp", "本地验证");
 }
 

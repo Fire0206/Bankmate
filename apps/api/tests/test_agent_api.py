@@ -20,6 +20,7 @@ from bankmate_api.api.v1.agent import get_provider_selection
 from bankmate_api.application.card_applications import review_card_application
 from bankmate_api.application.errors import BankingRuleError
 from bankmate_api.application.transactions import write_transaction
+from bankmate_api.config import Settings, get_settings
 from bankmate_api.domain.cards import CardStatus
 from bankmate_api.infrastructure.database import get_db_session
 from bankmate_api.infrastructure.models import (
@@ -82,6 +83,69 @@ def submit(
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def test_default_rules_mode_answers_and_reads_real_data_without_api_key(seeded_database) -> None:
+    def override_session():
+        with seeded_database.session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_db_session] = override_session
+    app.dependency_overrides[get_current_demo_actor] = lambda: DemoActor(DEMO_USER_ONE_ID)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        environment="test",
+        agent_provider="rules",
+        llm_base_url=None,
+        llm_api_key=None,
+        llm_model=None,
+    )
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            help_task = submit(
+                client,
+                "我能办理哪些业务？",
+                key="judge-help",
+                conversation_id="30000000-0000-4000-8000-000000000101",
+            )
+            assert help_task["provider_mode"] == "rules"
+            assert help_task["status"] == "awaiting_input"
+            assert not any(step["tool_name"] for step in help_task["steps"])
+            assert "等待你确认" in help_task["message"]
+
+            bill_task = submit(
+                client,
+                "我这个月花了多少钱",
+                key="judge-bill-summary",
+                conversation_id="30000000-0000-4000-8000-000000000102",
+            )
+            assert bill_task["provider_mode"] == "rules"
+            assert bill_task["status"] == "completed"
+            summary_step = next(
+                step for step in bill_task["steps"] if step["tool_name"] == "bill.monthly_summary"
+            )
+            assert summary_step["status"] == "succeeded"
+            assert isinstance(summary_step["result_data"]["expense_minor"], int)
+
+            freeze_task = submit(
+                client,
+                "冻结尾号 1042 的卡",
+                key="judge-card-freeze",
+                conversation_id="30000000-0000-4000-8000-000000000103",
+            )
+            assert freeze_task["provider_mode"] == "rules"
+            assert freeze_task["status"] == "awaiting_confirmation"
+            completed = confirm(client, freeze_task)
+            assert completed.status_code == 200, completed.text
+            assert completed.json()["status"] == "completed"
+            with seeded_database.session_factory() as session:
+                card = session.get(Card, ALICE_ACTIVE_CARD_ID)
+                assert card is not None
+                assert card.status == CardStatus.FROZEN
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+        app.dependency_overrides.pop(get_current_demo_actor, None)
+        app.dependency_overrides.pop(get_settings, None)
 
 
 def confirm(client: TestClient, task: dict, *, key: str | None = None, digest: str | None = None):

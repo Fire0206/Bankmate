@@ -18,6 +18,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Reject committed local environment files
+        shell: bash
+        run: |
+          unexpected="$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '(^|/)\.env\.example$' || true)"
+          if [ -n "$unexpected" ]; then
+            printf 'Unexpected tracked environment files:\n%s\n' "$unexpected"
+            exit 1
+          fi
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
