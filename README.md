@@ -50,7 +50,7 @@ BankMate 将账户查询和常见银行事务放在同一处。用户可以查�
 
 仓库提供一组固定的合成数据，覆盖账户总览、银行卡、账单、订阅、转账、AA 分账和理财页面。每次重置都会重新生成相同的展示记录，方便录制时从一致的起点开始。
 
-视频数据保存在独立的 `.data/finorch-showcase.db`，不会覆盖普通开发库 `.data/finorch.db`。Windows 在仓库根目录运行：
+视频数据保存在独立的 `.data/bankmate-showcase.db`，不会覆盖普通开发库 `.data/bankmate.db`。Windows 在仓库根目录运行：
 
 ```powershell
 .\scripts\demo.ps1 -Mode reset -DataProfile video -Showcase
@@ -60,10 +60,10 @@ macOS / Linux：
 
 ```bash
 mkdir -p .data
-export FINORCH_ENVIRONMENT=development
-export FINORCH_DATABASE_URL=sqlite:///./.data/finorch-showcase.db
+export BANKMATE_ENVIRONMENT=development
+export BANKMATE_DATABASE_URL=sqlite:///./.data/bankmate-showcase.db
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
-uv run --project apps/api python -m finorch_api.reset --confirm --showcase
+uv run --project apps/api python -m bankmate_api.reset --confirm --showcase
 ```
 
 重置只允许写入专用展示数据库。每次重置会恢复同一组合成记录，便于从固定起点录制。
@@ -112,20 +112,20 @@ cp .env.example .env
 pnpm install
 uv sync --project apps/api
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
-uv run --project apps/api python -m finorch_api.reset --confirm
+uv run --project apps/api python -m bankmate_api.reset --confirm
 ```
 
 在两个终端分别运行：
 
 ```bash
-uv run --project apps/api uvicorn --app-dir apps/api/src finorch_api.main:app --host 127.0.0.1 --port 8000
+uv run --project apps/api uvicorn --app-dir apps/api/src bankmate_api.main:app --host 127.0.0.1 --port 8000
 ```
 
 ```bash
-pnpm --filter @finorch/web exec vite --host 127.0.0.1
+pnpm --filter @bankmate/web exec vite --host 127.0.0.1
 ```
 
-运行 API 前保持 `.env` 中的 `FINORCH_DATABASE_URL` 指向 `.data/finorch-showcase.db`，并将 `FINORCH_ENVIRONMENT` 设为 `development`。
+运行 API 前保持 `.env` 中的 `BANKMATE_DATABASE_URL` 指向 `.data/bankmate-showcase.db`，并将 `BANKMATE_ENVIRONMENT` 设为 `development`。
 
 ## 测试与检查
 
@@ -133,9 +133,9 @@ API 测试使用临时 SQLite 数据库；前端检查、构建和格式验证�
 
 ```bash
 uv run --project apps/api pytest apps/api/tests
-pnpm --filter @finorch/web lint
-pnpm --filter @finorch/web typecheck
-pnpm --filter @finorch/web build
+pnpm --filter @bankmate/web lint
+pnpm --filter @bankmate/web typecheck
+pnpm --filter @bankmate/web build
 pnpm run format:check
 ```
 

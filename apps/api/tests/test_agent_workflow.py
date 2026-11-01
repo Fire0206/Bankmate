@@ -1,5 +1,5 @@
-from finorch_api.agent.intent import has_explicit_investment_write_intent
-from finorch_api.application.agent_workflow import (
+from bankmate_api.agent.intent import has_explicit_investment_write_intent
+from bankmate_api.application.agent_workflow import (
     _requested_card_tool,
     _requested_subscription_tool,
     invalid_tool_input_name,

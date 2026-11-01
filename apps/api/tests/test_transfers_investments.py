@@ -4,13 +4,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
-from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider, LLMProvider, ModelToolCall, ModelTurn
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.application.transactions import write_transaction
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import (
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider, LLMProvider, ModelToolCall, ModelTurn
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.infrastructure.models import (
     Account,
     AuditEvent,
     ConfirmationChallenge,
@@ -23,15 +22,16 @@ from finorch_api.infrastructure.models import (
     Transfer,
     utc_now,
 )
-from finorch_api.main import app
-from finorch_api.security.circuit import active_write_hold
-from finorch_api.security.demo_identity import (
+from bankmate_api.main import app
+from bankmate_api.security.circuit import active_write_hold
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from finorch_api.security.verification import issue_demo_code
+from bankmate_api.security.verification import issue_demo_code
+from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
@@ -540,7 +540,7 @@ def test_scheduled_transfer_failure_after_debit_rolls_back_that_transfer(
         transfer_id = transfer.id
 
     before = balances(database)
-    from finorch_api.application import transfers as transfer_application
+    from bankmate_api.application import transfers as transfer_application
 
     original_delta = transfer_application._account_delta
     calls = 0
@@ -582,7 +582,7 @@ def test_scheduled_transfer_failure_after_debit_rolls_back_that_transfer(
 def test_scheduled_transfer_one_year_limit_handles_leap_day(banking_api, monkeypatch) -> None:
     client, _actor, _database = banking_api
     leap_day_now = datetime(2024, 2, 29, 0, 0, tzinfo=UTC)
-    monkeypatch.setattr("finorch_api.application.transfers.utc_now", lambda: leap_day_now)
+    monkeypatch.setattr("bankmate_api.application.transfers.utc_now", lambda: leap_day_now)
 
     class ScheduledTransferProvider(LLMProvider):
         mode = "openai-compatible"

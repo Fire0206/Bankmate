@@ -1,5 +1,5 @@
 {
-  "name": "finorch-banking-agent",
+  "name": "bankmate",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",
@@ -8,7 +8,7 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "api:types": "uv run --project apps/api python apps/api/scripts/export_openapi.py && pnpm --filter @finorch/web generate:api-types",
+    "api:types": "uv run --project apps/api python apps/api/scripts/export_openapi.py && pnpm --filter @bankmate/web generate:api-types",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore",
     "format:write": "prettier --write ."
   },

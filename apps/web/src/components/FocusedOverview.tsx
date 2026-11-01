@@ -222,8 +222,8 @@ export function FocusedOverview({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<OverviewDialog>(() => {
-    const previewDialog = sessionStorage.getItem("finorch.preview.dialog");
-    sessionStorage.removeItem("finorch.preview.dialog");
+    const previewDialog = sessionStorage.getItem("bankmate.preview.dialog");
+    sessionStorage.removeItem("bankmate.preview.dialog");
     return previewDialog === "transactions" ||
       previewDialog === "risk" ||
       previewDialog === "audit"
@@ -327,7 +327,7 @@ export function FocusedOverview({
     );
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "finorch-transactions.csv";
+    anchor.download = "bankmate-transactions.csv";
     anchor.click();
     URL.revokeObjectURL(url);
   };

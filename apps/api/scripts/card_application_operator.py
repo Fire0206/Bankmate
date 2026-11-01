@@ -3,10 +3,10 @@
 import argparse
 from uuid import UUID
 
-from finorch_api.application.card_applications import review_card_application
-from finorch_api.config import get_settings
-from finorch_api.infrastructure.database import get_session_factory
-from finorch_api.infrastructure.models import CardApplication
+from bankmate_api.application.card_applications import review_card_application
+from bankmate_api.config import get_settings
+from bankmate_api.infrastructure.database import get_session_factory
+from bankmate_api.infrastructure.models import CardApplication
 
 
 def main() -> None:

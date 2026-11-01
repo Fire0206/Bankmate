@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
-from finorch_api.security.risk_policy import business_day_bounds, decide_risk
+from bankmate_api.security.risk_policy import business_day_bounds, decide_risk
 
 
 def test_read_is_low_risk_but_write_requires_confirmation():

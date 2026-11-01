@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from finorch_api.main import app
+from bankmate_api.main import app
 
 repository_root = Path(__file__).resolve().parents[3]
 output_path = repository_root / "apps" / "web" / "openapi.json"

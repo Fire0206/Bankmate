@@ -4,16 +4,16 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
-from finorch_api.application.cards import (
+from bankmate_api.application.cards import (
     CardNotFoundError,
     freeze_card,
     get_card,
     list_cards,
     unfreeze_card,
 )
-from finorch_api.application.transactions import write_transaction
-from finorch_api.domain.cards import CardStatus, InvalidCardTransition
-from finorch_api.infrastructure.models import (
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.domain.cards import CardStatus, InvalidCardTransition
+from bankmate_api.infrastructure.models import (
     Account,
     AgentTask,
     AuditEvent,
@@ -23,7 +23,7 @@ from finorch_api.infrastructure.models import (
     DemoUser,
     HumanHandoff,
 )
-from finorch_api.security.demo_identity import DEMO_USER_ONE_ID
+from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID
 from sqlalchemy import event, func, select
 from sqlalchemy.exc import OperationalError
 
@@ -168,7 +168,7 @@ def test_database_failure_rolls_back_card_state_and_audit(seeded_database) -> No
 
 
 def test_seed_reset_restores_demo_baseline_and_is_path_guarded(seeded_database) -> None:
-    from finorch_api.reset import reset_demo_data, validate_reset_target
+    from bankmate_api.reset import reset_demo_data, validate_reset_target
 
     repository_root = Path(__file__).resolve().parents[3]
 
@@ -179,7 +179,7 @@ def test_seed_reset_restores_demo_baseline_and_is_path_guarded(seeded_database) 
     )
     validate_reset_target(
         environment="development",
-        database_url=f"sqlite:///{repository_root.as_posix()}/.data/finorch.db",
+        database_url=f"sqlite:///{repository_root.as_posix()}/.data/bankmate.db",
         repository_root=repository_root,
     )
     with pytest.raises(ValueError):
@@ -226,7 +226,7 @@ def test_seed_reset_restores_demo_baseline_and_is_path_guarded(seeded_database) 
 
 
 def test_seed_reset_clears_card_and_workflow_records_before_parent_rows(seeded_database) -> None:
-    from finorch_api.reset import reset_demo_data
+    from bankmate_api.reset import reset_demo_data
 
     with seeded_database.session_factory.begin() as session:
         account = session.scalar(select(Account).where(Account.demo_user_id == DEMO_USER_ONE_ID))

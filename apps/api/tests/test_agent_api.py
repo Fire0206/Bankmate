@@ -4,22 +4,21 @@ from threading import Event
 from uuid import UUID
 
 import pytest
-from fastapi.testclient import TestClient
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import (
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import (
     AgentProviderError,
     FakeProvider,
     LLMProvider,
     ModelToolCall,
     ModelTurn,
 )
-from finorch_api.api.v1.agent import get_provider_selection
-from finorch_api.application.card_applications import review_card_application
-from finorch_api.application.errors import BankingRuleError
-from finorch_api.application.transactions import write_transaction
-from finorch_api.domain.cards import CardStatus
-from finorch_api.infrastructure.database import get_db_session
-from finorch_api.infrastructure.models import (
+from bankmate_api.api.v1.agent import get_provider_selection
+from bankmate_api.application.card_applications import review_card_application
+from bankmate_api.application.errors import BankingRuleError
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.domain.cards import CardStatus
+from bankmate_api.infrastructure.database import get_db_session
+from bankmate_api.infrastructure.models import (
     AgentTask,
     AuditEvent,
     Card,
@@ -29,14 +28,15 @@ from finorch_api.infrastructure.models import (
     ToolExecution,
     utc_now,
 )
-from finorch_api.main import app
-from finorch_api.security.demo_identity import (
+from bankmate_api.main import app
+from bankmate_api.security.demo_identity import (
     DEMO_USER_ONE_ID,
     DEMO_USER_TWO_ID,
     DemoActor,
     get_current_demo_actor,
 )
-from finorch_api.security.verification import issue_demo_code
+from bankmate_api.security.verification import issue_demo_code
+from fastapi.testclient import TestClient
 from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import func, select, update
 

@@ -2,13 +2,13 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
-from finorch_api.application.agent import create_agent_task
-from finorch_api.application.transactions import write_transaction
-from finorch_api.infrastructure.models import ConfirmationChallenge, StrongVerification, utc_now
-from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
-from finorch_api.security.verification import challenge_risk, consume_demo_code, issue_demo_code
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.application.agent import create_agent_task
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.infrastructure.models import ConfirmationChallenge, StrongVerification, utc_now
+from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
+from bankmate_api.security.verification import challenge_risk, consume_demo_code, issue_demo_code
 from sqlalchemy import select
 
 

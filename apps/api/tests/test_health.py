@@ -1,6 +1,6 @@
+from bankmate_api.config import Settings
+from bankmate_api.main import app
 from fastapi.testclient import TestClient
-from finorch_api.config import Settings
-from finorch_api.main import app
 
 client = TestClient(app)
 
@@ -11,7 +11,7 @@ def test_health_returns_api_process_status_and_request_id() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "finorch-api",
+        "service": "bankmate-api",
         "version": "0.1.0",
     }
     assert response.headers["X-Request-ID"] == "phase0-check-001"
@@ -30,7 +30,7 @@ def test_unknown_route_uses_standard_error_envelope() -> None:
 
 
 def test_evaluation_instance_header_is_test_only(monkeypatch) -> None:
-    import finorch_api.main as main_module
+    import bankmate_api.main as main_module
 
     monkeypatch.setattr(
         main_module,
@@ -39,8 +39,8 @@ def test_evaluation_instance_header_is_test_only(monkeypatch) -> None:
     )
     response = TestClient(app).get("/api/v1/health")
 
-    assert response.headers["X-FinOrch-Eval-Instance"] == "phase2d-test-instance"
-    assert len(response.headers["X-FinOrch-Eval-Database"]) == 64
+    assert response.headers["X-BankMate-Eval-Instance"] == "phase2d-test-instance"
+    assert len(response.headers["X-BankMate-Eval-Database"]) == 64
 
     monkeypatch.setattr(
         main_module,
@@ -48,4 +48,4 @@ def test_evaluation_instance_header_is_test_only(monkeypatch) -> None:
         Settings(_env_file=None, environment="development", eval_instance_id="not-for-development"),
     )
     response = TestClient(app).get("/api/v1/health")
-    assert "X-FinOrch-Eval-Instance" not in response.headers
+    assert "X-BankMate-Eval-Instance" not in response.headers

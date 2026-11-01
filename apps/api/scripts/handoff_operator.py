@@ -3,9 +3,9 @@
 import argparse
 from uuid import UUID
 
-from finorch_api.application.handoffs import simulate_operator_update
-from finorch_api.config import get_settings
-from finorch_api.infrastructure.database import build_engine
+from bankmate_api.application.handoffs import simulate_operator_update
+from bankmate_api.config import get_settings
+from bankmate_api.infrastructure.database import build_engine
 from sqlalchemy.orm import sessionmaker
 
 

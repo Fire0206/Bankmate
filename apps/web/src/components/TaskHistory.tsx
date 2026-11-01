@@ -74,10 +74,7 @@ export function TaskHistory({
               >
                 <span className="task-history-copy">
                   <strong>{item.request_text.split("\n")[0]}</strong>
-                  <small>
-                    {dateLabel(item.updated_at)}
-                    {item.message ? ` · ${item.message}` : ""}
-                  </small>
+                  <small>{dateLabel(item.updated_at)}</small>
                 </span>
                 <span className={"task-status task-status-" + item.status}>
                   {statusLabel(item.status)}

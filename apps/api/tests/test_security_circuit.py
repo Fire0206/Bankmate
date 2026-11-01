@@ -1,17 +1,17 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from finorch_api.agent.providers import ProviderSelection
-from finorch_api.agent.runtime import FakeProvider
-from finorch_api.application.agent import create_agent_task
-from finorch_api.application.transactions import write_transaction
-from finorch_api.infrastructure.models import AuditEvent, utc_now
-from finorch_api.security.circuit import (
+from bankmate_api.agent.providers import ProviderSelection
+from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.application.agent import create_agent_task
+from bankmate_api.application.transactions import write_transaction
+from bankmate_api.infrastructure.models import AuditEvent, utc_now
+from bankmate_api.security.circuit import (
     HOLD_DURATION,
     active_write_hold,
     record_safety_signal,
 )
-from finorch_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
+from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 from sqlalchemy import func, select
 
 

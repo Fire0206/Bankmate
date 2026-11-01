@@ -16,7 +16,7 @@ import type {
 
 export const demoHealth = {
   status: "ok",
-  service: "finorch-api",
+  service: "bankmate-api",
   version: "0.1.0",
 };
 

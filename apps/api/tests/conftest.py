@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from finorch_api.infrastructure.database import build_engine
-from finorch_api.seed_data import seed_demo_data
+from bankmate_api.infrastructure.database import build_engine
+from bankmate_api.seed_data import seed_demo_data
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -21,7 +21,7 @@ class TestDatabase:
 
 @pytest.fixture
 def database(tmp_path: Path) -> TestDatabase:
-    database_path = tmp_path / "finorch-test.sqlite3"
+    database_path = tmp_path / "bankmate-test.sqlite3"
     database_url = URL.create("sqlite", database=str(database_path)).render_as_string(
         hide_password=False
     )

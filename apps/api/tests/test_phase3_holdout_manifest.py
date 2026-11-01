@@ -42,8 +42,8 @@ def test_phase3_holdout_is_frozen_unique_and_independent() -> None:
 
 
 def test_phase3_evaluator_selects_the_frozen_dataset(monkeypatch) -> None:
-    monkeypatch.setenv("FINORCH_EVAL_DATASET", "phase3-holdout")
-    monkeypatch.delenv("FINORCH_EVAL_CASES", raising=False)
+    monkeypatch.setenv("BANKMATE_EVAL_DATASET", "phase3-holdout")
+    monkeypatch.delenv("BANKMATE_EVAL_CASES", raising=False)
 
     cases = EVAL_MODULE.selected_cases()
 
