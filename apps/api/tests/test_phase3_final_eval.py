@@ -5,8 +5,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts import phase2e_eval
 from scripts.phase3_final_eval import DEV_CASES, HOLDOUT_CASES, _sanitized_report
+
+from scripts import phase2e_eval
 
 
 def test_phase3_final_suites_are_independent_and_cover_requested_modules() -> None:

@@ -1,12 +1,12 @@
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.engine import URL
 
-from alembic import command
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider
 from bankmate_api.api.v1.agent import get_provider_selection

@@ -2,11 +2,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from alembic import command
 from bankmate_api.config import get_settings
 from bankmate_api.infrastructure.database import build_engine
 from bankmate_api.seed_data import seed_demo_data

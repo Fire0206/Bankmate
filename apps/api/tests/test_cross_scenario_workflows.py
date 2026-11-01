@@ -31,12 +31,13 @@ from bankmate_api.security.demo_identity import (
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from bankmate_api.agent.registry import build_tool_registry
 from scripts.phase2d_eval import (  # noqa: E402
     _business_snapshot,
     _confirmed_resource_checks,
     _result_schema_checks,
 )
+
+from bankmate_api.agent.registry import build_tool_registry
 
 CONVERSATION_ID = "30000000-0000-4000-8000-000000000001"
 SOURCE_ACCOUNT_ID = UUID("10000000-0000-4000-8000-000000000001")

@@ -1,12 +1,12 @@
 from pathlib import Path
 from uuid import UUID
 
+from alembic import command
 from alembic.config import Config
 from sqlalchemy import func, inspect, select, text
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker
 
-from alembic import command
 from bankmate_api.infrastructure.database import build_engine
 from bankmate_api.infrastructure.models import (
     Account,

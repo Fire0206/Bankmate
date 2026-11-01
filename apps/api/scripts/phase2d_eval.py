@@ -38,6 +38,8 @@ API_ROOT = REPOSITORY_ROOT / "apps" / "api"
 sys.path.insert(0, str(API_ROOT))
 sys.path.insert(0, str(API_ROOT / "src"))
 
+from scripts.phase2d_case_catalog import WRITE_TOOLS, cases  # noqa: E402
+
 from bankmate_api.agent.registry import build_tool_registry  # noqa: E402
 from bankmate_api.application.birthday_plans import dispatch_due_birthday_orders  # noqa: E402
 from bankmate_api.application.transactions import write_transaction  # noqa: E402
@@ -71,7 +73,6 @@ from bankmate_api.infrastructure.models import (  # noqa: E402
 from bankmate_api.reset import reset_demo_data, validate_reset_target  # noqa: E402
 from bankmate_api.security.verification import issue_demo_code  # noqa: E402
 from bankmate_api.seed_data import seed_demo_data  # noqa: E402
-from scripts.phase2d_case_catalog import WRITE_TOOLS, cases  # noqa: E402
 
 DATASET_VERSION = "phase2d-v1"
 HOLDOUT_LOCK_PATH = REPOSITORY_ROOT / "apps" / "api" / "scripts" / "phase2d_holdout.lock.json"

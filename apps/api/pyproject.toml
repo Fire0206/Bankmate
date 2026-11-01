@@ -35,6 +35,9 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["bankmate_api"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
