@@ -23,7 +23,7 @@ class DemoSessionResponse(BaseModel):
     display_name: str
     environment: Literal["development", "test"]
     dataset_version: str
-    agent_provider: Literal["fake", "openai-compatible"]
+    agent_provider: Literal["rules", "fake", "openai-compatible"]
     external_model_egress_enabled: bool
 
 

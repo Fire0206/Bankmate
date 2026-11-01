@@ -114,7 +114,7 @@ class AgentTaskResponse(BaseModel):
     id: UUID
     conversation_id: UUID
     request_text: str
-    provider_mode: Literal["fake", "openai-compatible"]
+    provider_mode: Literal["rules", "fake", "openai-compatible"]
     status: Literal[
         "pending",
         "planning",

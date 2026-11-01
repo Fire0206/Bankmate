@@ -18,7 +18,7 @@ from bankmate_api.infrastructure.models import (
 )
 from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
 
-DATASET_VERSION = "phase3-v1"
+DATASET_VERSION = "bankmate-v1"
 SYNTHETIC_NAMESPACE = UUID("a0000000-0000-4000-8000-000000000001")
 _SYNTHETIC_NAMESPACE = SYNTHETIC_NAMESPACE
 

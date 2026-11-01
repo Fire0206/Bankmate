@@ -227,7 +227,7 @@ def test_migration_preserves_previous_user_risk_level(tmp_path: Path) -> None:
                     "INSERT INTO demo_users "
                     "(id, display_name, dataset_version, risk_level, created_at) "
                     "VALUES ('00000000000040008000000000000001', 'Prior Demo', "
-                    "'phase3-v1', 4, '2026-10-01')"
+                    "'bankmate-v1', 4, '2026-10-01')"
                 )
             )
         command.upgrade(config, "head")

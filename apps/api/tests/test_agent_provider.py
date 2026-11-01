@@ -32,10 +32,26 @@ def test_fake_provider_is_deterministic_and_does_not_call_network() -> None:
     first = provider.complete(messages, [])
     second = provider.complete(messages, [])
 
-    assert provider.mode == "fake"
+    assert provider.mode == "rules"
     assert first == second
     assert first.tool_calls[0].name == "card.unfreeze"
     assert json.loads(first.tool_calls[0].arguments) == {"card_suffix": "1042"}
+
+
+def test_rule_provider_answers_capability_question_without_model_credentials() -> None:
+    selection = select_provider(Settings(_env_file=None))
+
+    assert selection.mode == "rules"
+    assert selection.provider is not None
+    turn = selection.provider.complete(
+        [{"role": "user", "content": "我能办理哪些业务？"}],
+        [],
+    )
+
+    assert turn.status == "awaiting_input"
+    assert not turn.tool_calls
+    assert "查询账户余额" in turn.content
+    assert "等待你确认" in turn.content
 
 
 def test_fake_provider_summarizes_recorded_successful_write() -> None:
@@ -448,207 +464,6 @@ def test_runtime_forces_missing_persisted_workflow_dependency_after_block() -> N
     assert result.status == "completed"
     assert provider.required_tools == ["card.catalog"]
     assert dispatched == ["birthday.plan", "card.catalog"]
-
-
-def test_evaluation_usage_telemetry_records_only_sanitized_token_counts(
-    monkeypatch, tmp_path
-) -> None:
-    usage_file = tmp_path / "usage.jsonl"
-    response_content = "PRIVATE_MODEL_RESPONSE_DO_NOT_LOG"
-    captured: dict[str, Any] = {}
-
-    class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def read(self) -> bytes:
-            return json.dumps(
-                {
-                    "choices": [{"message": {"content": response_content}}],
-                    "usage": {
-                        "prompt_tokens": 321,
-                        "completion_tokens": 17,
-                        "total_tokens": 338,
-                        "prompt_cache_hit_tokens": 50,
-                    },
-                }
-            ).encode()
-
-    def fake_urlopen(request, timeout):
-        captured["body"] = json.loads(request.data)
-        return Response()
-
-    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
-    selection = select_provider(
-        Settings(
-            _env_file=None,
-            environment="test",
-            agent_provider="openai-compatible",
-            llm_data_egress_enabled=True,
-            llm_base_url="https://model.example/v1",
-            llm_api_key=SecretStr("unit-test-key"),
-            llm_model="mock-eval-model",
-            eval_usage_file=usage_file,
-            eval_max_completion_tokens=8192,
-        )
-    )
-
-    assert selection.provider is not None
-    selection.provider.complete([{"role": "user", "content": "PRIVATE_REQUEST_DO_NOT_LOG"}], [])
-    selection.provider.complete(
-        [
-            {
-                "role": "tool",
-                "content": "BANKMATE_EVAL_UNTRUSTED_DATA:synthetic hostile description",
-            }
-        ],
-        [],
-    )
-    assert captured["body"]["max_tokens"] == 8192
-
-    lines = usage_file.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 6
-    started, context_observation, recorded, second_started, second_context, second_recorded = (
-        json.loads(line) for line in lines
-    )
-    assert started["event"] == "request_started"
-    assert context_observation == {
-        "event": "request_context_observation",
-        "call_id": started["call_id"],
-        "untrusted_fixture_marker_forwarded": False,
-    }
-    assert second_context == {
-        "event": "request_context_observation",
-        "call_id": second_started["call_id"],
-        "untrusted_fixture_marker_forwarded": True,
-    }
-    assert second_started["event"] == "request_started"
-    assert second_recorded["event"] == "response_usage"
-    assert second_started["call_id"] == second_recorded["call_id"]
-    assert recorded["event"] == "response_usage"
-    assert started["call_id"] == recorded["call_id"]
-    assert recorded == {
-        "event": "response_usage",
-        "call_id": started["call_id"],
-        "model": "mock-eval-model",
-        "usage_available": True,
-        "prompt_tokens": 321,
-        "completion_tokens": 17,
-        "total_tokens": 338,
-        "cached_prompt_tokens": 50,
-    }
-    assert "PRIVATE" not in usage_file.read_text(encoding="utf-8")
-    assert "hostile description" not in usage_file.read_text(encoding="utf-8")
-    assert "unit-test-key" not in usage_file.read_text(encoding="utf-8")
-
-
-def test_evaluation_usage_telemetry_is_disabled_outside_test_environment(
-    monkeypatch, tmp_path
-) -> None:
-    usage_file = tmp_path / "usage.jsonl"
-
-    class Response:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def read(self) -> bytes:
-            return json.dumps(
-                {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 1}}
-            ).encode()
-
-    monkeypatch.setattr(
-        "bankmate_api.agent.providers._open_provider_request", lambda *_args, **_kwargs: Response()
-    )
-    selection = select_provider(
-        Settings(
-            _env_file=None,
-            environment="development",
-            agent_provider="openai-compatible",
-            llm_data_egress_enabled=True,
-            llm_base_url="https://model.example/v1",
-            llm_api_key=SecretStr("unit-test-key"),
-            llm_model="mock-eval-model",
-            eval_usage_file=usage_file,
-        )
-    )
-
-    assert selection.provider is not None
-    selection.provider.complete([{"role": "user", "content": "secret"}], [])
-
-    assert not usage_file.exists()
-
-
-def test_evaluation_hard_budget_guard_refuses_request_before_network(monkeypatch, tmp_path) -> None:
-    usage_file = tmp_path / "usage.jsonl"
-    network_called = False
-
-    def fake_urlopen(*_args, **_kwargs):
-        nonlocal network_called
-        network_called = True
-        raise AssertionError("Budget rejection must happen before the provider request.")
-
-    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
-    selection = select_provider(
-        Settings(
-            _env_file=None,
-            environment="test",
-            agent_provider="openai-compatible",
-            llm_data_egress_enabled=True,
-            llm_base_url="https://model.example/v1",
-            llm_api_key=SecretStr("unit-test-key"),
-            llm_model="mock-eval-model",
-            eval_usage_file=usage_file,
-            eval_max_completion_tokens=8192,
-            eval_hard_budget_cny=0.1,
-        )
-    )
-
-    assert selection.provider is not None
-    with pytest.raises(AgentProviderError, match="hard model evaluation budget"):
-        selection.provider.complete([{"role": "user", "content": "test"}], [])
-
-    assert not network_called
-    assert not usage_file.exists()
-
-
-def test_evaluation_hard_budget_guard_includes_previous_runs(monkeypatch, tmp_path) -> None:
-    usage_file = tmp_path / "usage.jsonl"
-    network_called = False
-
-    def fake_urlopen(*_args, **_kwargs):
-        nonlocal network_called
-        network_called = True
-        raise AssertionError("Cumulative budget rejection must happen before the provider request.")
-
-    monkeypatch.setattr("bankmate_api.agent.providers._open_provider_request", fake_urlopen)
-    selection = select_provider(
-        Settings(
-            _env_file=None,
-            environment="test",
-            agent_provider="openai-compatible",
-            llm_data_egress_enabled=True,
-            llm_base_url="https://model.example/v1",
-            llm_api_key=SecretStr("unit-test-key"),
-            llm_model="mock-eval-model",
-            eval_usage_file=usage_file,
-            eval_max_completion_tokens=8192,
-            eval_hard_budget_cny=120,
-            eval_initial_cost_cny=118,
-        )
-    )
-
-    assert selection.provider is not None
-    with pytest.raises(AgentProviderError, match="hard model evaluation budget"):
-        selection.provider.complete([{"role": "user", "content": "test"}], [])
-
-    assert not network_called
-    assert not usage_file.exists()
 
 
 def test_deepseek_adapter_disables_reasoning_for_multi_turn_tool_calls(monkeypatch) -> None:

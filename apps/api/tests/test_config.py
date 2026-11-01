@@ -36,6 +36,7 @@ def test_env_example_loads_settings(monkeypatch, tmp_path) -> None:
     assert settings.service_name == "bankmate-api"
     assert settings.service_version == "0.1.0"
     assert settings.database_url == "sqlite:///./.data/bankmate.db"
+    assert settings.agent_provider == "rules"
     assert settings.llm_timeout_seconds == 60.0
     assert settings.llm_temperature == 0.2
     assert settings.llm_data_egress_enabled is False

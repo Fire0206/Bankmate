@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from bankmate_api.agent.providers import ProviderSelection
-from bankmate_api.agent.runtime import FakeProvider
+from bankmate_api.agent.runtime import RuleProvider
 from bankmate_api.application.agent import create_agent_task
 from bankmate_api.application.bills import get_monthly_summary
 from bankmate_api.application.risk_assessment import submit_assessment
@@ -503,7 +503,7 @@ def _seed_investment_history(session: Session) -> None:
 
 
 def _seed_assessment_and_agent_history(session_factory: sessionmaker[Session]) -> None:
-    selection = ProviderSelection(provider=FakeProvider(), mode="fake")
+    selection = ProviderSelection(provider=RuleProvider(), mode="rules")
     answers: RiskAnswers = {
         "time_horizon": 3,
         "loss_tolerance": 3,

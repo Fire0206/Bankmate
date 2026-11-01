@@ -227,7 +227,7 @@ def test_adversarial_tool_attempts_never_mutate_financial_state_without_confirma
     response = client.post(
         "/api/v1/agent/tasks",
         json={"request_text": case[1], "conversation_id": str(uuid4())},
-        headers={"Idempotency-Key": f"security-eval-{case[0]}"},
+        headers={"Idempotency-Key": f"security-boundary-{case[0]}"},
     )
     assert response.status_code == 200, response.text
     task = response.json()

@@ -839,7 +839,7 @@ export interface components {
              * Provider Mode
              * @enum {string}
              */
-            provider_mode: "fake" | "openai-compatible";
+            provider_mode: "rules" | "fake" | "openai-compatible";
             /**
              * Status
              * @enum {string}
@@ -1298,7 +1298,7 @@ export interface components {
              * Agent Provider
              * @enum {string}
              */
-            agent_provider: "fake" | "openai-compatible";
+            agent_provider: "rules" | "fake" | "openai-compatible";
             /** External Model Egress Enabled */
             external_model_egress_enabled: boolean;
         };

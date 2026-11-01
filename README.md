@@ -71,7 +71,16 @@ uv run --project apps/api python -m bankmate_api.reset --confirm --showcase
 
 ## 本地运行
 
-当前数据为虚拟账户、交易和产品，不连接真实银行、支付网络或商户。默认使用本地规则处理请求；如需使用兼容模型服务，可在本机 `.env` 配置。密钥只交给 API 服务读取，不要放进网页配置或提交到仓库。
+默认规则模式不需要 API Key，也不调用外部模型。支持的常用请求由本地规则识别，账户查询和业务变更仍由 BankMate API 校验并写入 SQLite；规则无法确定意图时会请求补充信息。可选的 OpenAI-compatible 模型服务需由 API 在本机 `.env` 配置。
+
+评委可以先试这些请求：
+
+- `我能办理哪些业务？`：查看固定的功能说明，不依赖模型或联网。
+- `查询我的账户余额`：读取当前合成账户。
+- `我这个月花了多少钱`：查看账单汇总。
+- `冻结尾号 1042 的卡`：查看并确认一项银行卡操作。
+
+涉及资金或账户状态变化的请求仍需经过服务端确认；页面显示的是 API 返回的业务结果。
 
 ### Windows
 
@@ -96,7 +105,7 @@ uv sync --project apps/api
 .\scripts\demo.ps1 -Mode api -DataProfile video
 ```
 
-如果本机 `.env` 已配置兼容模型服务，可追加 `-Provider openai-compatible`。默认 Fake Provider 使用固定规则，不会调用外部模型。红色高风险操作的本地验证码可在另一个终端通过以下命令生成，再输入页面：
+默认 `rules` 模式可直接进行常用查询和模拟业务操作，不需要密钥。若另行配置兼容模型服务，可追加 `-Provider openai-compatible`。红色高风险操作所需的本地验证码可在另一个终端通过以下命令生成，再输入页面：
 
 ```powershell
 .\scripts\demo.ps1 -Mode otp -DataProfile video

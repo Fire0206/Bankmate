@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import logging
 import re
 import uuid
@@ -32,7 +31,6 @@ logger = logging.getLogger("bankmate.api")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 settings = get_settings()
-logger = logging.getLogger("bankmate.api")
 
 
 @asynccontextmanager
@@ -122,11 +120,6 @@ async def attach_request_id(request: Request, call_next: RequestResponseEndpoint
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
         response.headers["X-Content-Type-Options"] = "nosniff"
-    if settings.environment == "test" and settings.eval_instance_id:
-        response.headers["X-BankMate-Eval-Instance"] = settings.eval_instance_id
-        response.headers["X-BankMate-Eval-Database"] = hashlib.sha256(
-            settings.database_url.encode("utf-8")
-        ).hexdigest()
     return response
 
 

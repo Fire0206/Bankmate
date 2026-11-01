@@ -2,8 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("reset", "api", "web", "otp")]
     [string]$Mode,
-    [ValidateSet("fake", "openai-compatible")]
-    [string]$Provider = "fake",
+    [ValidateSet("rules", "fake", "openai-compatible")]
+    [string]$Provider = "rules",
     [ValidateSet("default", "video")]
     [string]$DataProfile = "default",
     [switch]$Showcase
