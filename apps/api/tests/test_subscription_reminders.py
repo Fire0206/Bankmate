@@ -1,6 +1,9 @@
 from datetime import UTC, timedelta
 from uuid import UUID
 
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider
 from bankmate_api.api.v1.agent import get_provider_selection
@@ -19,8 +22,6 @@ from bankmate_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from bankmate_api.subscription_scheduler import run_subscription_reminder_tick
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select
 
 
 def _active_subscription(session, actor_id):

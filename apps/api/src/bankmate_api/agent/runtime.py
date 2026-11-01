@@ -17,6 +17,7 @@ from bankmate_api.agent.intent import (
     requested_card_tool,
     requested_subscription_tool,
 )
+from bankmate_api.config import business_now_utc
 
 
 @dataclass(frozen=True)
@@ -681,9 +682,7 @@ class FakeProvider(LLMProvider):
             else None
         )
         if "上个月" in full_request or "上月" in full_request:
-            from datetime import UTC, datetime
-
-            current = datetime.now(UTC)
+            current = business_now_utc()
             year, current_month = current.year, current.month - 1
             if current_month == 0:
                 year, current_month = year - 1, 12
@@ -1460,7 +1459,7 @@ class FakeProvider(LLMProvider):
         # repeatedly select subscription.list and starve the annual report.
         if annual_bill_query and "bill.annual_report" not in succeeded:
             year_match = re.search(r"(?<!\d)(20\d{2})(?:年)?(?!\d)", full_request)
-            year = int(year_match.group(1)) if year_match else datetime.now(UTC).year
+            year = int(year_match.group(1)) if year_match else business_now_utc().year
             return ModelTurn(
                 "",
                 (

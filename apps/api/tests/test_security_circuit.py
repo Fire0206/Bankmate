@@ -1,6 +1,8 @@
 from datetime import timedelta
 from uuid import uuid4
 
+from sqlalchemy import func, select
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider
 from bankmate_api.application.agent import create_agent_task
@@ -12,7 +14,6 @@ from bankmate_api.security.circuit import (
     record_safety_signal,
 )
 from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID, DEMO_USER_TWO_ID
-from sqlalchemy import func, select
 
 
 def test_circuit_is_short_lived_actor_scoped_and_audited(seeded_database) -> None:

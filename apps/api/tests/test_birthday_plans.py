@@ -6,6 +6,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select, text
+from test_agent_api import confirm, submit
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider, ModelToolCall, ModelTurn
 from bankmate_api.api.v1.agent import get_provider_selection
@@ -28,9 +32,6 @@ from bankmate_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select, text
-from test_agent_api import confirm, submit
 
 BUSINESS_TZ = timezone(timedelta(hours=8))
 

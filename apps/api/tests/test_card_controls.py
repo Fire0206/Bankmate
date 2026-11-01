@@ -4,6 +4,10 @@ from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from test_agent_api import ALICE_ACTIVE_CARD_ID, confirm, submit
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider
 from bankmate_api.api.v1.agent import get_provider_selection
@@ -25,9 +29,6 @@ from bankmate_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from bankmate_api.security.verification import issue_demo_code
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select
-from test_agent_api import ALICE_ACTIVE_CARD_ID, confirm, submit
 
 
 @pytest.fixture

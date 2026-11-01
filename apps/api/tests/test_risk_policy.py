@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from bankmate_api.security.risk_policy import business_day_bounds, decide_risk
 
 

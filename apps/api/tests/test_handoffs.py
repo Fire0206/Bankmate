@@ -1,6 +1,9 @@
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
 from bankmate_api.application.handoffs import (
     HandoffStateError,
     create_failure_handoff_if_needed,
@@ -21,8 +24,6 @@ from bankmate_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select
 
 
 def test_actor_scoped_handoff_and_local_operator(seeded_database) -> None:

@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select, update
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider, LLMProvider, ModelToolCall, ModelTurn
 from bankmate_api.api.v1.agent import get_provider_selection
@@ -31,8 +34,6 @@ from bankmate_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from bankmate_api.security.verification import issue_demo_code
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
 
 ALICE_SOURCE_ACCOUNT = UUID("10000000-0000-4000-8000-000000000001")
 ALICE_SAVINGS_ACCOUNT = UUID("10000000-0000-4000-8000-000000000002")

@@ -1,4 +1,5 @@
 import pytest
+
 from bankmate_api.agent.registry import build_tool_registry
 from bankmate_api.application.workflow_graph import (
     WorkflowNode,

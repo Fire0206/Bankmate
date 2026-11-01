@@ -28,6 +28,11 @@ try {
     $env:BANKMATE_ENVIRONMENT = "development"
     $env:BANKMATE_DATABASE_URL = "sqlite:///" + $databasePath.Replace("\", "/")
     $env:BANKMATE_AGENT_PROVIDER = $Provider
+    if ($DataProfile -eq "video") {
+        $env:BANKMATE_DEMO_NOW = "2026-10-28T12:00:00+00:00"
+    } else {
+        Remove-Item Env:BANKMATE_DEMO_NOW -ErrorAction SilentlyContinue
+    }
 
     switch ($Mode) {
         "reset" {

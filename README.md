@@ -62,6 +62,7 @@ macOS / Linux：
 mkdir -p .data
 export BANKMATE_ENVIRONMENT=development
 export BANKMATE_DATABASE_URL=sqlite:///./.data/bankmate-showcase.db
+export BANKMATE_DEMO_NOW=2026-10-28T12:00:00+00:00
 uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
 uv run --project apps/api python -m bankmate_api.reset --confirm --showcase
 ```

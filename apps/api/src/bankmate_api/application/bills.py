@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from bankmate_api.config import business_now_utc
 from bankmate_api.domain.bills import detect_anomaly_reasons
 from bankmate_api.infrastructure.models import Account, Card, Transaction
 
@@ -129,7 +130,7 @@ def _utc(value: datetime) -> datetime:
 
 def _month_start(month: str | None) -> date:
     if month is None:
-        return datetime.now(UTC).date().replace(day=1)
+        return business_now_utc().date().replace(day=1)
     try:
         parsed = date.fromisoformat(f"{month}-01")
     except ValueError as exc:

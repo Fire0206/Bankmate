@@ -3,10 +3,11 @@
 import argparse
 from uuid import UUID
 
+from sqlalchemy.orm import sessionmaker
+
 from bankmate_api.application.handoffs import simulate_operator_update
 from bankmate_api.config import get_settings
 from bankmate_api.infrastructure.database import build_engine
-from sqlalchemy.orm import sessionmaker
 
 
 def main() -> None:

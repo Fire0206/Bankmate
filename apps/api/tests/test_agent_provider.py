@@ -3,6 +3,8 @@ import urllib.error
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
+
 from bankmate_api.agent import providers
 from bankmate_api.agent.providers import OpenAICompatibleProvider, select_provider
 from bankmate_api.agent.runtime import (
@@ -17,7 +19,6 @@ from bankmate_api.agent.runtime import (
 )
 from bankmate_api.agent.tools import CardListOutput, CardSuffixInput, EmptyToolInput
 from bankmate_api.config import Settings
-from pydantic import SecretStr
 
 
 def test_fake_provider_is_deterministic_and_does_not_call_network() -> None:

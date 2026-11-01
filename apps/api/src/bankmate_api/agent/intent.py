@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+
+from bankmate_api.config import business_now_utc
 
 
 @dataclass(frozen=True)
@@ -72,7 +74,7 @@ def birthday_plan_intent(request_text: str) -> BirthdayPlanIntent | None:
         month_day = re.search(r"(?<!\d)(\d{1,2})\s*月\s*(\d{1,2})\s*日(?!\d)", request_text)
         if month_day is not None:
             try:
-                today = datetime.now(timezone(timedelta(hours=8))).date()
+                today = business_now_utc().astimezone(timezone(timedelta(hours=8))).date()
                 month, day = map(int, month_day.groups())
                 candidate = date(today.year, month, day)
                 birthday_on = candidate if candidate > today else date(today.year + 1, month, day)

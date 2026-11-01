@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from ipaddress import ip_address
 from pathlib import Path
@@ -59,3 +59,12 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def business_now_utc() -> datetime:
+    configured = get_settings().demo_now
+    if configured is None:
+        return datetime.now(UTC)
+    if configured.tzinfo is None:
+        return configured.replace(tzinfo=UTC)
+    return configured.astimezone(UTC)

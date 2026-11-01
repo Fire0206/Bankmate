@@ -4,6 +4,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import event, func, select
+from sqlalchemy.exc import OperationalError
+
 from bankmate_api.application.cards import (
     CardNotFoundError,
     freeze_card,
@@ -24,8 +27,6 @@ from bankmate_api.infrastructure.models import (
     HumanHandoff,
 )
 from bankmate_api.security.demo_identity import DEMO_USER_ONE_ID
-from sqlalchemy import event, func, select
-from sqlalchemy.exc import OperationalError
 
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")

@@ -1,8 +1,9 @@
 from pathlib import Path
 
 import pytest
-from bankmate_api.config import Settings
 from pydantic import ValidationError
+
+from bankmate_api.config import Settings
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 

@@ -1,8 +1,12 @@
 from pathlib import Path
 from uuid import UUID
 
-from alembic import command
 from alembic.config import Config
+from sqlalchemy import func, inspect, select, text
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import sessionmaker
+
+from alembic import command
 from bankmate_api.infrastructure.database import build_engine
 from bankmate_api.infrastructure.models import (
     Account,
@@ -16,9 +20,6 @@ from bankmate_api.infrastructure.models import (
     Transaction,
 )
 from bankmate_api.seed_data import DATASET_VERSION, seed_demo_data
-from sqlalchemy import func, inspect, select, text
-from sqlalchemy.engine import URL
-from sqlalchemy.orm import sessionmaker
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 

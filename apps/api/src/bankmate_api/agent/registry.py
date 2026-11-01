@@ -55,6 +55,7 @@ from bankmate_api.application.subscriptions import (
     list_subscription_reminders,
     list_subscriptions,
 )
+from bankmate_api.config import business_now_utc
 from bankmate_api.domain.cards import CardStatus, transition_card_status
 from bankmate_api.domain.subscriptions import transition_subscription_status
 from bankmate_api.infrastructure.models import ConfirmationChallenge, utc_now
@@ -320,7 +321,7 @@ def build_tool_registry() -> ToolRegistry:
             merchant=typed.merchant,
             limit=100,
         )
-        month = typed.month or datetime.now(UTC).strftime("%Y-%m")
+        month = typed.month or business_now_utc().strftime("%Y-%m")
         return BillTransactionsOutput(
             month=month,
             items=[_bill_transaction_output(item) for item in page.items],
@@ -332,7 +333,7 @@ def build_tool_registry() -> ToolRegistry:
     ) -> BillAnomaliesOutput:
         typed = BillMonthInput.model_validate(arguments)
         items = get_month_anomalies(context.session, actor_id=context.actor_id, month=typed.month)
-        month = typed.month or datetime.now(UTC).strftime("%Y-%m")
+        month = typed.month or business_now_utc().strftime("%Y-%m")
         return BillAnomaliesOutput(
             month=month,
             items=[_bill_transaction_output(item) for item in items],

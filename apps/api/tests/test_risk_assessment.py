@@ -1,8 +1,12 @@
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select, text
+from sqlalchemy.engine import URL
+
+from alembic import command
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import FakeProvider
 from bankmate_api.api.v1.agent import get_provider_selection
@@ -18,9 +22,6 @@ from bankmate_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from bankmate_api.seed_data import seed_demo_data
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select, text
-from sqlalchemy.engine import URL
 
 QUESTIONNAIRE = "/api/v1/investments/risk-assessment"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]

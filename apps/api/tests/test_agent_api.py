@@ -4,6 +4,10 @@ from threading import Event
 from uuid import UUID
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import event as sqlalchemy_event
+from sqlalchemy import func, select, update
+
 from bankmate_api.agent.providers import ProviderSelection
 from bankmate_api.agent.runtime import (
     AgentProviderError,
@@ -36,9 +40,6 @@ from bankmate_api.security.demo_identity import (
     get_current_demo_actor,
 )
 from bankmate_api.security.verification import issue_demo_code
-from fastapi.testclient import TestClient
-from sqlalchemy import event as sqlalchemy_event
-from sqlalchemy import func, select, update
 
 ALICE_ACTIVE_CARD_ID = UUID("20000000-0000-4000-8000-000000000001")
 ALICE_FROZEN_CARD_ID = UUID("20000000-0000-4000-8000-000000000002")

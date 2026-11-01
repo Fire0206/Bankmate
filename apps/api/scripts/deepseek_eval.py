@@ -16,6 +16,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
+
 from bankmate_api.application.transactions import write_transaction
 from bankmate_api.config import Settings
 from bankmate_api.domain.cards import CardStatus
@@ -23,7 +25,6 @@ from bankmate_api.infrastructure.database import get_session_factory
 from bankmate_api.infrastructure.models import Account, Card, Subscription, utc_now
 from bankmate_api.reset import reset_demo_data, validate_reset_target
 from bankmate_api.security.verification import issue_demo_code
-from sqlalchemy import select
 
 BASE_URL = os.getenv("BANKMATE_EVAL_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]

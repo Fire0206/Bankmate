@@ -1,6 +1,9 @@
 from uuid import UUID
 
 import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+
 from bankmate_api.config import Settings, get_settings
 from bankmate_api.infrastructure.database import get_db_session
 from bankmate_api.main import app
@@ -9,8 +12,6 @@ from bankmate_api.security.demo_identity import (
     DemoActor,
     get_current_demo_actor,
 )
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
 
 
 @pytest.mark.parametrize("environment", ["development", "test"])
